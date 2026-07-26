@@ -1,0 +1,11 @@
+python -m venv venv
+venv\Scripts\activate   (Windows)  /  source venv/bin/activate  (macOS/Linux)
+
+pip install -r requirements.txt
+
+# Copy .env.example to .env and fill in KKU_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY.
+# Places/knowledge_base data itself lives in Supabase, seeded by ../backend/scripts/ -- nothing to seed here.
+
+python scripts/embed_content.py   (run once, or again whenever places/knowledge_base rows change)
+
+uvicorn src.main:app --reload

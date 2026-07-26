@@ -1,0 +1,17 @@
+{
+  "name": "dino-khon-kaen-backend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "import:places": "node scripts/import-places.js",
+    "import:places-multi": "node scripts/import-places-multi.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.4",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "supabase": "^2.20.5"
+  }
+}

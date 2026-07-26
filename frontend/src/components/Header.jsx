@@ -1,0 +1,51 @@
+import { useApp } from '../context/AppContext.jsx'
+
+export default function Header() {
+  const { state, actions, derived } = useApp()
+  return (
+    <header style={{ position: 'sticky', top: 0, zIndex: 40, background: '#ffffff', borderBottom: '1px solid #E7E3D2', display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', padding: '0 32px', height: 68 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', justifySelf: 'start' }} onClick={actions.goHome}>
+        <img src="./assets/dino-logo-full.png" alt="Dino" style={{ height: 34, width: 'auto', flexShrink: 0 }} />
+      </div>
+      <nav data-role="desktop-nav" style={{ display: 'flex', alignItems: 'center', gap: 30, justifySelf: 'center' }}>
+        <a href="#" onClick={(e) => { e.preventDefault(); actions.goHome() }} style={{ fontSize: 15, color: derived.navHomeColor, fontWeight: derived.navHomeWeight, position: 'relative' }}>
+          หน้าแรก<span style={{ position: 'absolute', bottom: -12, left: 0, height: 3, width: derived.navHomeUnderline, background: '#2E7D32', borderRadius: 2, transition: 'width 0.2s ease' }}></span>
+        </a>
+        <a href="#" onClick={(e) => { e.preventDefault(); actions.goPlaces() }} style={{ fontSize: 15, color: derived.navPlacesColor, fontWeight: derived.navPlacesWeight, position: 'relative' }}>
+          สถานที่ท่องเที่ยว<span style={{ position: 'absolute', bottom: -12, left: 0, height: 3, width: derived.navPlacesUnderline, background: '#2E7D32', borderRadius: 2, transition: 'width 0.2s ease' }}></span>
+        </a>
+        <a href="#" onClick={(e) => { e.preventDefault(); actions.goEvents() }} style={{ fontSize: 15, color: derived.navEventsColor, fontWeight: derived.navEventsWeight, position: 'relative' }}>
+          กิจกรรม &amp; เทศกาล<span style={{ position: 'absolute', bottom: -12, left: 0, height: 3, width: derived.navEventsUnderline, background: '#2E7D32', borderRadius: 2, transition: 'width 0.2s ease' }}></span>
+        </a>
+        <a href="#" onClick={(e) => { e.preventDefault(); actions.goTripForm() }} style={{ fontSize: 15, color: derived.navTripColor, fontWeight: derived.navTripWeight, display: 'flex', alignItems: 'center', gap: 6, position: 'relative' }}>
+          วางแผนทริป AI<span style={{ background: 'linear-gradient(135deg,#f9a825,#FBC02D)', color: '#1B5E20', fontSize: 10, fontWeight: 800, padding: '2px 6px', borderRadius: 8 }}>ใหม่</span>
+          <span style={{ position: 'absolute', bottom: -12, left: 0, height: 3, width: derived.navTripUnderline, background: '#2E7D32', borderRadius: 2, transition: 'width 0.2s ease' }}></span>
+        </a>
+        <a href="#" onClick={(e) => { e.preventDefault(); actions.goPoints() }} style={{ fontSize: 15, color: derived.navPointsColor, fontWeight: derived.navPointsWeight, position: 'relative' }}>
+          พอยท์สะสม<span style={{ position: 'absolute', bottom: -12, left: 0, height: 3, width: derived.navPointsUnderline, background: '#2E7D32', borderRadius: 2, transition: 'width 0.2s ease' }}></span>
+        </a>
+      </nav>
+      <div data-role="desktop-nav" style={{ display: 'flex', alignItems: 'center', gap: 14, justifySelf: 'end' }}>
+        {state.loggedIn ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#E8F5E9', padding: '6px 12px', borderRadius: 20 }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#1B5E20' }}>{state.userPoints} พอยท์</span>
+            </div>
+            <span style={{ fontSize: 14, color: '#6d7a72' }}>สวัสดี, {state.userName}</span>
+            <button onClick={actions.logout} style={{ background: 'none', border: 'none', color: '#6d7a72', fontSize: 13, cursor: 'pointer', textDecoration: 'underline' }}>ออกจากระบบ</button>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <a href="#" onClick={(e) => { e.preventDefault(); actions.goLogin() }} style={{ fontSize: 14, fontWeight: 600, color: '#1f2a24' }}>เข้าสู่ระบบ</a>
+            <button onClick={actions.goSignup} style={{ background: 'linear-gradient(135deg,#66BB6A,#388E3C)', color: '#fff', border: 'none', padding: '9px 18px', borderRadius: 20, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>สมัครสมาชิก</button>
+          </div>
+        )}
+      </div>
+      <button data-role="hamburger-btn" onClick={actions.toggleMobileMenu} style={{ display: 'none', background: 'none', border: 'none', cursor: 'pointer', flexDirection: 'column', gap: 5, padding: 8 }}>
+        <span style={{ width: 24, height: 2.5, background: '#1B5E20', borderRadius: 2 }}></span>
+        <span style={{ width: 24, height: 2.5, background: '#1B5E20', borderRadius: 2 }}></span>
+        <span style={{ width: 24, height: 2.5, background: '#1B5E20', borderRadius: 2 }}></span>
+      </button>
+    </header>
+  )
+}
