@@ -1,7 +1,14 @@
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from src.api.routes_chatbot import router as chatbot_router
 from src.api.routes_tripplanner import router as tripplanner_router
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
 
 app = FastAPI(title="Khon Kaen AI Trip Planner")
 
