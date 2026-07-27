@@ -10,11 +10,19 @@ logger = logging.getLogger(__name__)
 FALLBACK_MESSAGE = "(น้องไดโน) ไม่มีข้อมูลในส่วนนี้ครับ ลองถามเกี่ยวกับสถานที่ท่องเที่ยว ร้านอาหาร หรือคาเฟ่ในขอนแก่นดูนะครับ"
 
 # The LLM is asked to prefix every reply with one of these tags so the code
-# can detect a no-match answer deterministically, instead of string-matching
-# the LLM's prose against FALLBACK_MESSAGE (which breaks the moment the model
-# paraphrases the refusal instead of repeating it verbatim).
-MATCH_TAG = "[MATCH]"
+# can detect a no-match answer deterministically (instead of string-matching
+# the LLM's prose against FALLBACK_MESSAGE, which breaks the moment the model
+# paraphrases its refusal instead of repeating it verbatim), and separately
+# so `places` cards are only attached when the answer actually drew on the
+# `places` table -- a knowledge_base-only answer (history/culture/transport)
+# was otherwise still shipping the top-3 retrieved *places* as source cards,
+# even though the reply never mentioned them (confirmed by testing).
+MATCH_PLACES_TAG = "[MATCH:PLACES]"
+MATCH_KB_TAG = "[MATCH:KB]"
+MATCH_BOTH_TAG = "[MATCH:BOTH]"
 NO_MATCH_TAG = "[NO_MATCH]"
+ALL_TAGS = (MATCH_PLACES_TAG, MATCH_KB_TAG, MATCH_BOTH_TAG, NO_MATCH_TAG)
+PLACE_CARD_TAGS = (MATCH_PLACES_TAG, MATCH_BOTH_TAG)
 
 
 class RAGChatbotService:
@@ -68,9 +76,12 @@ class RAGChatbotService:
         ขณะนี้คือวัน {current_time_info} (ใช้ข้อมูลนี้ตัดสินว่าสถานที่เปิดหรือปิด)
 
         [กฎเหล็ก]
-        1. ขึ้นต้นคำตอบทุกครั้งด้วยแท็ก {MATCH_TAG} หรือ {NO_MATCH_TAG} เป็นอันดับแรกเสมอ (ห้ามมีข้อความอื่นนำหน้าแท็ก):
-           - ใช้ {MATCH_TAG} ตามด้วยคำตอบ หากมีสถานที่หรือข้อมูลอย่างน้อย 1 รายการใน [ข้อมูลบริบท] ที่เกี่ยวข้องกับคำถาม แม้จะตอบได้แค่บางส่วนของคำถาม (เช่น ผู้ใช้ถามทั้งร้านกาแฟและร้านอาหาร แต่บริบทมีแต่ร้านกาแฟ ก็ให้ใช้ {MATCH_TAG} แนะนำร้านกาแฟที่มี แล้วบอกตรงๆ ว่าไม่มีข้อมูลร้านอาหารในส่วนที่เหลือ)
-           - ใช้ {NO_MATCH_TAG} ตามด้วยอะไรก็ได้สั้นๆ เฉพาะกรณีที่ไม่มีรายการใดใน [ข้อมูลบริบท] เกี่ยวข้องกับคำถามเลยแม้แต่รายการเดียว (ข้อความส่วนนี้จะไม่ถูกแสดงให้ผู้ใช้เห็น ระบบจะแสดงข้อความมาตรฐานแทน)
+        1. ขึ้นต้นคำตอบทุกครั้งด้วยแท็กใดแท็กหนึ่งต่อไปนี้เป็นอันดับแรกเสมอ (ห้ามมีข้อความอื่นนำหน้าแท็ก) [ข้อมูลบริบท] ด้านล่างมี 2 ส่วนคือ "รายการสถานที่" (ร้าน/คาเฟ่/ที่เที่ยว) และ "ความรู้ทั่วไป" (ประวัติศาสตร์/วัฒนธรรม/การเดินทาง ฯลฯ):
+           - {MATCH_PLACES_TAG} ตามด้วยคำตอบ หากคำตอบอ้างอิงเฉพาะ "รายการสถานที่"
+           - {MATCH_KB_TAG} ตามด้วยคำตอบ หากคำตอบอ้างอิงเฉพาะ "ความรู้ทั่วไป" ไม่ได้พูดถึงสถานที่รายการใดใน [ข้อมูลบริบท] เลย
+           - {MATCH_BOTH_TAG} ตามด้วยคำตอบ หากคำตอบอ้างอิงทั้งสองส่วน
+           - ใช้แท็ก MATCH ที่ตรงกับสิ่งที่ตอบจริง แม้จะตอบได้แค่บางส่วนของคำถามที่ถามหลายอย่างพร้อมกัน โดยที่แต่ละส่วนต้องตรงกับที่ผู้ใช้ถามจริงๆ (เช่น ผู้ใช้ถามทั้งร้านกาแฟและร้านอาหาร แต่บริบทมีแต่ร้านกาแฟ ก็ให้ใช้ {MATCH_PLACES_TAG} แนะนำร้านกาแฟที่มี แล้วบอกตรงๆ ว่าไม่มีข้อมูลร้านอาหารในส่วนที่เหลือ)
+           - ใช้ {NO_MATCH_TAG} ถ้าไม่มีรายการใดใน [ข้อมูลบริบท] ตรงกับสิ่งที่ผู้ใช้ถามหาจริงๆ แม้แต่รายการเดียว -- ห้ามใช้ MATCH แค่เพราะบริบทมีสถานที่ประเภทอื่นที่ "ใกล้เคียง" หรืออยู่ในขอนแก่นเหมือนกัน (เช่น ผู้ใช้ถามหา "น้ำตก" แต่บริบทมีแต่สะพานกับสวนน้ำ ซึ่งไม่ใช่น้ำตก เลยไม่นับว่าตรง ต้องใช้ {NO_MATCH_TAG} ห้ามหยิบสะพาน/สวนน้ำมาแนะนำแทน) ตามด้วยอะไรก็ได้สั้นๆ (ข้อความส่วนนี้จะไม่ถูกแสดงให้ผู้ใช้เห็น ระบบจะแสดงข้อความมาตรฐานแทน)
         2. กรุณาตอบคำถามของผู้ใช้โดยอ้างอิงจาก [ข้อมูลบริบท] ด้านล่างนี้เท่านั้น
         3. หากมีข้อมูลในบริบท ให้สรุปและตอบอย่างเป็นธรรมชาติ
         4. ห้ามแต่งเติม หรือเดาข้อมูลสถานที่ขึ้นมาเองเด็ดขาด รวมถึงคุณสมบัติที่ไม่มีระบุใน [ข้อมูลบริบท] เช่น ที่จอดรถ, wifi, การเดินทาง/ระยะห่างจากจุดอื่น -- ถ้าไม่มีข้อมูลด้านนี้ ให้บอกตรงๆ ว่าไม่มีข้อมูล ห้ามอนุมานจากที่อยู่หรือชื่อสถานที่เอง
@@ -101,17 +112,20 @@ class RAGChatbotService:
         raw_reply = response.choices[0].message.content
         elapsed = time.time() - t0
 
-        is_fallback = raw_reply.startswith(NO_MATCH_TAG)
+        matched_tag = next((t for t in ALL_TAGS if raw_reply.startswith(t)), None)
+        is_fallback = matched_tag == NO_MATCH_TAG
         if is_fallback:
             bot_reply = FALLBACK_MESSAGE
             source_places = []
-        elif raw_reply.startswith(MATCH_TAG):
-            bot_reply = raw_reply[len(MATCH_TAG):].strip()
+        elif matched_tag:
+            bot_reply = raw_reply[len(matched_tag):].strip()
+            if matched_tag not in PLACE_CARD_TAGS:
+                source_places = []
         else:
             # Model didn't follow the tag instruction -- treat as a match
             # rather than silently dropping the answer.
             bot_reply = raw_reply
-        logger.info("chat done in %.2fs fallback=%s", elapsed, is_fallback)
+        logger.info("chat done in %.2fs tag=%s", elapsed, matched_tag)
 
         return {"reply": bot_reply, "places": source_places}
 
@@ -140,6 +154,7 @@ class RAGChatbotService:
         tag_buffer = ""
         tag_resolved = False
         is_fallback = False
+        include_places = False
         for chunk in stream:
             delta = chunk.choices[0].delta.content
             if not delta:
@@ -147,22 +162,25 @@ class RAGChatbotService:
 
             if not tag_resolved:
                 tag_buffer += delta
-                if tag_buffer.startswith(NO_MATCH_TAG):
-                    # Rest of the model's (hidden) no-match text still needs
-                    # draining from the stream, just not yielded to the client.
-                    is_fallback = True
+                matched_tag = next((t for t in ALL_TAGS if tag_buffer.startswith(t)), None)
+                if matched_tag:
                     tag_resolved = True
-                elif tag_buffer.startswith(MATCH_TAG):
-                    tag_resolved = True
-                    remainder = tag_buffer[len(MATCH_TAG):].lstrip()
-                    if remainder:
-                        full_text += remainder
-                        yield {"type": "token", "text": remainder}
-                elif not (NO_MATCH_TAG.startswith(tag_buffer) or MATCH_TAG.startswith(tag_buffer)):
-                    # Doesn't match either tag prefix -- model skipped the
-                    # tag instruction. Treat everything buffered so far as a
+                    if matched_tag == NO_MATCH_TAG:
+                        # Rest of the model's (hidden) no-match text still
+                        # needs draining from the stream, just not yielded.
+                        is_fallback = True
+                    else:
+                        include_places = matched_tag in PLACE_CARD_TAGS
+                        remainder = tag_buffer[len(matched_tag):].lstrip()
+                        if remainder:
+                            full_text += remainder
+                            yield {"type": "token", "text": remainder}
+                elif not any(t.startswith(tag_buffer) for t in ALL_TAGS):
+                    # Doesn't match any tag prefix -- model skipped the tag
+                    # instruction. Treat everything buffered so far as a
                     # normal (matched) reply rather than dropping it.
                     tag_resolved = True
+                    include_places = True
                     full_text += tag_buffer
                     yield {"type": "token", "text": tag_buffer}
                 # else: still an ambiguous prefix of one of the tags, keep buffering
@@ -175,7 +193,7 @@ class RAGChatbotService:
 
         elapsed = time.time() - t0
         final_reply = FALLBACK_MESSAGE if is_fallback else full_text
-        final_places = [] if is_fallback else source_places
-        logger.info("chat_stream done in %.2fs fallback=%s", elapsed, is_fallback)
+        final_places = source_places if include_places else []
+        logger.info("chat_stream done in %.2fs fallback=%s include_places=%s", elapsed, is_fallback, include_places)
 
         yield {"type": "done", "reply": final_reply, "places": final_places}
