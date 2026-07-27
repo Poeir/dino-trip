@@ -204,6 +204,13 @@ class RAGChatbotService:
         tag_resolved = False
         is_fallback = False
         include_places = False
+        # Whitespace right after the tag (typically one space before the
+        # real reply starts) needs skipping, but it can arrive in its own
+        # chunk separately from the tag -- a plain one-shot .lstrip() at the
+        # tag-match moment only strips it when the API happens to bundle it
+        # into the same chunk, which isn't guaranteed. This flag makes the
+        # skip survive across chunk boundaries instead.
+        skip_leading_ws = False
         for chunk in stream:
             delta = chunk.choices[0].delta.content
             if not delta:
@@ -231,6 +238,8 @@ class RAGChatbotService:
                         if remainder:
                             full_text += remainder
                             yield {"type": "token", "text": remainder}
+                        else:
+                            skip_leading_ws = True
                 elif not any(t.startswith(tag_buffer) for t in ALL_TAGS):
                     # Doesn't match any tag prefix -- model skipped the tag
                     # instruction. Treat everything buffered so far as a
@@ -244,6 +253,13 @@ class RAGChatbotService:
 
             if is_fallback:
                 continue  # drain the hidden no-match text without yielding it
+
+            if skip_leading_ws:
+                delta = delta.lstrip()
+                if not delta:
+                    continue
+                skip_leading_ws = False
+
             full_text += delta
             yield {"type": "token", "text": delta}
 
