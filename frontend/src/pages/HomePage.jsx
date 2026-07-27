@@ -80,7 +80,7 @@ export default function HomePage() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(320px,1fr))', gap: 22 }}>
             {derived.homeEvents.map((event) => (
               <div key={event.id} onClick={event.onOpen} style={{ display: 'flex', gap: 16, background: '#fff', border: '1px solid #E7E3D2', borderRadius: 16, overflow: 'hidden', cursor: 'pointer', transition: 'transform 0.22s ease,box-shadow 0.22s ease', animation: 'dc-fade-up 0.45s ease both' }}>
-                <ImageSlot src={event.img} shape="rect" style={{ width: 130, height: 130, flexShrink: 0 }} placeholder="ภาพงาน" />
+                <ImageSlot src={event.img} shape="rect" style={{ width: 130, alignSelf: 'stretch', flexShrink: 0 }} placeholder="ภาพงาน" />
                 <div style={{ padding: '14px 14px 14px 0', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                   <span style={{ fontSize: 11, fontWeight: 700, color: '#E07B39', marginBottom: 12 }}>{event.category}</span>
                   <div style={{ fontWeight: 400, fontSize: 15, color: '#1f2a24', marginBottom: 6, lineHeight: 1.35 }}>{event.name}</div>

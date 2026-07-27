@@ -19,6 +19,7 @@ export default function EventsTab() {
           </div>
           <input value={f.dateRange || ''} onChange={actions.onField_dateRange} placeholder="ช่วงวันจัดงาน" style={{ width: '100%', border: '1px solid #DCD8C6', borderRadius: 8, padding: 9, fontSize: 14, marginBottom: 14 }} />
           <input value={f.venueName || ''} onChange={actions.onField_venueName} placeholder="สถานที่จัดงาน" style={{ width: '100%', border: '1px solid #DCD8C6', borderRadius: 8, padding: 9, fontSize: 14, marginBottom: 14 }} />
+          <input value={f.img || ''} onChange={actions.onField_img} placeholder="ลิงก์รูปภาพ (URL)" style={{ width: '100%', border: '1px solid #DCD8C6', borderRadius: 8, padding: 9, fontSize: 14, marginBottom: 14 }} />
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
             <input value={f.admission || ''} onChange={actions.onField_admission} placeholder="ค่าเข้างาน" style={{ border: '1px solid #DCD8C6', borderRadius: 8, padding: 9, fontSize: 14 }} />
             <input value={f.organizer || ''} onChange={actions.onField_organizer} placeholder="ผู้จัดงาน" style={{ border: '1px solid #DCD8C6', borderRadius: 8, padding: 9, fontSize: 14 }} />
