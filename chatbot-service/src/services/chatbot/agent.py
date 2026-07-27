@@ -137,6 +137,7 @@ class RAGChatbotService:
 
         place_context = "\n---\n".join(
             f"ชื่อสถานที่: {p['name']}\n"
+            f"ประเภท/แท็ก: {', '.join(p.get('tags') or []) or p.get('category') or '-'}\n"
             f"คะแนน: {p.get('rating') or '-'} ดาว\n"
             f"รายละเอียด: {p.get('description') or '-'}\n"
             f"ที่อยู่: {p.get('address') or '-'}\n"
