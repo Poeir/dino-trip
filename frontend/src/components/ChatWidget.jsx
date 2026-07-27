@@ -48,6 +48,22 @@ function renderMarkdown(text) {
   })
 }
 
+// Templated (not LLM-generated) follow-up suggestions -- derived purely from
+// which categories showed up in the attached place cards, no extra network
+// call. Category-specific ones are added on top of a generic base set.
+function getFollowUpChips(places) {
+  if (!places || places.length === 0) return []
+  const categories = new Set(places.map((p) => p.category).filter(Boolean))
+  const chips = ['มีสาขาอื่นมั้ย', 'ราคาเท่าไหร่', 'เปิดกี่โมง']
+  if (categories.has('ร้านอาหาร') || categories.has('คาเฟ่')) {
+    chips.push('มีเมนูมังสวิรัติมั้ย')
+  }
+  if (categories.has('สถานที่ท่องเที่ยว') || categories.has('วัด') || categories.has('สวนสาธารณะ')) {
+    chips.push('ใกล้ๆ มีที่เที่ยวอะไรอีก')
+  }
+  return chips.slice(0, 3)
+}
+
 const bubbleMessages = [
   'อยากไปเที่ยวไหนดีครับ ถามน้องไดโนได้เลย!',
   'ให้น้องไดโนช่วยวางแผนทริปมั้ยครับ?',
@@ -117,6 +133,11 @@ export default function ChatWidget() {
                   </div>
                 </div>
                 {msg.from === 'bot' && msg.places && msg.places.length > 0 && (
+                  <div style={{ paddingLeft: 29, fontSize: 10.5, color: '#8a938c' }}>
+                    อ้างอิงจาก {msg.places.length} สถานที่
+                  </div>
+                )}
+                {msg.from === 'bot' && msg.places && msg.places.length > 0 && (
                   <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingLeft: 29 }}>
                     {msg.places.map((p) => (
                       <div key={p.id} onClick={() => actions.openPlace(p.id)} style={{ flexShrink: 0, width: 140, background: '#fff', border: '1px solid #E7E3D2', borderRadius: 12, padding: 10, cursor: 'pointer' }}>
@@ -124,6 +145,19 @@ export default function ChatWidget() {
                         <div style={{ fontSize: 11, color: '#6d7a72', marginBottom: 3 }}>★ {p.rating ?? '-'}</div>
                         <div style={{ fontSize: 10.5, color: '#8a938c', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.address}</div>
                       </div>
+                    ))}
+                  </div>
+                )}
+                {msg.from === 'bot' && msg.places && msg.places.length > 0 && i === derived.chatMessagesView.length - 1 && !state.chatTyping && (
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', paddingLeft: 29 }}>
+                    {getFollowUpChips(msg.places).map((chip) => (
+                      <button
+                        key={chip}
+                        onClick={() => actions.sendChat(chip)}
+                        style={{ background: '#fff', border: '1px solid #C8E6C9', color: '#2E7D32', borderRadius: 14, padding: '5px 11px', fontSize: 11.5, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                      >
+                        {chip}
+                      </button>
                     ))}
                   </div>
                 )}
@@ -150,7 +184,7 @@ export default function ChatWidget() {
               placeholder="พิมพ์คำถามของคุณ..."
               style={{ flex: 1, border: '1px solid #DCD8C6', borderRadius: 16, padding: '8px 14px', fontSize: 13.5, outline: 'none' }}
             />
-            <button onClick={actions.sendChat} className="dc-send-btn" style={{ background: 'linear-gradient(135deg,#66BB6A,#388E3C)', border: 'none', width: 36, height: 36, borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 6px 14px rgba(46,125,50,0.35)' }}>
+            <button onClick={() => actions.sendChat()} className="dc-send-btn" style={{ background: 'linear-gradient(135deg,#66BB6A,#388E3C)', border: 'none', width: 36, height: 36, borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 6px 14px rgba(46,125,50,0.35)' }}>
               <span style={{ width: 0, height: 0, borderTop: '6px solid transparent', borderBottom: '6px solid transparent', borderLeft: '9px solid #fff', marginLeft: 2 }}></span>
             </button>
           </div>

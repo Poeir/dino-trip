@@ -1,17 +1,20 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
-  categories, categoryIcons, interestList, budgetList, budgetMeta, adminTabs
+  categories, categoryIcons, interestList, budgetList, budgetMeta
 } from '../data/seed.js'
-import { supabase } from '../lib/supabaseClient.js'
+import {
+  fetchPlaces, createPlace, updatePlace, deletePlace,
+  fetchEvents, createEvent, updateEvent, deleteEvent,
+  fetchKnowledgeBase, createKnowledgeBase, updateKnowledgeBase, deleteKnowledgeBase,
+  fetchQrs, createQr, updateQr, deleteQr,
+  fetchRewards, createReward, updateReward, deleteReward,
+} from '../lib/apiClient.js'
 import { sendChatMessage, requestTripPlan } from '../lib/chatbotService.js'
 
 const AppContext = createContext(null)
 
 const initialState = {
-  mode: 'public',
-  view: 'home',
-  selectedPlaceId: null,
-  selectedEventId: null,
   searchQuery: '',
   activeCategory: 'ทั้งหมด',
   loggedIn: false,
@@ -35,14 +38,13 @@ const initialState = {
   scanState: 'idle',
   scanResultPoints: 0,
   scanResultPlace: '',
-  // Populated from Supabase on mount (see loadData below) instead of static seed data.
+  // Populated from the backend API on mount (see loadData below) instead of static seed data.
   places: [],
   events: [],
   knowledgeBase: [],
   rewards: [],
   qrs: [],
   adminLoggedIn: false,
-  adminTab: 'dashboard',
   formOpen: false,
   formType: null,
   formData: {},
@@ -66,48 +68,8 @@ function validateTripDates(f) {
   return ''
 }
 
-// DB rows use snake_case; the rest of the app (components/derived logic) was
-// built around the camelCase shape from the old seed.js, so map on the way in...
-function rowToPlace(row) {
-  return {
-    id: row.id,
-    source: row.source,
-    googlePlaceId: row.google_place_id,
-    name: row.name,
-    category: row.category,
-    rating: row.rating,
-    reviews: row.review_count,
-    price: row.price,
-    address: row.address,
-    hours: row.hours,
-    phone: row.phone,
-    website: row.website,
-    mapsUrl: row.maps_url,
-    desc: row.description,
-    amenities: row.amenities || [],
-    tags: row.tags || [],
-    hasQR: row.has_qr,
-    qrPoints: row.qr_points,
-    reviewsList: row.reviews || [],
-    location: row.lat != null && row.lng != null ? { lat: row.lat, lng: row.lng } : null,
-    img: row.img,
-  }
-}
-function rowToEvent(row) {
-  return {
-    id: row.id, name: row.name, category: row.category, dateRange: row.date_range, venueName: row.venue_name,
-    admission: row.admission, organizer: row.organizer, suitableFor: row.suitable_for || [], desc: row.description,
-    status: row.status, img: row.img,
-  }
-}
-function rowToKb(row) {
-  return { id: row.id, title: row.title, category: row.category, content: row.content, isPinned: row.is_pinned, isActive: row.is_active }
-}
-function rowToQr(row) {
-  return { id: row.id, placeId: row.place_id, points: row.points }
-}
-
 export function AppProvider({ children }) {
+  const navigate = useNavigate()
   const [state, setStateRaw] = useState(initialState)
   const toastTimer = useRef(null)
   const stateRef = useRef(state)
@@ -129,26 +91,15 @@ export function AppProvider({ children }) {
 
   useEffect(() => {
     async function loadData() {
-      const [placesRes, eventsRes, kbRes, rewardsRes, qrsRes] = await Promise.all([
-        supabase.from('places').select('*').order('name'),
-        supabase.from('events').select('*').order('created_at'),
-        supabase.from('knowledge_base').select('*').order('created_at'),
-        supabase.from('rewards').select('*').order('cost'),
-        supabase.from('qrs').select('*'),
-      ])
-      const firstError = [placesRes, eventsRes, kbRes, rewardsRes, qrsRes].find((r) => r.error)
-      if (firstError) {
-        console.error('Failed to load data from Supabase:', firstError.error)
-        showToast('โหลดข้อมูลไม่สำเร็จ ตรวจสอบการเชื่อมต่อ Supabase')
-        return
+      try {
+        const [places, events, knowledgeBase, rewards, qrs] = await Promise.all([
+          fetchPlaces(), fetchEvents(), fetchKnowledgeBase(), fetchRewards(), fetchQrs(),
+        ])
+        setState({ places, events, knowledgeBase, rewards, qrs })
+      } catch (err) {
+        console.error('Failed to load data from API:', err)
+        showToast('โหลดข้อมูลไม่สำเร็จ ตรวจสอบการเชื่อมต่อ API')
       }
-      setState({
-        places: placesRes.data.map(rowToPlace),
-        events: eventsRes.data.map(rowToEvent),
-        knowledgeBase: kbRes.data.map(rowToKb),
-        rewards: rewardsRes.data,
-        qrs: qrsRes.data.map(rowToQr),
-      })
     }
     loadData()
   }, [])
@@ -156,15 +107,15 @@ export function AppProvider({ children }) {
   const toggleMobileMenu = () => setState((s) => ({ mobileMenuOpen: !s.mobileMenuOpen }))
   const closeMobileMenu = () => setState({ mobileMenuOpen: false })
   const closeWelcomeModal = () => setState({ welcomeModalOpen: false })
-  const welcomeGoTrip = () => setState({ welcomeModalOpen: false, view: 'tripForm', tripStep: 0 })
-  const welcomeGoPoints = () => setState({ welcomeModalOpen: false, view: 'points' })
+  const welcomeGoTrip = () => { setState({ welcomeModalOpen: false, tripStep: 0 }); navigate('/trip') }
+  const welcomeGoPoints = () => { setState({ welcomeModalOpen: false }); navigate('/points') }
 
-  const goHome = () => setState({ view: 'home' })
-  const goPlaces = () => setState({ view: 'placesList', mobileMenuOpen: false })
-  const goEvents = () => setState({ view: 'eventsList', mobileMenuOpen: false })
-  const goPublic = () => setState({ mode: 'public', view: 'home' })
-  const goAdminLogin = () => setState({ mode: 'admin', view: 'adminLogin' })
-  const goTripForm = () => setState({ view: 'tripForm', tripStep: 0, tripFormError: '' })
+  const goHome = () => navigate('/')
+  const goPlaces = () => { navigate('/places'); setState({ mobileMenuOpen: false }) }
+  const goEvents = () => { navigate('/events'); setState({ mobileMenuOpen: false }) }
+  const goPublic = () => navigate('/')
+  const goAdminLogin = () => navigate('/admin/login')
+  const goTripForm = () => { navigate('/trip'); setState({ tripStep: 0, tripFormError: '' }) }
   const nextStep = () => {
     if (stateRef.current.tripStep === 0) {
       const err = validateTripDates(stateRef.current.tripForm)
@@ -174,11 +125,11 @@ export function AppProvider({ children }) {
   }
   const prevStep = () => setState((s) => ({ tripStep: Math.max(0, s.tripStep - 1), tripFormError: '' }))
   const goToStep = (i) => { if (i < stateRef.current.tripStep) setState({ tripStep: i, tripFormError: '' }) }
-  const goPoints = () => setState({ view: 'points' })
-  const goLogin = () => setState({ view: 'login', authError: '' })
-  const goSignup = () => setState({ view: 'signup', authError: '' })
-  const openPlace = (id) => setState({ view: 'placeDetail', selectedPlaceId: id })
-  const openEvent = (id) => setState({ view: 'eventDetail', selectedEventId: id })
+  const goPoints = () => navigate('/points')
+  const goLogin = () => { navigate('/login'); setState({ authError: '' }) }
+  const goSignup = () => { navigate('/signup'); setState({ authError: '' }) }
+  const openPlace = (id) => navigate(`/places/${id}`)
+  const openEvent = (id) => navigate(`/events/${id}`)
 
   const setSearchQuery = (v) => setState({ searchQuery: v })
   const onSearchChange = (e) => setSearchQuery(e.target.value)
@@ -191,29 +142,45 @@ export function AppProvider({ children }) {
   const submitLogin = () => {
     const s = stateRef.current
     if (!s.authForm.email || !s.authForm.password) { setState({ authError: 'กรุณากรอกอีเมลและรหัสผ่าน' }); return }
-    setState({ loggedIn: true, userName: s.authForm.email.split('@')[0], view: 'home', authError: '' })
+    setState({ loggedIn: true, userName: s.authForm.email.split('@')[0], authError: '' })
+    navigate('/')
   }
   const submitSignup = () => {
     const s = stateRef.current
     if (!s.authForm.name || !s.authForm.email || !s.authForm.password) { setState({ authError: 'กรุณากรอกข้อมูลให้ครบถ้วน' }); return }
-    setState({ loggedIn: true, userName: s.authForm.name, view: 'home', authError: '' })
+    setState({ loggedIn: true, userName: s.authForm.name, authError: '' })
+    navigate('/')
   }
-  const logout = () => setState({ loggedIn: false, userName: '', view: 'home' })
+  const logout = () => { setState({ loggedIn: false, userName: '' }); navigate('/') }
 
   const toggleChat = () => setState((s) => ({ chatOpen: !s.chatOpen }))
   const setChatInput = (v) => setState({ chatInput: v })
   const onChatInputChange = (e) => setChatInput(e.target.value)
-  const sendChat = async () => {
-    const text = stateRef.current.chatInput.trim()
+  const sendChat = async (overrideText) => {
+    const text = (overrideText ?? stateRef.current.chatInput).trim()
     if (!text) return
     const historyForApi = stateRef.current.chatMessages.map((m) => ({ role: m.from === 'user' ? 'user' : 'assistant', content: m.text }))
-    setState((s) => ({ chatMessages: [...s.chatMessages, { from: 'user', text }], chatInput: '', chatTyping: true }))
+    // Push the user message plus an empty bot placeholder that fills in as
+    // tokens stream in -- always the last message in the array while streaming.
+    setState((s) => ({ chatMessages: [...s.chatMessages, { from: 'user', text }, { from: 'bot', text: '', places: [] }], chatInput: '', chatTyping: true }))
+    const appendToLastBotMessage = (patch) => setState((s) => {
+      const msgs = s.chatMessages.slice()
+      msgs[msgs.length - 1] = { ...msgs[msgs.length - 1], ...patch(msgs[msgs.length - 1]) }
+      return { chatMessages: msgs }
+    })
     try {
-      const { reply, places } = await sendChatMessage(text, historyForApi)
-      setState((s) => ({ chatMessages: [...s.chatMessages, { from: 'bot', text: reply, places }], chatTyping: false }))
+      const { places } = await sendChatMessage(text, historyForApi, {
+        onToken: (token) => {
+          setState({ chatTyping: false })
+          appendToLastBotMessage((last) => ({ text: last.text + token }))
+        },
+      })
+      appendToLastBotMessage(() => ({ places }))
+      setState({ chatTyping: false })
     } catch (err) {
       console.error('Chat request failed:', err)
-      setState((s) => ({ chatMessages: [...s.chatMessages, { from: 'bot', text: 'ขออภัยครับ ระบบแชทขัดข้องชั่วคราว ลองใหม่อีกครั้งนะครับ' }], chatTyping: false }))
+      appendToLastBotMessage(() => ({ text: 'ขออภัยครับ ระบบแชทขัดข้องชั่วคราว ลองใหม่อีกครั้งนะครับ', places: [] }))
+      setState({ chatTyping: false })
     }
   }
 
@@ -268,7 +235,7 @@ export function AppProvider({ children }) {
     const rawDays = Math.round((new Date(f.endDate) - new Date(f.startDate)) / 86400000) + 1
     const days = Number.isFinite(rawDays) && rawDays > 0 ? rawDays : 1
 
-    setState({ tripFormError: '', tripPlanning: true, view: 'tripLoading' })
+    setState({ tripFormError: '', tripPlanning: true })
     try {
       const resp = await requestTripPlan({
         trip_duration_days: days,
@@ -282,13 +249,14 @@ export function AppProvider({ children }) {
         end_time: f.dailyEnd,
       })
       if (!resp.itinerary || resp.itinerary.length === 0) {
-        setState({ tripPlanning: false, view: 'tripForm', tripFormError: resp.note || 'ไม่พบสถานที่ที่ตรงกับเงื่อนไข ลองปรับความสนใจหรืองบประมาณดูนะครับ' })
+        setState({ tripPlanning: false, tripFormError: resp.note || 'ไม่พบสถานที่ที่ตรงกับเงื่อนไข ลองปรับความสนใจหรืองบประมาณดูนะครับ' })
         return
       }
-      setState({ tripPlan: tripResponseToPlan(resp, f.startDate), tripPlanNote: resp.note, tripPlanning: false, view: 'tripResult', feedbackText: '' })
+      setState({ tripPlan: tripResponseToPlan(resp, f.startDate), tripPlanNote: resp.note, tripPlanning: false, feedbackText: '' })
+      navigate('/trip/result')
     } catch (err) {
       console.error('Trip plan request failed:', err)
-      setState({ tripPlanning: false, view: 'tripForm', tripFormError: 'สร้างแผนทริปไม่สำเร็จ ลองอีกครั้งนะครับ' })
+      setState({ tripPlanning: false, tripFormError: 'สร้างแผนทริปไม่สำเร็จ ลองอีกครั้งนะครับ' })
     }
   }
 
@@ -338,14 +306,13 @@ export function AppProvider({ children }) {
     setState((s2) => ({ userPoints: s2.userPoints - reward.cost }))
   }
 
-  const adminLogin = () => setState({ adminLoggedIn: true, mode: 'admin', view: 'admin', adminTab: 'dashboard' })
-  const adminLogout = () => setState({ adminLoggedIn: false, mode: 'public', view: 'home' })
-  const setAdminTab = (t) => setState({ adminTab: t, formOpen: false })
+  const adminLogin = () => { setState({ adminLoggedIn: true }); navigate('/admin') }
+  const adminLogout = () => { setState({ adminLoggedIn: false }); navigate('/') }
 
   const openCreateForm = (type) => {
     const defaults = {
       place: { name: '', category: 'คาเฟ่', rating: '4.5', reviews: '0', price: '', address: '', hours: '', phone: '', desc: '', amenities: '', tags: '', hasQR: false, qrPoints: '0' },
-      event: { name: '', category: '', dateRange: '', venueName: '', admission: '', organizer: '', suitableFor: '', desc: '', status: 'upcoming' },
+      event: { name: '', category: '', dateRange: '', venueName: '', admission: '', organizer: '', suitableFor: '', desc: '', status: 'upcoming', img: '' },
       kb: { title: '', category: 'transport', content: '', isPinned: false, isActive: true },
       qr: { placeId: '', points: '10' },
       reward: { name: '', cost: '50' }
@@ -362,65 +329,29 @@ export function AppProvider({ children }) {
   const updateFormField = (f, v) => setState((s) => ({ formData: { ...s.formData, [f]: v } }))
   const cancelForm = () => setState({ formOpen: false, formType: null, formData: {}, editingId: null })
 
+  // camelCase->snake_case payload shaping now happens in the backend
+  // (backend/src/lib/mappers.js) -- the frontend just dispatches formData as-is.
+  const resourceApi = {
+    place: { create: createPlace, update: updatePlace, remove: deletePlace, listKey: 'places' },
+    event: { create: createEvent, update: updateEvent, remove: deleteEvent, listKey: 'events' },
+    kb: { create: createKnowledgeBase, update: updateKnowledgeBase, remove: deleteKnowledgeBase, listKey: 'knowledgeBase' },
+    qr: { create: createQr, update: updateQr, remove: deleteQr, listKey: 'qrs' },
+    reward: { create: createReward, update: updateReward, remove: deleteReward, listKey: 'rewards' },
+  }
+
   const saveForm = async () => {
     const { formType, formData, editingId } = stateRef.current
-    const splitList = (v) => (v || '').split(',').map((s) => s.trim()).filter(Boolean)
+    const { create, update, listKey } = resourceApi[formType]
+    const errorLabels = { place: 'บันทึกสถานที่ไม่สำเร็จ: ', event: 'บันทึกอีเวนท์ไม่สำเร็จ: ', kb: 'บันทึกฐานความรู้ไม่สำเร็จ: ', qr: 'สร้าง QR ไม่สำเร็จ: ', reward: 'บันทึกของรางวัลไม่สำเร็จ: ' }
 
-    if (formType === 'place') {
-      const payload = {
-        name: formData.name, category: formData.category, rating: parseFloat(formData.rating) || null,
-        review_count: parseInt(formData.reviews) || 0, price: formData.price, address: formData.address,
-        hours: formData.hours, phone: formData.phone, description: formData.desc,
-        amenities: splitList(formData.amenities), tags: splitList(formData.tags),
-        has_qr: !!formData.hasQR, qr_points: parseInt(formData.qrPoints) || 0,
-      }
-      const query = editingId
-        ? supabase.from('places').update(payload).eq('id', editingId).select().single()
-        : supabase.from('places').insert(payload).select().single()
-      const { data, error } = await query
-      if (error) { showToast('บันทึกสถานที่ไม่สำเร็จ: ' + error.message); return }
-      const item = rowToPlace(data)
-      setState((s) => ({ places: editingId ? s.places.map((p) => p.id === editingId ? item : p) : [...s.places, item] }))
-    } else if (formType === 'event') {
-      const payload = {
-        name: formData.name, category: formData.category, date_range: formData.dateRange, venue_name: formData.venueName,
-        admission: formData.admission, organizer: formData.organizer, suitable_for: splitList(formData.suitableFor),
-        description: formData.desc, status: formData.status,
-      }
-      const query = editingId
-        ? supabase.from('events').update(payload).eq('id', editingId).select().single()
-        : supabase.from('events').insert(payload).select().single()
-      const { data, error } = await query
-      if (error) { showToast('บันทึกอีเวนท์ไม่สำเร็จ: ' + error.message); return }
-      const item = rowToEvent(data)
-      setState((s) => ({ events: editingId ? s.events.map((e) => e.id === editingId ? item : e) : [...s.events, item] }))
-    } else if (formType === 'kb') {
-      const payload = { title: formData.title, category: formData.category, content: formData.content, is_pinned: !!formData.isPinned, is_active: !!formData.isActive }
-      const query = editingId
-        ? supabase.from('knowledge_base').update(payload).eq('id', editingId).select().single()
-        : supabase.from('knowledge_base').insert(payload).select().single()
-      const { data, error } = await query
-      if (error) { showToast('บันทึกฐานความรู้ไม่สำเร็จ: ' + error.message); return }
-      const item = rowToKb(data)
-      setState((s) => ({ knowledgeBase: editingId ? s.knowledgeBase.map((k) => k.id === editingId ? item : k) : [...s.knowledgeBase, item] }))
-    } else if (formType === 'qr') {
-      const payload = { place_id: formData.placeId, points: parseInt(formData.points) || 0 }
-      const query = editingId
-        ? supabase.from('qrs').update(payload).eq('id', editingId).select().single()
-        : supabase.from('qrs').insert(payload).select().single()
-      const { data, error } = await query
-      if (error) { showToast('สร้าง QR ไม่สำเร็จ: ' + error.message); return }
-      const item = rowToQr(data)
-      setState((s) => ({ qrs: editingId ? s.qrs.map((q) => q.id === editingId ? item : q) : [...s.qrs, item] }))
-    } else if (formType === 'reward') {
-      const payload = { name: formData.name, cost: parseInt(formData.cost) || 0 }
-      const query = editingId
-        ? supabase.from('rewards').update(payload).eq('id', editingId).select().single()
-        : supabase.from('rewards').insert(payload).select().single()
-      const { data, error } = await query
-      if (error) { showToast('บันทึกของรางวัลไม่สำเร็จ: ' + error.message); return }
-      setState((s) => ({ rewards: editingId ? s.rewards.map((r) => r.id === editingId ? data : r) : [...s.rewards, data] }))
+    let item
+    try {
+      item = editingId ? await update(editingId, formData) : await create(formData)
+    } catch (err) {
+      showToast(errorLabels[formType] + err.message)
+      return
     }
+    setState((s) => ({ [listKey]: editingId ? s[listKey].map((x) => x.id === editingId ? item : x) : [...s[listKey], item] }))
 
     const labels = { place: 'บันทึกสถานที่แล้ว', event: 'บันทึกอีเวนท์แล้ว', kb: 'บันทึกฐานความรู้แล้ว', qr: 'สร้าง QR แล้ว', reward: 'บันทึกของรางวัลแล้ว' }
     cancelForm()
@@ -429,14 +360,14 @@ export function AppProvider({ children }) {
 
   const deleteItem = async (type, id) => {
     if (!window.confirm('ยืนยันการลบข้อมูลนี้หรือไม่?')) return
-    const table = { place: 'places', event: 'events', kb: 'knowledge_base', qr: 'qrs', reward: 'rewards' }[type]
-    const { error } = await supabase.from(table).delete().eq('id', id)
-    if (error) { showToast('ลบไม่สำเร็จ: ' + error.message); return }
-    if (type === 'place') setState((s) => ({ places: s.places.filter((p) => p.id !== id) }))
-    if (type === 'event') setState((s) => ({ events: s.events.filter((e) => e.id !== id) }))
-    if (type === 'kb') setState((s) => ({ knowledgeBase: s.knowledgeBase.filter((k) => k.id !== id) }))
-    if (type === 'qr') setState((s) => ({ qrs: s.qrs.filter((q) => q.id !== id) }))
-    if (type === 'reward') setState((s) => ({ rewards: s.rewards.filter((r) => r.id !== id) }))
+    const { remove, listKey } = resourceApi[type]
+    try {
+      await remove(id)
+    } catch (err) {
+      showToast('ลบไม่สำเร็จ: ' + err.message)
+      return
+    }
+    setState((s) => ({ [listKey]: s[listKey].filter((x) => x.id !== id) }))
   }
 
   const onNewPlace = () => openCreateForm('place')
@@ -446,7 +377,7 @@ export function AppProvider({ children }) {
   const onNewReward = () => openCreateForm('reward')
 
   const fieldHandlers = {}
-  ;['name', 'category', 'rating', 'reviews', 'price', 'address', 'hours', 'phone', 'desc', 'amenities', 'tags', 'qrPoints', 'dateRange', 'venueName', 'admission', 'organizer', 'suitableFor', 'status', 'title', 'content', 'placeId', 'points', 'cost'].forEach((f) => {
+  ;['name', 'category', 'rating', 'reviews', 'price', 'address', 'hours', 'phone', 'desc', 'amenities', 'tags', 'qrPoints', 'dateRange', 'venueName', 'admission', 'organizer', 'suitableFor', 'status', 'title', 'content', 'placeId', 'points', 'cost', 'img'].forEach((f) => {
     fieldHandlers['onField_' + f] = (e) => updateFormField(f, e.target.value)
   })
   ;['hasQR', 'isPinned', 'isActive'].forEach((f) => {
@@ -462,7 +393,7 @@ export function AppProvider({ children }) {
     onStartDateChange, onEndDateChange, onAccommodationChange, onMustGoChange, setPace, onDailyStartChange, onDailyEndChange,
     onFeedbackChange, toggleInterest, setBudget, submitTripForm, setItemLike, regeneratePlan,
     startScan, resetScan, redeemReward,
-    adminLogin, adminLogout, setAdminTab, openCreateForm, openEditForm, updateFormField, cancelForm,
+    adminLogin, adminLogout, openCreateForm, openEditForm, updateFormField, cancelForm,
     saveForm, deleteItem, onNewPlace, onNewEvent, onNewKb, onNewQr, onNewReward,
     ...fieldHandlers,
   }
@@ -485,8 +416,6 @@ export function AppProvider({ children }) {
   }).map((p) => ({ ...p, onOpen: () => openPlace(p.id), badge: placeBadge(p) }))
 
   const eventsView = s.events.map((e) => ({ ...e, onOpen: () => openEvent(e.id) }))
-  const selectedPlace = s.places.find((p) => p.id === s.selectedPlaceId) || { amenities: [] }
-  const selectedEvent = s.events.find((e) => e.id === s.selectedEventId) || { suitableFor: [] }
   const qrPlacesList = s.places.filter((p) => p.hasQR).map((p) => ({ ...p, onOpen: () => openPlace(p.id) }))
 
   const interestOptionsView = interestList.map((i) => {
@@ -546,18 +475,6 @@ export function AppProvider({ children }) {
   const kbView = s.knowledgeBase.map((k) => ({ ...k, statusLabel: (k.isPinned ? '📌 Pinned · ' : '') + (k.isActive ? 'Active' : 'Inactive'), onEdit: () => openEditForm('kb', k), onDelete: () => deleteItem('kb', k.id) }))
   const qrsView = s.qrs.map((q) => ({ ...q, placeName: (s.places.find((p) => p.id === q.placeId) || {}).name || '-', onDelete: () => deleteItem('qr', q.id) }))
 
-  const adminNav = adminTabs.map((t) => {
-    const active = t.key === s.adminTab
-    return {
-      key: t.key, label: t.label, onClick: () => setAdminTab(t.key),
-      bg: active ? '#E8F5E9' : 'transparent', color: active ? '#1B5E20' : '#6d7a72',
-      iconBg: active ? 'linear-gradient(135deg,#66BB6A,#2E7D32)' : '#F1F8E9',
-      iconColor: active ? '#fff' : '#7d8a80',
-      isDashboard: t.icon === 'dashboard', isPlaces: t.icon === 'places', isEvents: t.icon === 'events', isKnowledge: t.icon === 'knowledge', isQr: t.icon === 'qr'
-    }
-  })
-  const adminTabLabel = (adminTabs.find((t) => t.key === s.adminTab) || {}).label || ''
-
   const stepMeta = [0, 1, 2, 3].map((i) => {
     const done = i < s.tripStep
     const active = i === s.tripStep
@@ -575,28 +492,9 @@ export function AppProvider({ children }) {
   })
 
   const derived = {
-    isPublic: s.mode === 'public',
-    isHome: s.mode === 'public' && s.view === 'home',
-    isPlaceDetail: s.mode === 'public' && s.view === 'placeDetail',
-    isEventDetail: s.mode === 'public' && s.view === 'eventDetail',
-    isPlacesList: s.mode === 'public' && s.view === 'placesList',
-    isEventsList: s.mode === 'public' && s.view === 'eventsList',
     homePlaces: s.places.slice(0, 4).map((p) => ({ ...p, onOpen: () => openPlace(p.id), badge: placeBadge(p) })),
     homeEvents: s.events.slice(0, 3).map((e) => ({ ...e, onOpen: () => openEvent(e.id) })),
     stepMeta,
-    isTripForm: s.mode === 'public' && s.view === 'tripForm',
-    isTripLoading: s.mode === 'public' && s.view === 'tripLoading',
-    isTripResult: s.mode === 'public' && s.view === 'tripResult',
-    isPoints: s.mode === 'public' && s.view === 'points',
-    isLogin: s.mode === 'public' && s.view === 'login',
-    isSignup: s.mode === 'public' && s.view === 'signup',
-    isAdminLoginView: s.mode === 'admin' && s.view === 'adminLogin',
-    isAdminDashboardView: s.mode === 'admin' && s.view === 'admin',
-    isAdminDashboardTab: s.adminTab === 'dashboard',
-    isAdminPlacesTab: s.adminTab === 'places',
-    isAdminEventsTab: s.adminTab === 'events',
-    isAdminKbTab: s.adminTab === 'knowledge',
-    isAdminQrTab: s.adminTab === 'qr',
     isPlaceFormOpen: s.formOpen && s.formType === 'place',
     isEventFormOpen: s.formOpen && s.formType === 'event',
     isKbFormOpen: s.formOpen && s.formType === 'kb',
@@ -606,7 +504,7 @@ export function AppProvider({ children }) {
     isScanSuccess: s.scanState === 'success',
     notLoggedIn: !s.loggedIn,
     categoriesView, categoriesViewIcons, filteredPlaces, placesEmpty: filteredPlaces.length === 0, eventsView,
-    selectedPlace, selectedEvent, qrPlacesList,
+    qrPlacesList,
     chatMessagesView: s.chatMessages.map((m) => ({ ...m, align: m.from === 'user' ? 'flex-end' : 'flex-start', bg: m.from === 'user' ? '#2E7D32' : '#f0efe7', color: m.from === 'user' ? '#fff' : '#1f2a24' })),
     interestOptionsView, budgetOptionsView, paceOptionsView,
     isStep0: s.tripStep === 0, isStep1: s.tripStep === 1, isStep2: s.tripStep === 2, isStep3: s.tripStep === 3,
@@ -617,17 +515,6 @@ export function AppProvider({ children }) {
     rewardsView, rewardsAdminView,
     placesView, eventsAdminView, kbView, qrsView,
     placeCategoryOptions: categories.filter((c) => c !== 'ทั้งหมด'),
-    adminNav, adminTabLabel,
-    navHomeColor: s.view === 'home' ? '#1B5E20' : '#1f2a24', navHomeWeight: s.view === 'home' ? '800' : '600',
-    navTripColor: ['tripForm', 'tripLoading', 'tripResult'].includes(s.view) ? '#1B5E20' : '#1f2a24', navTripWeight: ['tripForm', 'tripLoading', 'tripResult'].includes(s.view) ? '800' : '600',
-    navPointsColor: s.view === 'points' ? '#1B5E20' : '#1f2a24', navPointsWeight: s.view === 'points' ? '800' : '600',
-    navPlacesColor: ['placesList', 'placeDetail'].includes(s.view) ? '#1B5E20' : '#1f2a24', navPlacesWeight: ['placesList', 'placeDetail'].includes(s.view) ? '800' : '600',
-    navEventsColor: ['eventsList', 'eventDetail'].includes(s.view) ? '#1B5E20' : '#1f2a24', navEventsWeight: ['eventsList', 'eventDetail'].includes(s.view) ? '800' : '600',
-    navHomeUnderline: s.view === 'home' ? '100%' : '0%',
-    navTripUnderline: ['tripForm', 'tripLoading', 'tripResult'].includes(s.view) ? '100%' : '0%',
-    navPointsUnderline: s.view === 'points' ? '100%' : '0%',
-    navPlacesUnderline: ['placesList', 'placeDetail'].includes(s.view) ? '100%' : '0%',
-    navEventsUnderline: ['eventsList', 'eventDetail'].includes(s.view) ? '100%' : '0%',
   }
 
   const value = { state, actions, derived }
