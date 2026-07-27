@@ -166,9 +166,16 @@ class RAGChatbotService:
                 if matched_tag:
                     tag_resolved = True
                     if matched_tag == NO_MATCH_TAG:
-                        # Rest of the model's (hidden) no-match text still
-                        # needs draining from the stream, just not yielded.
+                        # The model's own no-match text is hidden (drained
+                        # below, not yielded) -- but the frontend only ever
+                        # renders accumulated `token` events, it doesn't read
+                        # `reply` off the final `done` event. So the fallback
+                        # message itself has to go out as a token here, or a
+                        # NO_MATCH answer renders as a permanently empty
+                        # bubble (confirmed live: this was exactly that bug).
                         is_fallback = True
+                        full_text = FALLBACK_MESSAGE
+                        yield {"type": "token", "text": FALLBACK_MESSAGE}
                     else:
                         include_places = matched_tag in PLACE_CARD_TAGS
                         remainder = tag_buffer[len(matched_tag):].lstrip()
