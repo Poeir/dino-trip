@@ -168,6 +168,13 @@ class LLMTripPlanner:
             # free-text chat settings and made malformed JSON (which we
             # deliberately don't fall back on, see routes_tripplanner.py) more
             # likely than it needed to be.
+            #
+            # Tried OpenAI's stricter response_format={"type": "json_schema", ...}
+            # (schema-enforced structured output) on this gateway -- it doesn't
+            # error, but silently ignores the schema and returns free-form prose
+            # instead of JSON at all, which is worse than plain json_object mode.
+            # The KKU gateway's gemini-2.5-flash proxy doesn't genuinely support
+            # it; sticking with json_object + the retry loop below.
             temperature=0.2,
             response_format={"type": "json_object"},
         )
