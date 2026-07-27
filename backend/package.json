@@ -4,12 +4,17 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js",
+    "fetch:places": "node scripts/fetch-places.js",
     "import:places": "node scripts/import-places.js",
-    "import:places-multi": "node scripts/import-places-multi.js"
+    "seed:events-knowledge": "node scripts/seed-events-knowledge.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",
-    "dotenv": "^16.4.5"
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1"
   },
   "devDependencies": {
     "supabase": "^2.20.5"

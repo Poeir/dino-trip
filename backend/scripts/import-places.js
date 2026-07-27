@@ -1,10 +1,7 @@
-// One-time import: backend/data/khon_kaen_places.json (raw Google Places API dump)
-// -> Supabase `places` table, source='google'.
-//
-// Mapping logic (mapCategory/mapPrice/mapAmenities/mapTags/mapReviews/qrPointsByName)
-// is ported from frontend/src/data/googlePlacesTransform.js so the DB and the
-// (temporary) client-side transform stay consistent until the frontend switches
-// to reading places from Supabase instead of the bundled JSON.
+// Imports backend/data/places.json (raw Google Places API dump, produced by
+// `npm run fetch:places`) -> Supabase `places` table, source='google'.
+// Upserts on google_place_id, so re-running with a freshly fetched dump is
+// safe to repeat.
 //
 // Usage: cd backend && npm run import:places
 
@@ -233,11 +230,13 @@ function toRow(p) {
     qr_points: qrPoints,
     reviews: mapReviews(p),
     img: './assets/picture01.jpg',
+    business_status: p.businessStatus || null,
+    raw_data: p,
   }
 }
 
 async function main() {
-  const jsonPath = join(__dirname, '..', 'data', 'khon_kaen_places.json')
+  const jsonPath = join(__dirname, '..', 'data', 'places.json')
   const raw = JSON.parse(readFileSync(jsonPath, 'utf-8'))
   const rows = raw.map(toRow)
 
