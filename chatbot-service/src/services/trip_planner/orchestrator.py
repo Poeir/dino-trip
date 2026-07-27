@@ -36,10 +36,13 @@ class TripBuilderService:
             )
 
         must_go_list = []
+        missing_must_go = []
         for name in user_input.must_go:
             row = find_place_by_name(name)
             if row:
                 must_go_list.append(Place(**row))
+            else:
+                missing_must_go.append(name)
 
         start_dt = datetime.strptime(user_input.start_time, "%H:%M")
         end_dt = datetime.strptime(user_input.end_time, "%H:%M")
@@ -80,7 +83,7 @@ class TripBuilderService:
                 if len(interest_list) >= remaining_slots:
                     break
 
-        return accommodation, must_go_list + interest_list
+        return accommodation, must_go_list + interest_list, missing_must_go
 
     def get_dynamic_instructions(self, user_input: TripInput):
         pace_instruction = {

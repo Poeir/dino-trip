@@ -1,10 +1,14 @@
 import json
+import logging
 import math
+import time
 from datetime import datetime, timedelta
 from openai import OpenAI
 from typing import List
 from src.core.config import API_KEY, BASE_URL, MODEL_NAME
 from .models import Place, TripInput, DailyItinerary, TimeSlot
+
+logger = logging.getLogger(__name__)
 
 # Category-based visit durations, keyed by our normalized Thai categories
 # instead of Google's raw type slugs (place_of_worship, museum, ...) -- we
@@ -73,8 +77,11 @@ class LLMTripPlanner:
                 elif arrival_minutes < open_min:
                     return {"is_open": False, "wait_min": open_min - arrival_minutes, "status": "Waiting"}
             else:
+                # Overnight hours (closes after midnight, on the following day).
                 if arrival_minutes >= open_min:
                     return {"is_open": True, "wait_min": 0, "status": "Open"}
+                else:
+                    return {"is_open": False, "wait_min": open_min - arrival_minutes, "status": "Waiting"}
 
         return {"is_open": False, "wait_min": 0, "status": "Closed"}
 
@@ -84,8 +91,14 @@ class LLMTripPlanner:
 
     def generate_prompt(self, user_input: TripInput, pace_instruction: str, budget_instruction: str) -> str:
         places_str = "".join(
-            f"- ID: {loc.id}, Name: {loc.name}, Category: {loc.category}, Rating: {loc.rating}\n"
+            f"- ID: {loc.id}, Name: {loc.name}, Category: {loc.category}, Rating: {loc.rating}, Hours: {loc.hours or 'unknown'}\n"
             for loc in self.candidates
+        )
+
+        trip_start_date = datetime.strptime(user_input.start_date, "%Y-%m-%d")
+        day_dates_str = ", ".join(
+            f"Day {i + 1} = {(trip_start_date + timedelta(days=i)).strftime('%Y-%m-%d (%A)')}"
+            for i in range(user_input.trip_duration_days)
         )
 
         return f"""
@@ -98,6 +111,7 @@ class LLMTripPlanner:
         - Interests: {', '.join(user_input.interests)}
         - Must Go: {', '.join(user_input.must_go)}
         - Start: {user_input.start_time}, End: {user_input.end_time}
+        - Calendar dates per day: {day_dates_str}
 
         [DYNAMIC CONSTRAINTS]
         {pace_instruction}
@@ -111,6 +125,8 @@ class LLMTripPlanner:
         2. Output STRICTLY in JSON format. Do not write any other text.
         3. Align with commonsense: Do not put heavy restaurants back-to-back. Mix attractions, cafes, and restaurants logically.
         4. Do not include "Accommodation/Hotels" in the schedule! Only include tourist attractions, cafes, and restaurants. The system will calculate the return trip to your accommodation automatically.
+        5. No place's arrival_time may be at or after the End time ({user_input.end_time}). If the Start-End window is too short for a place, schedule fewer places that day rather than running past End.
+        6. Each place's Hours field tells you which days/times it's open -- use the Calendar dates per day above to check the actual weekday, and do not schedule a place on a day/time it's closed.
 
         [EXAMPLE JSON OUTPUT FORMAT]
         {{
@@ -139,9 +155,7 @@ class LLMTripPlanner:
             json_str = json_str[:-3]
         return json_str.strip()
 
-    def solve_route_with_llm(self, user_input: TripInput, pace_instruction: str, budget_instruction: str) -> List[DailyItinerary]:
-        prompt = self.generate_prompt(user_input, pace_instruction, budget_instruction)
-
+    def _call_llm_for_itinerary(self, prompt: str) -> dict:
         response = self.client.chat.completions.create(
             model=self.default_model,
             messages=[
@@ -149,11 +163,42 @@ class LLMTripPlanner:
                 {"role": "user", "content": prompt},
             ],
             stream=False,
-            temperature=0.7,
+            # Low temperature + JSON mode: this is a structured-output task, not
+            # a creative one -- 0.7 was carried over from the old project's
+            # free-text chat settings and made malformed JSON (which we
+            # deliberately don't fall back on, see routes_tripplanner.py) more
+            # likely than it needed to be.
+            temperature=0.2,
+            response_format={"type": "json_object"},
         )
-
         content = response.choices[0].message.content
-        data = json.loads(self.clean_json_string(content))
+        return json.loads(self.clean_json_string(content))
+
+    def solve_route_with_llm(self, user_input: TripInput, pace_instruction: str, budget_instruction: str) -> List[DailyItinerary]:
+        prompt = self.generate_prompt(user_input, pace_instruction, budget_instruction)
+
+        t0 = time.time()
+        data = None
+        last_err = None
+        for attempt in (1, 2):
+            try:
+                data = self._call_llm_for_itinerary(prompt)
+                break
+            except Exception as e:
+                last_err = e
+                logger.warning("trip planner LLM call/parse failed (attempt %d/2): %s", attempt, e)
+        if data is None:
+            logger.error("trip planner LLM failed after retry, giving up: %s", last_err)
+            raise last_err
+        logger.info("trip planner LLM responded in %.2fs (days=%d)", time.time() - t0, user_input.trip_duration_days)
+
+        # check_is_open() keys off current_dt.weekday(), so each day of a
+        # multi-day trip needs its own real calendar date -- using bare
+        # start_time (defaults to 1900-01-01, always a Monday) made every
+        # day of the trip get checked against Monday's opening hours.
+        trip_start_date = datetime.strptime(user_input.start_date, "%Y-%m-%d")
+        start_time_of_day = datetime.strptime(user_input.start_time, "%H:%M").time()
+        end_time_of_day = datetime.strptime(user_input.end_time, "%H:%M").time()
 
         final_itinerary = []
         for day_data in data.get("itinerary", []):
@@ -162,9 +207,18 @@ class LLMTripPlanner:
             current_loc = self.start_point
             day_cost = 0.0
             day_travel = 0
-            current_dt = datetime.strptime(user_input.start_time, "%H:%M")
+            day_date = (trip_start_date + timedelta(days=day_num - 1)).date()
+            current_dt = datetime.combine(day_date, start_time_of_day)
+            end_dt_bound = datetime.combine(day_date, end_time_of_day)
 
             for slot in day_data["schedule"]:
+                # Deterministic backstop for [STRICT RULES] #5 above -- the
+                # LLM is asked not to run past End time, but isn't always
+                # reliable about it, so stop adding stops here too rather
+                # than trusting the model alone.
+                if current_dt >= end_dt_bound:
+                    break
+
                 loc_id = slot["place_id"]
                 if loc_id not in self.location_map:
                     continue
@@ -178,6 +232,16 @@ class LLMTripPlanner:
 
                 arrival_at_door = current_dt + timedelta(minutes=travel_min)
                 open_info = self.check_is_open(dest, arrival_at_door)
+
+                # Deterministic backstop for STRICT RULES #6 -- the LLM is
+                # asked not to schedule closed places, but isn't always
+                # reliable about it. "Waiting" (opens later today) is still
+                # worth visiting; "Closed"/"Closed Today" never will be, so
+                # drop the stop instead of showing the user a doomed visit.
+                if open_info["status"] in ("Closed", "Closed Today"):
+                    logger.info("trip planner: dropping %s, %s at %s", dest.name, open_info["status"], arrival_at_door)
+                    continue
+
                 gap_minutes = 0
 
                 if open_info["status"] == "Waiting":
@@ -258,7 +322,7 @@ class LLMTripPlanner:
                 day_travel += travel_min
 
             final_itinerary.append(DailyItinerary(
-                day=day_num, date=f"Day {day_num}",
+                day=day_num, date=day_date.strftime("%Y-%m-%d"),
                 schedule=schedule,
                 day_cost_estimate=round(day_cost, 2),
                 day_travel_time_total=day_travel,
