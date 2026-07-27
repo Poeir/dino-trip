@@ -1,29 +1,32 @@
+import { NavLink } from 'react-router-dom'
 import { useApp } from '../context/AppContext.jsx'
 
+const navLinkStyle = ({ isActive }) => ({ fontSize: 15, color: isActive ? '#1B5E20' : '#1f2a24', fontWeight: isActive ? '800' : '600', position: 'relative', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 6 })
+const underline = (isActive) => ({ position: 'absolute', bottom: -12, left: 0, height: 3, width: isActive ? '100%' : '0%', background: '#2E7D32', borderRadius: 2, transition: 'width 0.2s ease' })
+
 export default function Header() {
-  const { state, actions, derived } = useApp()
+  const { state, actions } = useApp()
   return (
     <header style={{ position: 'sticky', top: 0, zIndex: 40, background: '#ffffff', borderBottom: '1px solid #E7E3D2', display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', padding: '0 32px', height: 68 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', justifySelf: 'start' }} onClick={actions.goHome}>
         <img src="./assets/dino-logo-full.png" alt="Dino" style={{ height: 34, width: 'auto', flexShrink: 0 }} />
       </div>
       <nav data-role="desktop-nav" style={{ display: 'flex', alignItems: 'center', gap: 30, justifySelf: 'center' }}>
-        <a href="#" onClick={(e) => { e.preventDefault(); actions.goHome() }} style={{ fontSize: 15, color: derived.navHomeColor, fontWeight: derived.navHomeWeight, position: 'relative' }}>
-          หน้าแรก<span style={{ position: 'absolute', bottom: -12, left: 0, height: 3, width: derived.navHomeUnderline, background: '#2E7D32', borderRadius: 2, transition: 'width 0.2s ease' }}></span>
-        </a>
-        <a href="#" onClick={(e) => { e.preventDefault(); actions.goPlaces() }} style={{ fontSize: 15, color: derived.navPlacesColor, fontWeight: derived.navPlacesWeight, position: 'relative' }}>
-          สถานที่ท่องเที่ยว<span style={{ position: 'absolute', bottom: -12, left: 0, height: 3, width: derived.navPlacesUnderline, background: '#2E7D32', borderRadius: 2, transition: 'width 0.2s ease' }}></span>
-        </a>
-        <a href="#" onClick={(e) => { e.preventDefault(); actions.goEvents() }} style={{ fontSize: 15, color: derived.navEventsColor, fontWeight: derived.navEventsWeight, position: 'relative' }}>
-          กิจกรรม &amp; เทศกาล<span style={{ position: 'absolute', bottom: -12, left: 0, height: 3, width: derived.navEventsUnderline, background: '#2E7D32', borderRadius: 2, transition: 'width 0.2s ease' }}></span>
-        </a>
-        <a href="#" onClick={(e) => { e.preventDefault(); actions.goTripForm() }} style={{ fontSize: 15, color: derived.navTripColor, fontWeight: derived.navTripWeight, display: 'flex', alignItems: 'center', gap: 6, position: 'relative' }}>
-          วางแผนทริป AI<span style={{ background: 'linear-gradient(135deg,#f9a825,#FBC02D)', color: '#1B5E20', fontSize: 10, fontWeight: 800, padding: '2px 6px', borderRadius: 8 }}>ใหม่</span>
-          <span style={{ position: 'absolute', bottom: -12, left: 0, height: 3, width: derived.navTripUnderline, background: '#2E7D32', borderRadius: 2, transition: 'width 0.2s ease' }}></span>
-        </a>
-        <a href="#" onClick={(e) => { e.preventDefault(); actions.goPoints() }} style={{ fontSize: 15, color: derived.navPointsColor, fontWeight: derived.navPointsWeight, position: 'relative' }}>
-          พอยท์สะสม<span style={{ position: 'absolute', bottom: -12, left: 0, height: 3, width: derived.navPointsUnderline, background: '#2E7D32', borderRadius: 2, transition: 'width 0.2s ease' }}></span>
-        </a>
+        <NavLink to="/" end style={navLinkStyle}>
+          {({ isActive }) => (<>หน้าแรก<span style={underline(isActive)}></span></>)}
+        </NavLink>
+        <NavLink to="/places" style={navLinkStyle}>
+          {({ isActive }) => (<>สถานที่ท่องเที่ยว<span style={underline(isActive)}></span></>)}
+        </NavLink>
+        <NavLink to="/events" style={navLinkStyle}>
+          {({ isActive }) => (<>กิจกรรม &amp; เทศกาล<span style={underline(isActive)}></span></>)}
+        </NavLink>
+        <NavLink to="/trip" style={navLinkStyle}>
+          {({ isActive }) => (<>วางแผนทริป AI<span style={{ background: 'linear-gradient(135deg,#f9a825,#FBC02D)', color: '#1B5E20', fontSize: 10, fontWeight: 800, padding: '2px 6px', borderRadius: 8 }}>ใหม่</span><span style={underline(isActive)}></span></>)}
+        </NavLink>
+        <NavLink to="/points" style={navLinkStyle}>
+          {({ isActive }) => (<>พอยท์สะสม<span style={underline(isActive)}></span></>)}
+        </NavLink>
       </nav>
       <div data-role="desktop-nav" style={{ display: 'flex', alignItems: 'center', gap: 14, justifySelf: 'end' }}>
         {state.loggedIn ? (

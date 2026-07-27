@@ -1,3 +1,4 @@
+import { Navigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext.jsx'
 import ImageSlot from '../components/ImageSlot.jsx'
 import { CalendarIcon, WalletIcon, RouteIcon, GiftIcon, PencilIcon, PinIcon } from '../components/Icons.jsx'
@@ -24,6 +25,7 @@ function StatCard({ icon, value, label, accent }) {
 
 export default function TripResultPage() {
   const { state, actions, derived } = useApp()
+  if (!state.tripPlan) return <Navigate to="/trip" replace />
   const plan = derived.tripPlan
   return (
     <main style={{ maxWidth: 1200, margin: '0 auto', padding: '28px 24px 70px' }}>

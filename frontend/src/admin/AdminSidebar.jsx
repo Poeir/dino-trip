@@ -1,4 +1,6 @@
+import { useParams, useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext.jsx'
+import { adminTabs } from '../data/seed.js'
 
 function NavIcon({ nav }) {
   if (nav.isDashboard) return (
@@ -24,7 +26,21 @@ function NavIcon({ nav }) {
 }
 
 export default function AdminSidebar() {
-  const { actions, derived } = useApp()
+  const { actions } = useApp()
+  const { tab = 'dashboard' } = useParams()
+  const navigate = useNavigate()
+
+  const adminNav = adminTabs.map((t) => {
+    const active = t.key === tab
+    return {
+      key: t.key, label: t.label, onClick: () => { actions.cancelForm(); navigate(`/admin/${t.key}`) },
+      bg: active ? '#E8F5E9' : 'transparent', color: active ? '#1B5E20' : '#6d7a72',
+      iconBg: active ? 'linear-gradient(135deg,#66BB6A,#2E7D32)' : '#F1F8E9',
+      iconColor: active ? '#fff' : '#7d8a80',
+      isDashboard: t.icon === 'dashboard', isPlaces: t.icon === 'places', isEvents: t.icon === 'events', isKnowledge: t.icon === 'knowledge', isQr: t.icon === 'qr'
+    }
+  })
+
   return (
     <aside style={{ width: 238, background: '#FFFFFF', borderRight: '1px solid #E7E3D2', padding: '20px 0', flexShrink: 0, display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 20px 20px', borderBottom: '1px solid #F0EDE0', marginBottom: 14 }}>
@@ -35,7 +51,7 @@ export default function AdminSidebar() {
         </div>
       </div>
       <div style={{ fontSize: 10.5, fontWeight: 700, color: '#a8b0a9', letterSpacing: 1, padding: '0 20px 8px' }}>เมนูหลัก</div>
-      {derived.adminNav.map((nav) => (
+      {adminNav.map((nav) => (
         <div key={nav.key} onClick={nav.onClick} style={{ display: 'flex', alignItems: 'center', gap: 11, margin: '0 12px 3px', padding: '10px 12px', borderRadius: 11, cursor: 'pointer', transition: 'all 0.18s ease', fontSize: 13.5, fontWeight: 600, color: nav.color, background: nav.bg }}>
           <span style={{ width: 26, height: 26, borderRadius: 8, background: nav.iconBg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <NavIcon nav={nav} />

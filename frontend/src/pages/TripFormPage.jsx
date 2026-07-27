@@ -1,8 +1,10 @@
 import { useApp } from '../context/AppContext.jsx'
 import { CalendarIcon, HeartIcon, WalletIcon, ClockIcon } from '../components/Icons.jsx'
+import TripLoadingPage from './TripLoadingPage.jsx'
 
 export default function TripFormPage() {
   const { state, actions, derived } = useApp()
+  if (state.tripPlanning) return <TripLoadingPage />
   const f = state.tripForm
   const steps = derived.stepMeta
   const progressFrac = state.tripStep / (steps.length - 1)

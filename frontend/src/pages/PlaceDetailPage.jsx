@@ -1,9 +1,11 @@
+import { useParams } from 'react-router-dom'
 import { useApp } from '../context/AppContext.jsx'
 import PlaceDetailView from '../components/PlaceDetailView.jsx'
 
 export default function PlaceDetailPage() {
-  const { actions, derived } = useApp()
-  const p = derived.selectedPlace
+  const { state, actions } = useApp()
+  const { id } = useParams()
+  const p = state.places.find((place) => place.id === id) || { amenities: [] }
   return (
     <main style={{ maxWidth: 1360, margin: '0 auto', padding: '28px 32px 60px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5, color: '#8a938c', flexWrap: 'wrap' }}>

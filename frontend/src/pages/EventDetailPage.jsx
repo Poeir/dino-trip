@@ -1,9 +1,11 @@
+import { useParams } from 'react-router-dom'
 import { useApp } from '../context/AppContext.jsx'
 import EventDetailView from '../components/EventDetailView.jsx'
 
 export default function EventDetailPage() {
-  const { actions, derived } = useApp()
-  const ev = derived.selectedEvent
+  const { state, actions } = useApp()
+  const { id } = useParams()
+  const ev = state.events.find((event) => event.id === id) || { suitableFor: [] }
   return (
     <main style={{ maxWidth: 1360, margin: '0 auto', padding: '28px 32px 60px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5, color: '#8a938c', flexWrap: 'wrap' }}>
