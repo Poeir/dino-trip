@@ -106,13 +106,70 @@ function mapAmenities(p) {
   return list
 }
 
-function mapTags(category, goodForChildren) {
+// Same rationale as import-places.js's FOOD_TYPE_TAGS -- category alone
+// collapsed every restaurant to the same generic "อาหารพื้นถิ่น" tag, so RAG
+// search couldn't distinguish a BBQ place from a Vietnamese place from a
+// buffet. This dataset's raw `types` array survived the nested-schema
+// transform under core.types, so it's available here too.
+const FOOD_TYPE_TAGS = {
+  barbecue_restaurant: 'หมูกระทะ/ปิ้งย่าง',
+  buffet_restaurant: 'บุฟเฟต์',
+  seafood_restaurant: 'อาหารทะเล',
+  thai_restaurant: 'อาหารไทย',
+  japanese_restaurant: 'อาหารญี่ปุ่น',
+  sushi_restaurant: 'ซูชิ',
+  vietnamese_restaurant: 'อาหารเวียดนาม',
+  chinese_restaurant: 'อาหารจีน',
+  korean_restaurant: 'อาหารเกาหลี',
+  italian_restaurant: 'อาหารอิตาเลียน',
+  pizza_restaurant: 'พิซซ่า',
+  hamburger_restaurant: 'เบอร์เกอร์',
+  steak_house: 'สเต็ก',
+  breakfast_restaurant: 'อาหารเช้า',
+  vegetarian_restaurant: 'มังสวิรัติ',
+  vegan_restaurant: 'วีแกน',
+  dessert_restaurant: 'ของหวาน',
+  dessert_shop: 'ของหวาน',
+  bakery: 'เบเกอรี่',
+  cake_shop: 'เบเกอรี่',
+  bar: 'บาร์',
+  night_club: 'ผับ/บาร์',
+}
+
+// Same rationale as import-places.js's NAME_KEYWORD_TAGS -- some venues'
+// Google `types` are only generic ("restaurant", no cuisine subtype) even
+// though the name already says what it is.
+const NAME_KEYWORD_TAGS = [
+  [/หมูกระทะ|ปิ้งย่าง|บาร์บีคิว|bbq/i, 'หมูกระทะ/ปิ้งย่าง'],
+  [/บุฟเฟต์|buffet/i, 'บุฟเฟต์'],
+  [/สุกี้/, 'สุกี้'],
+  [/ลาบก้อย|ลาบ|ก้อย/, 'ลาบ/ก้อย'],
+  [/ส้มตำ|ตำมี|ตำกระเทย/, 'ส้มตำ'],
+  [/ปลาเผา/, 'ปลาเผา'],
+  [/เวียดนาม/, 'อาหารเวียดนาม'],
+  [/ญี่ปุ่น|ซูชิ|sushi/i, 'อาหารญี่ปุ่น'],
+  [/ทะเล|seafood/i, 'อาหารทะเล'],
+]
+
+function tagsFromName(name) {
+  const tags = []
+  for (const [re, tag] of NAME_KEYWORD_TAGS) {
+    if (re.test(name)) tags.push(tag)
+  }
+  return tags
+}
+
+function mapTags(category, goodForChildren, types, name) {
   const tags = new Set()
   if (category === 'วัด') tags.add('วัฒนธรรม/ศาสนา')
   if (category === 'สวนสาธารณะ' || category === 'สถานที่ท่องเที่ยว') tags.add('ธรรมชาติ')
   if (category === 'คาเฟ่') tags.add('คาเฟ่')
   if (category === 'ร้านอาหาร') tags.add('อาหารพื้นถิ่น')
   if (goodForChildren) tags.add('ครอบครัว')
+  for (const t of types || []) {
+    if (FOOD_TYPE_TAGS[t]) tags.add(FOOD_TYPE_TAGS[t])
+  }
+  for (const t of tagsFromName(name || '')) tags.add(t)
   return [...tags]
 }
 
@@ -166,7 +223,7 @@ function toRow(p) {
     lng: p.core?.location?.lng ?? null,
     description: mapDesc(p, category),
     amenities: mapAmenities(p),
-    tags: mapTags(category, p.features?.goodForChildren),
+    tags: mapTags(category, p.features?.goodForChildren, p.core?.types, name),
     has_qr: false,
     qr_points: 0,
     reviews: mapReviews(p),

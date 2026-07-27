@@ -111,13 +111,73 @@ function mapAmenities(p) {
   return list
 }
 
-function mapTags(category, goodForChildren) {
+// Google's `types` array carries specific cuisine/food-type info that the
+// coarse `category` bucket (mapCategory) collapses away -- every restaurant
+// was getting the same generic "อาหารพื้นถิ่น" tag regardless of actually
+// being a BBQ place, a Vietnamese place, a buffet, etc, so RAG search for
+// "อยากกินเนื้อย่าง" (want to eat grilled meat) couldn't find a real BBQ
+// restaurant already in the DB (confirmed by testing). Surface the ones a
+// user would actually search by.
+const FOOD_TYPE_TAGS = {
+  barbecue_restaurant: 'หมูกระทะ/ปิ้งย่าง',
+  buffet_restaurant: 'บุฟเฟต์',
+  seafood_restaurant: 'อาหารทะเล',
+  thai_restaurant: 'อาหารไทย',
+  japanese_restaurant: 'อาหารญี่ปุ่น',
+  sushi_restaurant: 'ซูชิ',
+  vietnamese_restaurant: 'อาหารเวียดนาม',
+  chinese_restaurant: 'อาหารจีน',
+  korean_restaurant: 'อาหารเกาหลี',
+  italian_restaurant: 'อาหารอิตาเลียน',
+  pizza_restaurant: 'พิซซ่า',
+  hamburger_restaurant: 'เบอร์เกอร์',
+  steak_house: 'สเต็ก',
+  breakfast_restaurant: 'อาหารเช้า',
+  vegetarian_restaurant: 'มังสวิรัติ',
+  vegan_restaurant: 'วีแกน',
+  dessert_restaurant: 'ของหวาน',
+  dessert_shop: 'ของหวาน',
+  bakery: 'เบเกอรี่',
+  cake_shop: 'เบเกอรี่',
+  bar: 'บาร์',
+  night_club: 'ผับ/บาร์',
+}
+
+// Fallback for places Google itself only classified generically (`types:
+// ["restaurant", ...]`, no cuisine subtype) even though the venue's own name
+// already says what it is -- e.g. "เดอะนัวหมูกระทะบุฟเฟต์" whose `types` from
+// Google carried no barbecue/buffet subtype at all despite the name.
+const NAME_KEYWORD_TAGS = [
+  [/หมูกระทะ|ปิ้งย่าง|บาร์บีคิว|bbq/i, 'หมูกระทะ/ปิ้งย่าง'],
+  [/บุฟเฟต์|buffet/i, 'บุฟเฟต์'],
+  [/สุกี้/, 'สุกี้'],
+  [/ลาบก้อย|ลาบ|ก้อย/, 'ลาบ/ก้อย'],
+  [/ส้มตำ|ตำมี|ตำกระเทย/, 'ส้มตำ'],
+  [/ปลาเผา/, 'ปลาเผา'],
+  [/เวียดนาม/, 'อาหารเวียดนาม'],
+  [/ญี่ปุ่น|ซูชิ|sushi/i, 'อาหารญี่ปุ่น'],
+  [/ทะเล|seafood/i, 'อาหารทะเล'],
+]
+
+function tagsFromName(name) {
+  const tags = []
+  for (const [re, tag] of NAME_KEYWORD_TAGS) {
+    if (re.test(name)) tags.push(tag)
+  }
+  return tags
+}
+
+function mapTags(category, goodForChildren, types, name) {
   const tags = new Set()
   if (category === 'วัด') tags.add('วัฒนธรรม/ศาสนา')
   if (category === 'สวนสาธารณะ' || category === 'สถานที่ท่องเที่ยว') tags.add('ธรรมชาติ')
   if (category === 'คาเฟ่') tags.add('คาเฟ่')
   if (category === 'ร้านอาหาร') tags.add('อาหารพื้นถิ่น')
   if (goodForChildren) tags.add('ครอบครัว')
+  for (const t of types || []) {
+    if (FOOD_TYPE_TAGS[t]) tags.add(FOOD_TYPE_TAGS[t])
+  }
+  for (const t of tagsFromName(name || '')) tags.add(t)
   return [...tags]
 }
 
@@ -168,7 +228,7 @@ function toRow(p) {
     lng: p.location?.longitude ?? null,
     description: mapDesc(p, category),
     amenities: mapAmenities(p),
-    tags: mapTags(category, p.goodForChildren),
+    tags: mapTags(category, p.goodForChildren, p.types, name),
     has_qr: qrPoints > 0,
     qr_points: qrPoints,
     reviews: mapReviews(p),
