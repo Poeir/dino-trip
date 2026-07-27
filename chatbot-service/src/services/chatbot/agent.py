@@ -31,17 +31,53 @@ class RAGChatbotService:
         self.client = OpenAI(api_key=API_KEY, base_url=BASE_URL)
         self.model_name = MODEL_NAME
 
+    def _rewrite_query_for_retrieval(self, user_message: str, history: list[dict]) -> str:
+        """Ask the LLM to fold conversation context into a standalone search
+        query, e.g. history=[...place X...], "มีสาขาอื่นมั้ย" -> "สาขาอื่นของ
+        [place X] มีมั้ย". More robust than blindly concatenating the last
+        turn (the previous approach) since it actually resolves what "it"/
+        "there" refers to instead of just hoping the raw text overlaps
+        enough for the embedding to still land close to the right rows."""
+        convo = "\n".join(f"{m['role']}: {m['content']}" for m in history[-4:])
+        rewrite_prompt = f"""คุณคือระบบเขียนคำค้นหาใหม่ (query rewriter) ให้ระบบค้นข้อมูลสถานที่ท่องเที่ยว/ร้านอาหาร/ความรู้ทั่วไปในขอนแก่น
+
+จากบทสนทนาด้านล่าง ให้เขียน [คำถามล่าสุด] ใหม่ให้เป็นประโยคค้นหาที่สมบูรณ์ในตัวเอง ไม่ต้องพึ่งบริบทก่อนหน้าอีก (เช่น แทนคำอย่าง "ที่นั่น"/"สาขาอื่น"/"ร้านนั้น" ด้วยชื่อจริงจากบทสนทนา) โดยคงความหมายเดิมไว้ครบ
+
+กฎ:
+- ตอบเป็นคำค้นหาที่เขียนใหม่เท่านั้น ห้ามมีคำอธิบายหรือข้อความอื่นใดๆ ห้ามใส่เครื่องหมายคำพูด
+- ถ้า [คำถามล่าสุด] สมบูรณ์ในตัวเองอยู่แล้ว ไม่ได้พึ่งบริบทก่อนหน้า ให้ตอบข้อความเดิมกลับมาเลย
+
+[บทสนทนา]
+{convo}
+
+[คำถามล่าสุด]
+{user_message}"""
+
+        response = self.client.chat.completions.create(
+            model=self.model_name,
+            messages=[{"role": "user", "content": rewrite_prompt}],
+            temperature=0.1,
+            max_tokens=120,
+        )
+        rewritten = response.choices[0].message.content.strip()
+        return rewritten or user_message
+
     def _build_retrieval_query(self, user_message: str, history: list[dict]) -> str:
         """Follow-up questions ("มีสาขาอื่นมั้ย" / "are there other
         branches?") often don't restate the subject, so embedding
         user_message alone can retrieve nothing even though the DB has the
         answer -- confirmed live: a second branch of a place existed, but
         the bare follow-up retrieved zero rows and the bot wrongly claimed
-        there wasn't one. Folding in the previous turn anchors the query
-        back to what's being discussed."""
+        there wasn't one. Skipped entirely on the (common) first turn of a
+        conversation -- nothing to resolve yet, and it would just be a
+        wasted LLM round-trip."""
         if not history:
             return user_message
-        return f"{history[-1]['content']}\n{user_message}"
+        try:
+            return self._rewrite_query_for_retrieval(user_message, history)
+        except Exception:
+            logger.exception("query rewrite failed, falling back to raw concat")
+            return f"{history[-1]['content']}\n{user_message}"
 
     def _prepare(self, user_message: str, history: list[dict]) -> tuple[list[dict], list[dict]]:
         # Retrieve from both places and knowledge_base -- unlike the old

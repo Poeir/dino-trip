@@ -15,12 +15,20 @@ def embed(text: str) -> list[float]:
 
 class PlaceRetriever:
     def search_and_expand(self, query: str, limit: int = 5):
-        """Semantic search over `places`, full rows already included."""
+        """Hybrid search over `places`: pgvector cosine similarity plus
+        pg_trgm keyword matching on name/tags, full rows already included.
+        Vector search alone missed rows that genuinely answered a query but
+        sat just outside the embedding model's notion of "close enough"
+        (confirmed by testing on cuisine-specific queries)."""
         vec = embed(query)
-        res = supabase.rpc("match_places", {"query_embedding": vec, "match_count": limit}).execute()
+        res = supabase.rpc(
+            "match_places_hybrid", {"query_embedding": vec, "query_text": query, "match_count": limit}
+        ).execute()
         return res.data or []
 
     def search_knowledge_base(self, query: str, limit: int = 3):
         vec = embed(query)
-        res = supabase.rpc("match_knowledge_base", {"query_embedding": vec, "match_count": limit}).execute()
+        res = supabase.rpc(
+            "match_knowledge_base_hybrid", {"query_embedding": vec, "query_text": query, "match_count": limit}
+        ).execute()
         return res.data or []
