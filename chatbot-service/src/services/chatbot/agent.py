@@ -31,14 +31,27 @@ class RAGChatbotService:
         self.client = OpenAI(api_key=API_KEY, base_url=BASE_URL)
         self.model_name = MODEL_NAME
 
+    def _build_retrieval_query(self, user_message: str, history: list[dict]) -> str:
+        """Follow-up questions ("มีสาขาอื่นมั้ย" / "are there other
+        branches?") often don't restate the subject, so embedding
+        user_message alone can retrieve nothing even though the DB has the
+        answer -- confirmed live: a second branch of a place existed, but
+        the bare follow-up retrieved zero rows and the bot wrongly claimed
+        there wasn't one. Folding in the previous turn anchors the query
+        back to what's being discussed."""
+        if not history:
+            return user_message
+        return f"{history[-1]['content']}\n{user_message}"
+
     def _prepare(self, user_message: str, history: list[dict]) -> tuple[list[dict], list[dict]]:
         # Retrieve from both places and knowledge_base -- unlike the old
         # project, which only ever searched places.
-        places = self.retriever.search_and_expand(query=user_message, limit=3)
-        kb_entries = self.retriever.search_knowledge_base(query=user_message, limit=3)
+        retrieval_query = self._build_retrieval_query(user_message, history)
+        places = self.retriever.search_and_expand(query=retrieval_query, limit=3)
+        kb_entries = self.retriever.search_knowledge_base(query=retrieval_query, limit=3)
         logger.info(
             "chat retrieval query=%r place_ids=%s kb_ids=%s",
-            user_message,
+            retrieval_query,
             [p["id"] for p in places],
             [k["id"] for k in kb_entries],
         )
