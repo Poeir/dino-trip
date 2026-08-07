@@ -1,9 +1,12 @@
+import { useState } from 'react'
 import { useApp } from '../context/AppContext.jsx'
 import ImageSlot from '../components/ImageSlot.jsx'
 
 export default function EventsTab() {
   const { state, actions, derived } = useApp()
   const f = state.formData
+  const [query, setQuery] = useState('')
+  const filteredEventsView = derived.eventsAdminView.filter((e) => e.name.toLowerCase().includes(query.trim().toLowerCase()))
   return (
     <>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
@@ -38,8 +41,9 @@ export default function EventsTab() {
         </div>
       )}
 
+      <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาอีเวนท์..." style={{ width: '100%', maxWidth: 360, border: '1px solid #DCD8C6', borderRadius: 20, padding: '9px 16px', fontSize: 13.5, marginBottom: 16, display: 'block' }} />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))', gap: 16 }}>
-        {derived.eventsAdminView.map((e) => (
+        {filteredEventsView.map((e) => (
           <div key={e.id} style={{ background: '#fff', border: '1px solid #E7E3D2', borderRadius: 14, overflow: 'hidden' }}>
             <ImageSlot src={e.img} shape="rect" style={{ width: '100%', height: 110 }} placeholder="ภาพงาน" />
             <div style={{ padding: 14 }}>

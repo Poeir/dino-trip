@@ -16,6 +16,7 @@ const AppContext = createContext(null)
 
 const initialState = {
   searchQuery: '',
+  eventSearchQuery: '',
   activeCategory: 'ทั้งหมด',
   loggedIn: false,
   userName: '',
@@ -38,6 +39,7 @@ const initialState = {
   scanState: 'idle',
   scanResultPoints: 0,
   scanResultPlace: '',
+  favoriteIds: [],
   // Populated from the backend API on mount (see loadData below) instead of static seed data.
   places: [],
   events: [],
@@ -130,10 +132,15 @@ export function AppProvider({ children }) {
   const goSignup = () => { navigate('/signup'); setState({ authError: '' }) }
   const openPlace = (id) => navigate(`/places/${id}`)
   const openEvent = (id) => navigate(`/events/${id}`)
+  const toggleFavorite = (id) => setState((s) => ({
+    favoriteIds: s.favoriteIds.includes(id) ? s.favoriteIds.filter((x) => x !== id) : [...s.favoriteIds, id]
+  }))
 
   const setSearchQuery = (v) => setState({ searchQuery: v })
   const onSearchChange = (e) => setSearchQuery(e.target.value)
   const setCategory = (c) => setState({ activeCategory: c })
+  const setEventSearchQuery = (v) => setState({ eventSearchQuery: v })
+  const onEventSearchChange = (e) => setEventSearchQuery(e.target.value)
 
   const updateAuthField = (f, v) => setState((s) => ({ authForm: { ...s.authForm, [f]: v } }))
   const onAuthNameChange = (e) => updateAuthField('name', e.target.value)
@@ -311,7 +318,7 @@ export function AppProvider({ children }) {
 
   const openCreateForm = (type) => {
     const defaults = {
-      place: { name: '', category: 'คาเฟ่', rating: '4.5', reviews: '0', price: '', address: '', hours: '', phone: '', desc: '', amenities: '', tags: '', hasQR: false, qrPoints: '0' },
+      place: { name: '', category: 'คาเฟ่', rating: '4.5', reviews: '0', price: '', address: '', hours: '', phone: '', desc: '', amenities: '', tags: '', hasQR: false, qrPoints: '0', img: '' },
       event: { name: '', category: '', dateRange: '', venueName: '', admission: '', organizer: '', suitableFor: '', desc: '', status: 'upcoming', img: '' },
       kb: { title: '', category: 'transport', content: '', isPinned: false, isActive: true },
       qr: { placeId: '', points: '10' },
@@ -388,6 +395,7 @@ export function AppProvider({ children }) {
     showToast, toggleMobileMenu, closeMobileMenu, closeWelcomeModal, welcomeGoTrip, welcomeGoPoints,
     goHome, goPlaces, goEvents, goPublic, goAdminLogin, goTripForm, nextStep, prevStep, goToStep,
     goPoints, goLogin, goSignup, openPlace, openEvent, setSearchQuery, onSearchChange, setCategory,
+    setEventSearchQuery, onEventSearchChange, toggleFavorite,
     onAuthNameChange, onAuthEmailChange, onAuthPasswordChange, submitLogin, submitSignup, logout,
     toggleChat, onChatInputChange, sendChat,
     onStartDateChange, onEndDateChange, onAccommodationChange, onMustGoChange, setPace, onDailyStartChange, onDailyEndChange,
@@ -413,9 +421,12 @@ export function AppProvider({ children }) {
     const q = s.searchQuery.trim().toLowerCase()
     const qOk = !q || p.name.toLowerCase().includes(q) || p.desc.toLowerCase().includes(q)
     return catOk && qOk
-  }).map((p) => ({ ...p, onOpen: () => openPlace(p.id), badge: placeBadge(p) }))
+  }).map((p) => ({ ...p, onOpen: () => openPlace(p.id), badge: placeBadge(p), isFavorite: s.favoriteIds.includes(p.id), onToggleFavorite: () => toggleFavorite(p.id) }))
 
-  const eventsView = s.events.map((e) => ({ ...e, onOpen: () => openEvent(e.id) }))
+  const eventsView = s.events.filter((e) => {
+    const q = s.eventSearchQuery.trim().toLowerCase()
+    return !q || e.name.toLowerCase().includes(q) || (e.desc || '').toLowerCase().includes(q)
+  }).map((e) => ({ ...e, onOpen: () => openEvent(e.id) }))
   const qrPlacesList = s.places.filter((p) => p.hasQR).map((p) => ({ ...p, onOpen: () => openPlace(p.id) }))
 
   const interestOptionsView = interestList.map((i) => {
@@ -473,7 +484,7 @@ export function AppProvider({ children }) {
   const placesView = s.places.map((p) => ({ ...p, onEdit: () => openEditForm('place', p), onDelete: () => deleteItem('place', p.id) }))
   const eventsAdminView = s.events.map((e) => ({ ...e, onEdit: () => openEditForm('event', e), onDelete: () => deleteItem('event', e.id) }))
   const kbView = s.knowledgeBase.map((k) => ({ ...k, statusLabel: (k.isPinned ? '📌 Pinned · ' : '') + (k.isActive ? 'Active' : 'Inactive'), onEdit: () => openEditForm('kb', k), onDelete: () => deleteItem('kb', k.id) }))
-  const qrsView = s.qrs.map((q) => ({ ...q, placeName: (s.places.find((p) => p.id === q.placeId) || {}).name || '-', onDelete: () => deleteItem('qr', q.id) }))
+  const qrsView = s.qrs.map((q) => ({ ...q, placeName: (s.places.find((p) => p.id === q.placeId) || {}).name || '-', onEdit: () => openEditForm('qr', q), onDelete: () => deleteItem('qr', q.id) }))
 
   const stepMeta = [0, 1, 2, 3].map((i) => {
     const done = i < s.tripStep
@@ -492,7 +503,7 @@ export function AppProvider({ children }) {
   })
 
   const derived = {
-    homePlaces: s.places.slice(0, 4).map((p) => ({ ...p, onOpen: () => openPlace(p.id), badge: placeBadge(p) })),
+    homePlaces: s.places.slice(0, 4).map((p) => ({ ...p, onOpen: () => openPlace(p.id), badge: placeBadge(p), isFavorite: s.favoriteIds.includes(p.id), onToggleFavorite: () => toggleFavorite(p.id) })),
     homeEvents: s.events.slice(0, 3).map((e) => ({ ...e, onOpen: () => openEvent(e.id) })),
     stepMeta,
     isPlaceFormOpen: s.formOpen && s.formType === 'place',

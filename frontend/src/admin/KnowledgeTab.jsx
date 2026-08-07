@@ -1,8 +1,11 @@
+import { useState } from 'react'
 import { useApp } from '../context/AppContext.jsx'
 
 export default function KnowledgeTab() {
   const { state, actions, derived } = useApp()
   const f = state.formData
+  const [query, setQuery] = useState('')
+  const filteredKbView = derived.kbView.filter((k) => k.title.toLowerCase().includes(query.trim().toLowerCase()))
   return (
     <>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
@@ -30,8 +33,9 @@ export default function KnowledgeTab() {
         </div>
       )}
 
+      <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาฐานความรู้..." style={{ width: '100%', maxWidth: 360, border: '1px solid #DCD8C6', borderRadius: 20, padding: '9px 16px', fontSize: 13.5, marginBottom: 16, display: 'block' }} />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(240px,1fr))', gap: 16 }}>
-        {derived.kbView.map((k) => (
+        {filteredKbView.map((k) => (
           <div key={k.id} style={{ background: '#fff', border: '1px solid #E7E3D2', borderRadius: 14, padding: 16 }}>
             <div style={{ width: 36, height: 36, borderRadius: 10, background: '#E8F5E9', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
               <span style={{ width: 18, height: 14, background: '#2E7D32', borderRadius: '5px 5px 5px 0', position: 'relative' }}>

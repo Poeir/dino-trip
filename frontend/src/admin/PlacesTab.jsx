@@ -1,9 +1,12 @@
+import { useState } from 'react'
 import { useApp } from '../context/AppContext.jsx'
 import ImageSlot from '../components/ImageSlot.jsx'
 
 export default function PlacesTab() {
   const { state, actions, derived } = useApp()
   const f = state.formData
+  const [query, setQuery] = useState('')
+  const filteredPlacesView = derived.placesView.filter((p) => p.name.toLowerCase().includes(query.trim().toLowerCase()))
   return (
     <>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
@@ -24,6 +27,11 @@ export default function PlacesTab() {
             <input value={f.price || ''} onChange={actions.onField_price} placeholder="ช่วงราคา" style={{ border: '1px solid #DCD8C6', borderRadius: 8, padding: 9, fontSize: 14 }} />
           </div>
           <input value={f.address || ''} onChange={actions.onField_address} placeholder="ที่อยู่" style={{ width: '100%', border: '1px solid #DCD8C6', borderRadius: 8, padding: 9, fontSize: 14, marginBottom: 14 }} />
+          <input value={f.img || ''} onChange={actions.onField_img} placeholder="ลิงก์รูปภาพ (URL)" style={{ width: '100%', border: '1px solid #DCD8C6', borderRadius: 8, padding: 9, fontSize: 14, marginBottom: 8 }} />
+          <div style={{ marginBottom: 6 }}>
+            <ImageSlot src={f.img} shape="rect" style={{ width: 160, height: 90 }} placeholder="ตัวอย่างรูป" />
+          </div>
+          <div style={{ fontSize: 11.5, color: '#a33232', marginBottom: 14 }}>หมายเหตุ: ระบบยังไม่รองรับการบันทึกรูปสถานที่ผ่านฟอร์มนี้จริง (ต้องรอปรับปรุงฝั่ง backend)</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
             <input value={f.hours || ''} onChange={actions.onField_hours} placeholder="เวลาทำการ" style={{ border: '1px solid #DCD8C6', borderRadius: 8, padding: 9, fontSize: 14 }} />
             <input value={f.phone || ''} onChange={actions.onField_phone} placeholder="เบอร์โทร" style={{ border: '1px solid #DCD8C6', borderRadius: 8, padding: 9, fontSize: 14 }} />
@@ -42,8 +50,9 @@ export default function PlacesTab() {
         </div>
       )}
 
+      <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาสถานที่..." style={{ width: '100%', maxWidth: 360, border: '1px solid #DCD8C6', borderRadius: 20, padding: '9px 16px', fontSize: 13.5, marginBottom: 16, display: 'block' }} />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))', gap: 16 }}>
-        {derived.placesView.map((p) => (
+        {filteredPlacesView.map((p) => (
           <div key={p.id} style={{ background: '#fff', border: '1px solid #E7E3D2', borderRadius: 14, overflow: 'hidden' }}>
             <ImageSlot src={p.img} shape="rect" style={{ width: '100%', height: 110 }} placeholder="ภาพสถานที่" />
             <div style={{ padding: 14 }}>

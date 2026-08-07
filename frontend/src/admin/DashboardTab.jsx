@@ -5,7 +5,7 @@ export default function DashboardTab() {
   return (
     <>
       <h1 style={{ fontSize: 22, fontWeight: 800, color: '#1B5E20', margin: '0 0 20px' }}>แดชบอร์ด</h1>
-      <div data-role="admin-stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16 }}>
+      <div data-role="admin-stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(200px,1fr))', gap: 16 }}>
         <div style={{ background: '#fff', border: '1px solid #E7E3D2', borderRadius: 16, padding: 20, animation: 'dc-fade-up 0.35s ease both' }}>
           <div style={{ width: 34, height: 34, borderRadius: 10, background: '#E8F5E9', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
             <span style={{ width: 11, height: 11, borderRadius: '50% 50% 50% 0', background: '#2E7D32', transform: 'rotate(-45deg)' }}></span>
@@ -38,6 +38,25 @@ export default function DashboardTab() {
           </div>
           <div style={{ fontSize: 26, fontWeight: 800, color: '#7A5205' }}>{state.userPoints}</div>
           <div style={{ fontSize: 13, color: '#7A5205' }}>พอยท์ที่แจกไปแล้ว</div>
+        </div>
+        <div style={{ background: '#fff', border: '1px solid #E7E3D2', borderRadius: 16, padding: 20, animation: 'dc-fade-up 0.35s ease 0.2s both' }}>
+          <div style={{ width: 34, height: 34, borderRadius: 10, background: '#FFF8E1', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+            <span style={{ width: 17, height: 13, border: '2px solid #7A5205', borderRadius: 3, position: 'relative', display: 'inline-block' }}>
+              <span style={{ position: 'absolute', top: 1.5, left: 3, width: 6, height: 6, borderRadius: '50%', border: '2px solid #7A5205' }}></span>
+            </span>
+          </div>
+          <div style={{ fontSize: 26, fontWeight: 800, color: '#1B5E20' }}>{state.qrs.length}</div>
+          <div style={{ fontSize: 13, color: '#6d7a72' }}>จำนวน QR ทั้งหมด</div>
+        </div>
+        <div style={{ background: '#fff', border: '1px solid #E7E3D2', borderRadius: 16, padding: 20, animation: 'dc-fade-up 0.35s ease 0.25s both' }}>
+          <div style={{ width: 34, height: 34, borderRadius: 10, background: '#FFF8E1', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+            <span style={{ width: 18, height: 14, border: '2px solid #7A5205', borderRadius: 2, position: 'relative' }}>
+              <span style={{ position: 'absolute', top: -6, left: 6.5, width: 2, height: 20, background: '#7A5205' }}></span>
+              <span style={{ position: 'absolute', top: 2, left: -1, width: 20, height: 2, background: '#7A5205' }}></span>
+            </span>
+          </div>
+          <div style={{ fontSize: 26, fontWeight: 800, color: '#1B5E20' }}>{state.rewards.length}</div>
+          <div style={{ fontSize: 13, color: '#6d7a72' }}>จำนวนของรางวัล</div>
         </div>
       </div>
     </>

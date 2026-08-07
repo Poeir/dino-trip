@@ -29,28 +29,37 @@ if (!API_KEY) {
   process.exit(1)
 }
 
+// Smoke-test switch: true = ~1 grid point x 1 category x 1 district (~20-40
+// places, a few baht) so you can validate fetch -> import -> embed end to end
+// before paying for full coverage. Flip to false for the real run.
+const TEST_MODE = true
+
 // Khon Kaen city center. 1 degree latitude ~= 111km; longitude degrees are
 // scaled by cos(latitude) so the grid stays roughly square in real distance.
 const CENTER = { lat: 16.4419, lng: 102.8360 }
-const GRID_SIZE = 3 // 3x3 = 9 search points, same coverage shape as the old dataset
+const GRID_SIZE = TEST_MODE ? 1 : 3 // 3x3 = 9 search points, same coverage shape as the old dataset
 const SPACING_KM = 5
 const RADIUS_M = 4000 // per-point search radius; overlaps neighboring points so nothing falls in the gaps
 
 // Google Places "Table A" type values. Grouped so each group shares a
 // Nearby Search call (max ~20 results per call, so keep groups small enough
 // that one type doesn't crowd out the others).
-const CATEGORIES = [
-  ['restaurant'],
-  ['cafe', 'bakery'],
-  ['tourist_attraction', 'museum', 'park'],
-  ['place_of_worship'],
-  ['lodging'],
-]
+const CATEGORIES = TEST_MODE
+  ? [['restaurant']]
+  : [
+      ['restaurant'],
+      ['cafe', 'bakery'],
+      ['tourist_attraction', 'museum', 'park'],
+      ['place_of_worship'],
+      ['lodging'],
+    ]
 
 // Starting list of districts outside Muang Khon Kaen known for tourism
 // (dinosaur park, dam/reservoir, mountains/waterfalls). Review and adjust --
 // this is a seed list, not an exhaustive survey of the province's 26 districts.
-const OUTLYING_DISTRICTS = ['ภูเวียง', 'อุบลรัตน์', 'ภูผาม่าน', 'ชุมแพ', 'น้ำพอง', 'หนองเรือ']
+const OUTLYING_DISTRICTS = TEST_MODE
+  ? ['ภูเวียง']
+  : ['ภูเวียง', 'อุบลรัตน์', 'ภูผาม่าน', 'ชุมแพ', 'น้ำพอง', 'หนองเรือ']
 
 const DETAILS_FIELD_MASK = [
   'id', 'displayName', 'primaryType', 'types', 'rating', 'userRatingCount',

@@ -5,7 +5,10 @@ import PlaceDetailView from '../components/PlaceDetailView.jsx'
 export default function PlaceDetailPage() {
   const { state, actions } = useApp()
   const { id } = useParams()
-  const p = state.places.find((place) => place.id === id) || { amenities: [] }
+  const found = state.places.find((place) => place.id === id)
+  const p = found
+    ? { ...found, isFavorite: state.favoriteIds.includes(found.id), onToggleFavorite: () => actions.toggleFavorite(found.id) }
+    : { amenities: [] }
   return (
     <main style={{ maxWidth: 1360, margin: '0 auto', padding: '28px 32px 60px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5, color: '#8a938c', flexWrap: 'wrap' }}>
