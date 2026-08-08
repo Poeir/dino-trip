@@ -11,6 +11,7 @@ import {
   fetchRewards, createReward, updateReward, deleteReward,
 } from '../lib/apiClient.js'
 import { sendChatMessage, requestTripPlan } from '../lib/chatbotService.js'
+import { haversineKm } from '../utils/geo.js'
 
 const AppContext = createContext(null)
 
@@ -41,6 +42,8 @@ const initialState = {
   scanResultPoints: 0,
   scanResultPlace: '',
   favoriteIds: [],
+  // Set from navigator.geolocation on mount, if the user grants permission (see below).
+  userLocation: null,
   // Populated from the backend API on mount (see loadData below) instead of static seed data.
   places: [],
   events: [],
@@ -113,6 +116,16 @@ export function AppProvider({ children }) {
       }
     }
     loadData()
+
+    // Best-effort: ranking falls back to rating-only if the user denies/ignores
+    // the permission prompt or the browser has no geolocation support.
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => setState({ userLocation: { lat: pos.coords.latitude, lng: pos.coords.longitude } }),
+        () => {},
+        { timeout: 8000, maximumAge: 300000 }
+      )
+    }
   }, [])
 
   const toggleMobileMenu = () => setState((s) => ({ mobileMenuOpen: !s.mobileMenuOpen }))
@@ -143,6 +156,12 @@ export function AppProvider({ children }) {
   const openEvent = (id) => navigate(`/events/${id}`)
   const toggleFavorite = (id) => setState((s) => ({
     favoriteIds: s.favoriteIds.includes(id) ? s.favoriteIds.filter((x) => x !== id) : [...s.favoriteIds, id]
+  }))
+  // Session-only: the backend has no is_active column for places yet, so this
+  // hides/shows a place on the public site for the current session only and
+  // resets on reload. See placePayload() in backend/src/lib/mappers.js.
+  const togglePlaceActive = (id) => setState((s) => ({
+    places: s.places.map((p) => p.id === id ? { ...p, isActive: p.isActive === false ? true : false } : p)
   }))
 
   const setSearchQuery = (v) => setState({ searchQuery: v })
@@ -373,7 +392,7 @@ export function AppProvider({ children }) {
 
   const openCreateForm = (type) => {
     const defaults = {
-      place: { name: '', category: 'คาเฟ่', rating: '4.5', reviews: '0', price: '', address: '', hours: '', phone: '', desc: '', amenities: '', tags: '', hasQR: false, qrPoints: '0', img: '' },
+      place: { name: '', category: 'คาเฟ่', rating: '4.5', reviews: '0', price: '', address: '', hours: '', phone: '', desc: '', amenities: '', tags: '', hasQR: false, qrPoints: '0', img: '', isActive: true },
       event: { name: '', category: '', dateRange: '', venueName: '', admission: '', organizer: '', suitableFor: '', desc: '', status: 'upcoming', img: '' },
       kb: { title: '', category: 'transport', content: '', isPinned: false, isActive: true },
       qr: { placeId: '', points: '10' },
@@ -450,7 +469,7 @@ export function AppProvider({ children }) {
     showToast, toggleMobileMenu, closeMobileMenu, closeWelcomeModal, welcomeGoTrip, welcomeGoPoints,
     goHome, goPlaces, goEvents, goPublic, goAdminLogin, goTripForm, nextStep, prevStep, goToStep,
     goPoints, goLogin, goSignup, openPlace, openEvent, setSearchQuery, onSearchChange, setCategory,
-    setEventSearchQuery, onEventSearchChange, toggleFavorite,
+    setEventSearchQuery, onEventSearchChange, toggleFavorite, togglePlaceActive,
     onAuthNameChange, onAuthEmailChange, onAuthPasswordChange, submitLogin, submitSignup, logout,
     toggleChat, onChatInputChange, sendChat,
     onStartDateChange, onEndDateChange, onAccommodationChange, setTripDatePreset,
@@ -474,10 +493,11 @@ export function AppProvider({ children }) {
   const categoriesViewIcons = categoriesView.map((c) => ({ ...c, showGrid: isGrid(c.icon), showCup: isCup(c.icon), showTemple: isTemple(c.icon), showMuseum: isMuseum(c.icon), showTree: isTree(c.icon), showMountain: isMountain(c.icon), showBasket: isBasket(c.icon), showCamera: isCamera(c.icon), showFood: isFood(c.icon), showBed: isBed(c.icon) }))
   const placeBadge = (p) => p.reviews >= 1500 ? { label: 'ยอดนิยม', bg: '#FDEEE3', color: '#E07B39' } : { label: '', bg: '', color: '' }
   const filteredPlaces = s.places.filter((p) => {
+    const activeOk = p.isActive !== false
     const catOk = s.activeCategory === 'ทั้งหมด' || p.category === s.activeCategory
     const q = s.searchQuery.trim().toLowerCase()
     const qOk = !q || p.name.toLowerCase().includes(q) || p.desc.toLowerCase().includes(q)
-    return catOk && qOk
+    return activeOk && catOk && qOk
   }).map((p) => ({ ...p, onOpen: () => openPlace(p.id), badge: placeBadge(p), isFavorite: s.favoriteIds.includes(p.id), onToggleFavorite: () => toggleFavorite(p.id) }))
 
   const eventsView = s.events.filter((e) => {
@@ -553,7 +573,7 @@ export function AppProvider({ children }) {
     return { ...r, onRedeem: () => redeemReward(r.id), disabled: !canRedeem, btnBg: canRedeem ? '#2E7D32' : '#eee', btnColor: canRedeem ? '#fff' : '#999' }
   })
   const rewardsAdminView = s.rewards.map((r) => ({ ...r, onEdit: () => openEditForm('reward', r), onDelete: () => deleteItem('reward', r.id) }))
-  const placesView = s.places.map((p) => ({ ...p, onEdit: () => openEditForm('place', p), onDelete: () => deleteItem('place', p.id) }))
+  const placesView = s.places.map((p) => ({ ...p, isActive: p.isActive !== false, onToggleActive: () => togglePlaceActive(p.id), onEdit: () => openEditForm('place', p), onDelete: () => deleteItem('place', p.id) }))
   const eventsAdminView = s.events.map((e) => ({ ...e, onEdit: () => openEditForm('event', e), onDelete: () => deleteItem('event', e.id) }))
   const kbView = s.knowledgeBase.map((k) => ({ ...k, statusLabel: (k.isPinned ? '📌 Pinned · ' : '') + (k.isActive ? 'Active' : 'Inactive'), onEdit: () => openEditForm('kb', k), onDelete: () => deleteItem('kb', k.id) }))
   const qrsView = s.qrs.map((q) => ({ ...q, placeName: (s.places.find((p) => p.id === q.placeId) || {}).name || '-', onEdit: () => openEditForm('qr', q), onDelete: () => deleteItem('qr', q.id) }))
@@ -574,8 +594,20 @@ export function AppProvider({ children }) {
     }
   })
 
+  // `places` already arrives rating-ranked from the API. When we know the user's
+  // location, re-rank the top of that list (a quality floor) by distance instead
+  // of showing the single best-rated places regardless of how far away they are.
+  const NEARBY_QUALITY_POOL = 20
+  const activePlaces = s.places.filter((p) => p.isActive !== false)
+  const homePlacesRanked = s.userLocation
+    ? activePlaces
+        .slice(0, NEARBY_QUALITY_POOL)
+        .map((p) => ({ ...p, distanceKm: p.location ? haversineKm(s.userLocation, p.location) : null }))
+        .sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity))
+    : activePlaces
+
   const derived = {
-    homePlaces: s.places.slice(0, 4).map((p) => ({ ...p, onOpen: () => openPlace(p.id), badge: placeBadge(p), isFavorite: s.favoriteIds.includes(p.id), onToggleFavorite: () => toggleFavorite(p.id) })),
+    homePlaces: homePlacesRanked.slice(0, 4).map((p) => ({ ...p, onOpen: () => openPlace(p.id), badge: placeBadge(p), isFavorite: s.favoriteIds.includes(p.id), onToggleFavorite: () => toggleFavorite(p.id) })),
     homeEvents: s.events.slice(0, 3).map((e) => ({ ...e, onOpen: () => openEvent(e.id) })),
     stepMeta,
     isPlaceFormOpen: s.formOpen && s.formType === 'place',

@@ -1,11 +1,21 @@
 import { useState } from 'react'
 import { useApp } from '../context/AppContext.jsx'
+import Modal from '../components/Modal.jsx'
+import Field from '../components/Field.jsx'
 
 export default function KnowledgeTab() {
   const { state, actions, derived } = useApp()
   const f = state.formData
   const [query, setQuery] = useState('')
-  const filteredKbView = derived.kbView.filter((k) => k.title.toLowerCase().includes(query.trim().toLowerCase()))
+  const [sortBy, setSortBy] = useState('title-asc')
+  const sorters = {
+    'title-asc': (a, b) => a.title.localeCompare(b.title, 'th'),
+    'title-desc': (a, b) => b.title.localeCompare(a.title, 'th'),
+    'category': (a, b) => a.category.localeCompare(b.category),
+  }
+  const filteredKbView = derived.kbView
+    .filter((k) => k.title.toLowerCase().includes(query.trim().toLowerCase()))
+    .sort(sorters[sortBy])
   return (
     <>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
@@ -13,15 +23,20 @@ export default function KnowledgeTab() {
         <button onClick={actions.onNewKb} style={{ background: 'linear-gradient(135deg,#66BB6A,#388E3C)', color: '#fff', border: 'none', padding: '10px 18px', borderRadius: 18, fontWeight: 700, fontSize: 13.5, cursor: 'pointer' }}>+ เพิ่มฐานความรู้</button>
       </div>
 
-      {derived.isKbFormOpen && (
-        <div data-role="admin-form-panel" style={{ background: '#fff', border: '1px solid #E7E3D2', borderRadius: 14, padding: 22, marginBottom: 20 }}>
-          <input value={f.title || ''} onChange={actions.onField_title} placeholder="หัวข้อ" style={{ width: '100%', border: '1px solid #DCD8C6', borderRadius: 8, padding: 9, fontSize: 14, marginBottom: 14 }} />
-          <select value={f.category || 'transport'} onChange={actions.onField_category} style={{ border: '1px solid #DCD8C6', borderRadius: 8, padding: 9, fontSize: 14, marginBottom: 14 }}>
-            <option value="transport">transport</option>
-            <option value="food-culture">food-culture</option>
-            <option value="dino">dino</option>
-          </select>
-          <textarea value={f.content || ''} onChange={actions.onField_content} placeholder="เนื้อหา" style={{ width: '100%', minHeight: 80, border: '1px solid #DCD8C6', borderRadius: 8, padding: 9, fontSize: 14, marginBottom: 14 }}></textarea>
+      <Modal open={derived.isKbFormOpen} onClose={actions.cancelForm} title={state.editingId ? 'แก้ไขฐานความรู้' : 'เพิ่มฐานความรู้ใหม่'}>
+          <Field label="หัวข้อ">
+            <input value={f.title || ''} onChange={actions.onField_title} placeholder="เช่น วิธีเดินทางมาขอนแก่น" style={{ width: '100%', border: '1px solid #DCD8C6', borderRadius: 8, padding: 9, fontSize: 14, marginBottom: 14 }} />
+          </Field>
+          <Field label="หมวดหมู่">
+            <select value={f.category || 'transport'} onChange={actions.onField_category} style={{ width: '100%', border: '1px solid #DCD8C6', borderRadius: 8, padding: 9, fontSize: 14, marginBottom: 14 }}>
+              <option value="transport">transport</option>
+              <option value="food-culture">food-culture</option>
+              <option value="dino">dino</option>
+            </select>
+          </Field>
+          <Field label="เนื้อหา">
+            <textarea value={f.content || ''} onChange={actions.onField_content} placeholder="เนื้อหาที่แชทบอทจะใช้ตอบคำถาม" style={{ width: '100%', minHeight: 80, border: '1px solid #DCD8C6', borderRadius: 8, padding: 9, fontSize: 14, marginBottom: 14 }}></textarea>
+          </Field>
           <div style={{ display: 'flex', gap: 20, marginBottom: 18 }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13.5 }}><input type="checkbox" checked={!!f.isPinned} onChange={actions.onField_isPinned} /> ปักหมุด (Pinned)</label>
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13.5 }}><input type="checkbox" checked={!!f.isActive} onChange={actions.onField_isActive} /> ใช้งาน (Active)</label>
@@ -30,10 +45,16 @@ export default function KnowledgeTab() {
             <button onClick={actions.saveForm} style={{ background: 'linear-gradient(135deg,#66BB6A,#388E3C)', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: 16, fontWeight: 700, fontSize: 13.5, cursor: 'pointer' }}>บันทึก</button>
             <button onClick={actions.cancelForm} style={{ background: '#fff', border: '1px solid #DCD8C6', padding: '10px 20px', borderRadius: 16, fontWeight: 700, fontSize: 13.5, cursor: 'pointer' }}>ยกเลิก</button>
           </div>
-        </div>
-      )}
+      </Modal>
 
-      <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาฐานความรู้..." style={{ width: '100%', maxWidth: 360, border: '1px solid #DCD8C6', borderRadius: 20, padding: '9px 16px', fontSize: 13.5, marginBottom: 16, display: 'block' }} />
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
+        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาฐานความรู้..." style={{ flex: 1, minWidth: 220, maxWidth: 360, border: '1px solid #DCD8C6', borderRadius: 20, padding: '9px 16px', fontSize: 13.5 }} />
+        <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} style={{ border: '1px solid #DCD8C6', borderRadius: 20, padding: '9px 14px', fontSize: 13.5 }}>
+          <option value="title-asc">หัวข้อ (ก-ฮ)</option>
+          <option value="title-desc">หัวข้อ (ฮ-ก)</option>
+          <option value="category">หมวดหมู่</option>
+        </select>
+      </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(240px,1fr))', gap: 16 }}>
         {filteredKbView.map((k) => (
           <div key={k.id} style={{ background: '#fff', border: '1px solid #E7E3D2', borderRadius: 14, padding: 16 }}>

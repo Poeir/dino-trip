@@ -13,6 +13,7 @@ export function rowToPlace(row) {
     reviews: row.review_count,
     price: row.price,
     address: row.address,
+    district: row.district,
     hours: row.hours,
     phone: row.phone,
     website: row.website,

@@ -37,7 +37,7 @@ function toDayItems(placesArr, times) {
 export function buildSampleTripPlan(places) {
   const pick = (cat) => places.find((p) => p.category === cat)
   const day1 = [pick('วัด'), pick('คาเฟ่'), pick('สวนสาธารณะ')].filter(Boolean)
-  const day2 = [pick('ร้านอาหาร'), pick('สถานที่ท่องเที่ยว'), pick('ที่พัก')].filter(Boolean)
+  const day2 = [pick('ร้านอาหาร'), pick('สถานที่ท่องเที่ยว')].filter(Boolean)
   const days = []
   if (day1.length) days.push({ dayNum: 1, date: '2026-08-14', items: toDayItems(day1, ['09:00', '12:30', '15:30']) })
   if (day2.length) days.push({ dayNum: 2, date: '2026-08-15', items: toDayItems(day2, ['09:30', '13:00', '16:00']) })
@@ -48,8 +48,8 @@ export function buildSampleTripPlan(places) {
   return { days, totalBudget, totalDistance, totalPoints }
 }
 
-export const categories = ['ทั้งหมด', 'คาเฟ่', 'วัด', 'พิพิธภัณฑ์', 'สวนสาธารณะ', 'อุทยานแห่งชาติ', 'ตลาด', 'สถานที่ท่องเที่ยว', 'ร้านอาหาร', 'ที่พัก']
-export const categoryIcons = { 'ทั้งหมด': 'grid', 'คาเฟ่': 'cup', 'วัด': 'temple', 'พิพิธภัณฑ์': 'museum', 'สวนสาธารณะ': 'tree', 'อุทยานแห่งชาติ': 'mountain', 'ตลาด': 'basket', 'สถานที่ท่องเที่ยว': 'camera', 'ร้านอาหาร': 'food', 'ที่พัก': 'bed' }
+export const categories = ['ทั้งหมด', 'คาเฟ่', 'วัด', 'พิพิธภัณฑ์', 'สวนสาธารณะ', 'อุทยานแห่งชาติ', 'ตลาด', 'สถานที่ท่องเที่ยว', 'ร้านอาหาร']
+export const categoryIcons = { 'ทั้งหมด': 'grid', 'คาเฟ่': 'cup', 'วัด': 'temple', 'พิพิธภัณฑ์': 'museum', 'สวนสาธารณะ': 'tree', 'อุทยานแห่งชาติ': 'mountain', 'ตลาด': 'basket', 'สถานที่ท่องเที่ยว': 'camera', 'ร้านอาหาร': 'food' }
 export const interestList = ['ธรรมชาติ', 'วัฒนธรรม/ศาสนา', 'ไดโนเสาร์', 'อาหารพื้นถิ่น', 'คาเฟ่', 'ช้อปปิ้ง/หัตถกรรม', 'ครอบครัว']
 export const budgetList = ['ประหยัด', 'ปานกลาง', 'หรูหรา']
 export const budgetMeta = { 'ประหยัด': 'เดินทางคุ้มค่า เน้นที่เที่ยวไม่มีค่าใช้จ่าย', 'ปานกลาง': 'สมดุลระหว่างคุณภาพและราคา', 'หรูหรา': 'เน้นความสะดวกสบายระดับพรีเมียม' }

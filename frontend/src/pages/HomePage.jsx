@@ -109,7 +109,7 @@ export default function HomePage() {
                     {place.hasQR && <span style={{ fontSize: 11, fontWeight: 700, color: '#7A5205', background: '#FFF8E1', padding: '3px 9px', borderRadius: 10 }}>+{place.qrPoints} พอยท์</span>}
                   </div>
                   <div style={{ fontWeight: 400, fontSize: 16, color: '#1f2a24', marginBottom: 4 }}>{place.name}</div>
-                  <div style={{ fontWeight: 300, fontSize: 13, color: '#6d7a72', marginBottom: 8 }}>★ {place.rating} ({place.reviews}) · {place.price}</div>
+                  <div style={{ fontWeight: 300, fontSize: 13, color: '#6d7a72', marginBottom: 8 }}>★ {place.rating} ({place.reviews}) · {place.price}{place.distanceKm != null && ` · ${place.distanceKm} กม.`}</div>
                   <div style={{ fontWeight: 300, fontSize: 12.5, color: '#8a938c', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{place.address}</div>
                 </div>
               </div>

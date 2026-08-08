@@ -11,10 +11,16 @@
 //      deduped across both discovery methods) -> the raw shape
 //      import-places.js's toRow() expects.
 //
-// Adjust CENTER/GRID/RADIUS_M/CATEGORIES/OUTLYING_DISTRICTS below to change
-// coverage and cost.
+// Adjust CENTER/GRID/RADIUS_M/CATEGORY_GROUPS/OUTLYING_DISTRICTS below to
+// change coverage and cost.
 //
-// Usage: cd backend && npm run fetch:places
+// Run in two smaller lots instead of one big billing hit: `LOT=attractions`
+// (temples, parks/museums, lodging, outlying-district tourist spots) then
+// `LOT=food` (restaurants, cafes, markets). Each lot writes its own
+// places.json -- run `npm run import:places` after each before starting the
+// next lot, since the next fetch overwrites the file.
+//
+// Usage: cd backend && LOT=attractions npm run fetch:places
 
 import 'dotenv/config'
 import { writeFileSync, mkdirSync } from 'node:fs'
@@ -33,7 +39,12 @@ if (!API_KEY) {
 // Smoke-test switch: true = ~1 grid point x 1 category x 1 district (~20-40
 // places, a few baht) so you can validate fetch -> import -> embed end to end
 // before paying for full coverage. Flip to false for the real run.
-const TEST_MODE = true
+const TEST_MODE = false
+
+// 'attractions' | 'food' | 'all' -- which CATEGORY_GROUPS (below) to search
+// this run. Splits the real run's cost across two smaller, separately
+// reviewable batches instead of one ~800-place / ~4,000-photo run.
+const LOT = process.env.LOT || 'all'
 
 // Khon Kaen city center. 1 degree latitude ~= 111km; longitude degrees are
 // scaled by cos(latitude) so the grid stays roughly square in real distance.
@@ -44,32 +55,49 @@ const RADIUS_M = 4000 // per-point search radius; overlaps neighboring points so
 
 // Google Places "Table A" type values. Grouped so each group shares a
 // Nearby Search call (max ~20 results per call, so keep groups small enough
-// that one type doesn't crowd out the others).
+// that one type doesn't crowd out the others). Each group is tagged with the
+// LOT it belongs to.
+const CATEGORY_GROUPS = [
+  { lot: 'attractions', types: ['buddhist_temple', 'hindu_temple', 'mosque', 'church', 'shinto_shrine', 'synagogue'] },
+  { lot: 'attractions', types: ['tourist_attraction', 'museum', 'park'] },
+  { lot: 'attractions', types: ['lodging'] },
+  { lot: 'food', types: ['restaurant'] },
+  { lot: 'food', types: ['cafe', 'bakery'] },
+  { lot: 'food', types: ['market', 'shopping_mall'] },
+]
+
 const CATEGORIES = TEST_MODE
   ? [['restaurant']]
-  : [
-      ['restaurant'],
-      ['cafe', 'bakery'],
-      ['tourist_attraction', 'museum', 'park'],
-      ['place_of_worship'],
-      ['lodging'],
-    ]
+  : CATEGORY_GROUPS.filter((g) => LOT === 'all' || g.lot === LOT).map((g) => g.types)
 
 // Starting list of districts outside Muang Khon Kaen known for tourism
 // (dinosaur park, dam/reservoir, mountains/waterfalls). Review and adjust --
 // this is a seed list, not an exhaustive survey of the province's 26 districts.
+// Only searched for the 'attractions' lot (it only ever looks for
+// tourist_attraction places -- see searchTextIds below).
 const OUTLYING_DISTRICTS = TEST_MODE
   ? ['ภูเวียง']
-  : ['ภูเวียง', 'อุบลรัตน์', 'ภูผาม่าน', 'ชุมแพ', 'น้ำพอง', 'หนองเรือ']
+  : (LOT === 'all' || LOT === 'attractions')
+    ? ['ภูเวียง', 'อุบลรัตน์', 'ภูผาม่าน', 'ชุมแพ', 'น้ำพอง', 'หนองเรือ']
+    : []
 
+// All 'Atmosphere'-tier fields below (servesBreakfast..dineIn, generativeSummary,
+// reviewSummary) are billed at the same Enterprise+Atmosphere SKU we're already
+// paying for because of `reviews`/`editorialSummary` -- adding them doesn't
+// raise the per-request cost, so grab everything that tier offers.
 const DETAILS_FIELD_MASK = [
   'id', 'displayName', 'primaryType', 'types', 'rating', 'userRatingCount',
-  'priceLevel', 'priceRange', 'formattedAddress', 'regularOpeningHours',
-  'internationalPhoneNumber', 'websiteUri', 'googleMapsUri', 'location',
-  'editorialSummary', 'reviews', 'businessStatus', 'goodForChildren',
-  'parkingOptions', 'accessibilityOptions', 'restroom', 'outdoorSeating',
-  'allowsDogs', 'delivery', 'takeout', 'reservable', 'paymentOptions',
-  'servesVegetarianFood', 'photos',
+  'priceLevel', 'priceRange', 'formattedAddress', 'addressComponents',
+  'regularOpeningHours', 'internationalPhoneNumber', 'websiteUri',
+  'googleMapsUri', 'location',
+  'editorialSummary', 'generativeSummary', 'reviewSummary', 'reviews',
+  'businessStatus', 'goodForChildren', 'parkingOptions', 'accessibilityOptions',
+  'restroom', 'outdoorSeating', 'allowsDogs', 'delivery', 'takeout', 'dineIn',
+  'curbsidePickup', 'reservable', 'paymentOptions', 'servesVegetarianFood',
+  'servesBreakfast', 'servesLunch', 'servesDinner', 'servesBrunch',
+  'servesCoffee', 'servesBeer', 'servesWine', 'servesCocktails', 'servesDessert',
+  'menuForChildren', 'liveMusic', 'goodForGroups', 'goodForWatchingSports',
+  'photos',
 ].join(',')
 
 function sleep(ms) {

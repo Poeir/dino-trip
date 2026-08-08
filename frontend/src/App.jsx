@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate, Outlet } from 'react-router-dom'
 import { AppProvider, useApp } from './context/AppContext.jsx'
+import ScrollToTop from './components/ScrollToTop.jsx'
 import Header from './components/Header.jsx'
 import MobileMenu from './components/MobileMenu.jsx'
 import WelcomeModal from './components/WelcomeModal.jsx'
@@ -42,6 +43,7 @@ function RequireAdmin({ children }) {
 function Shell() {
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#FFFDF6', backgroundImage: "url('./assets/background1.png')", backgroundSize: 'cover', backgroundPosition: 'top center', backgroundRepeat: 'no-repeat', backgroundAttachment: 'fixed' }}>
+      <ScrollToTop />
       <Routes>
         <Route element={<PublicLayout />}>
           <Route path="/" element={<HomePage />} />

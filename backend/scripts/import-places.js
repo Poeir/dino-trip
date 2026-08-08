@@ -156,6 +156,12 @@ const CATEGORY_BY_TYPE = {
 
 function mapCategory(p, name) {
   if (CATEGORY_BY_TYPE[p.primaryType]) return CATEGORY_BY_TYPE[p.primaryType]
+  // primaryType is often a generic/wrong Google guess (e.g. an apartment-style
+  // hostel typed `apartment_building`) even though the fuller `types` list
+  // usually still carries the correct type (`lodging`) somewhere in it.
+  for (const t of p.types || []) {
+    if (CATEGORY_BY_TYPE[t]) return CATEGORY_BY_TYPE[t]
+  }
   return isCafeName(name) ? 'คาเฟ่' : 'ร้านอาหาร'
 }
 
@@ -171,6 +177,15 @@ function mapPrice(p, category) {
 
 function cleanAddress(address) {
   return (address || '').replace(/^[A-Z0-9]{4,8}\+[A-Z0-9]{2,3}\s+/, '')
+}
+
+// `administrative_area_level_2` is Google's อำเภอ (district) component --
+// more reliable than parsing/guessing it out of formattedAddress, and lets us
+// verify OUTLYING_DISTRICTS' text-search results actually landed in the
+// district they were searched for.
+function mapDistrict(addressComponents) {
+  const comp = (addressComponents || []).find((c) => c.types?.includes('administrative_area_level_2'))
+  return comp?.longText || null
 }
 
 function summarizeHours(hours) {
@@ -198,6 +213,18 @@ function mapAmenities(p) {
   const pay = p.paymentOptions
   if (pay && (pay.acceptsCreditCards || pay.acceptsDebitCards || pay.acceptsNfc)) list.push('ชำระผ่านบัตร')
   if (p.servesVegetarianFood) list.push('มีเมนูมังสวิรัติ')
+  if (p.servesBreakfast) list.push('เสิร์ฟอาหารเช้า')
+  if (p.servesLunch) list.push('เสิร์ฟมื้อกลางวัน')
+  if (p.servesDinner) list.push('เสิร์ฟมื้อเย็น')
+  if (p.servesBrunch) list.push('เสิร์ฟบรันช์')
+  if (p.dineIn) list.push('นั่งทานในร้านได้')
+  if (p.servesCoffee) list.push('มีกาแฟ')
+  if (p.servesBeer || p.servesWine || p.servesCocktails) list.push('มีเครื่องดื่มแอลกอฮอล์')
+  if (p.servesDessert) list.push('มีของหวาน')
+  if (p.menuForChildren) list.push('มีเมนูสำหรับเด็ก')
+  if (p.liveMusic) list.push('มีดนตรีสด')
+  if (p.goodForGroups) list.push('เหมาะสำหรับกลุ่มใหญ่')
+  if (p.curbsidePickup) list.push('รับที่รถได้')
   return list
 }
 
@@ -272,6 +299,10 @@ function mapTags(category, goodForChildren, types, name) {
 }
 
 function mapDesc(p, category) {
+  // generativeSummary (Gemini-written overview) reads more naturally than the
+  // older editorialSummary and is available for far more places -- prefer it,
+  // but fall back through both before the generic rating-based line.
+  if (p.generativeSummary?.overview?.text) return p.generativeSummary.overview.text
   if (p.editorialSummary?.overview) return p.editorialSummary.overview
   const ratingText = p.rating ? `คะแนนรีวิว ${p.rating} ดาว` : 'ยังไม่มีคะแนนรีวิว'
   const countText = p.userRatingCount ? ` จากผู้ใช้ Google Maps ${p.userRatingCount.toLocaleString('th-TH')} คน` : ''
@@ -281,7 +312,11 @@ function mapDesc(p, category) {
 function truncateReview(text, max = 220) {
   const clean = text.replace(/\s+/g, ' ').trim()
   if (clean.length <= max) return clean
-  return clean.slice(0, max).trim() + '…'
+  // Plain .slice(0, max) cuts on UTF-16 code units, which can split an emoji's
+  // surrogate pair in half -- Postgres then rejects the lone surrogate with
+  // "invalid input syntax for type json" on insert. Array.from splits on code
+  // points instead, so a pair is always kept whole.
+  return Array.from(clean).slice(0, max).join('').trim() + '…'
 }
 
 function mapReviews(p) {
@@ -311,6 +346,7 @@ async function toRow(p) {
     price_level: priceLevelRank[p.priceLevel] ?? null,
     price: mapPrice(p, category),
     address: cleanAddress(p.formattedAddress),
+    district: mapDistrict(p.addressComponents),
     hours: summarizeHours(p.regularOpeningHours),
     hours_periods: p.regularOpeningHours?.periods || null,
     phone: p.internationalPhoneNumber || null,
@@ -340,14 +376,22 @@ async function main() {
   const needsReview = rows.filter((r) => !r.category)
   console.log(`Importing ${rows.length} places (${needsReview.length} need manual category review)...`)
 
-  const { data, error } = await supabase
-    .from('places')
-    .upsert(rows, { onConflict: 'google_place_id' })
-    .select('id, name, category')
-
-  if (error) {
-    console.error('Import failed:', error.message)
-    process.exit(1)
+  // Chunked instead of one giant upsert -- a single bad row (e.g. malformed
+  // unicode Postgres rejects) fails only its own chunk of 50, not all ~400.
+  const CHUNK_SIZE = 50
+  const data = []
+  for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
+    const chunk = rows.slice(i, i + CHUNK_SIZE)
+    const { data: d, error } = await supabase
+      .from('places')
+      .upsert(chunk, { onConflict: 'google_place_id' })
+      .select('id, name, category')
+    if (error) {
+      console.error(`Chunk ${i}-${i + chunk.length} failed: ${error.message}`)
+      console.error('Places in this chunk:', chunk.map((r) => r.name).join(', '))
+      continue
+    }
+    data.push(...d)
   }
 
   console.log(`Done. Upserted ${data.length} places.`)
