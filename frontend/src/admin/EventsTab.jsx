@@ -1,14 +1,38 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useApp } from '../context/AppContext.jsx'
+import { extractEventFromText } from '../lib/chatbotService.js'
 import ImageSlot from '../components/ImageSlot.jsx'
 import Modal from '../components/Modal.jsx'
 import Field from '../components/Field.jsx'
+
+const EXTRACT_FIELDS = ['name', 'category', 'dateRange', 'venueName', 'admission', 'organizer', 'suitableFor', 'desc']
 
 export default function EventsTab() {
   const { state, actions, derived } = useApp()
   const f = state.formData
   const [query, setQuery] = useState('')
   const [sortBy, setSortBy] = useState('name-asc')
+  const [pasteText, setPasteText] = useState('')
+  const [extracting, setExtracting] = useState(false)
+  const [extractError, setExtractError] = useState('')
+
+  useEffect(() => {
+    if (derived.isEventFormOpen) { setPasteText(''); setExtractError('') }
+  }, [derived.isEventFormOpen])
+
+  const handleExtract = async () => {
+    if (!pasteText.trim()) return
+    setExtracting(true)
+    setExtractError('')
+    try {
+      const extracted = await extractEventFromText(pasteText)
+      EXTRACT_FIELDS.forEach((field) => actions.updateFormField(field, extracted[field] || ''))
+    } catch (err) {
+      setExtractError(err.message)
+    } finally {
+      setExtracting(false)
+    }
+  }
   const sorters = {
     'name-asc': (a, b) => a.name.localeCompare(b.name, 'th'),
     'name-desc': (a, b) => b.name.localeCompare(a.name, 'th'),
@@ -25,6 +49,27 @@ export default function EventsTab() {
       </div>
 
       <Modal open={derived.isEventFormOpen} onClose={actions.cancelForm} title={state.editingId ? 'แก้ไขอีเวนท์' : 'สร้างอีเวนท์ใหม่'} maxWidth={700}>
+          <div style={{ background: '#F1F8F2', border: '1px solid #CFE8D2', borderRadius: 10, padding: 12, marginBottom: 16 }}>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#2E7D32', marginBottom: 4 }}>วางข้อความจากโพสต์ Facebook (ไม่บังคับ)</label>
+            <textarea
+              value={pasteText}
+              onChange={(e) => setPasteText(e.target.value)}
+              placeholder="ก็อปข้อความจากโพสต์เพจ Facebook มาวางที่นี่ แล้วกด &quot;ดึงข้อมูลอัตโนมัติ&quot; เพื่อให้ AI ช่วยเติมฟอร์มด้านล่าง"
+              style={{ width: '100%', minHeight: 70, border: '1px solid #CFE8D2', borderRadius: 8, padding: 9, fontSize: 13.5, marginBottom: 8, fontFamily: 'inherit' }}
+            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <button
+                type="button"
+                onClick={handleExtract}
+                disabled={extracting || !pasteText.trim()}
+                style={{ background: extracting || !pasteText.trim() ? '#A5D6A7' : 'linear-gradient(135deg,#66BB6A,#388E3C)', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: 14, fontWeight: 700, fontSize: 13, cursor: extracting || !pasteText.trim() ? 'default' : 'pointer' }}
+              >
+                {extracting ? 'กำลังดึงข้อมูล...' : 'ดึงข้อมูลอัตโนมัติ'}
+              </button>
+              <span style={{ fontSize: 11.5, color: '#5c7a63' }}>ตรวจสอบและแก้ไขข้อมูลด้านล่างก่อนบันทึกเสมอ</span>
+            </div>
+            {extractError && <div style={{ color: '#a33232', fontSize: 12.5, marginTop: 8 }}>ดึงข้อมูลไม่สำเร็จ: {extractError}</div>}
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: 14, marginBottom: 14 }}>
             <Field label="ชื่องาน">
               <input value={f.name || ''} onChange={actions.onField_name} placeholder="เช่น เทศกาลไดโนเสาร์" style={{ width: '100%', border: '1px solid #DCD8C6', borderRadius: 8, padding: 9, fontSize: 14 }} />

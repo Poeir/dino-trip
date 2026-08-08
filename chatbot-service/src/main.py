@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from src.api.routes_chatbot import router as chatbot_router
 from src.api.routes_tripplanner import router as tripplanner_router
+from src.api.routes_events import router as events_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -22,6 +23,7 @@ app.add_middleware(
 
 app.include_router(chatbot_router)
 app.include_router(tripplanner_router)
+app.include_router(events_router)
 
 
 @app.get("/")

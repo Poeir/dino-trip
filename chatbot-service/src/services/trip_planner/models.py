@@ -15,6 +15,7 @@ class Place(BaseModel):
     price: Optional[str] = None
     price_level: Optional[int] = None
     address: Optional[str] = None
+    district: Optional[str] = None  # Google administrative_area_level_2, e.g. "เมืองขอนแก่น" (see import-places.js's mapDistrict())
     hours: Optional[str] = None
     hours_periods: Optional[List[Dict[str, Any]]] = None
     phone: Optional[str] = None
@@ -54,6 +55,7 @@ class TripInput(BaseModel):
     interests: List[str] = []
     trip_pace: str = "relaxed"  # relaxed | standard | packed
     budget_level: str = "ปานกลาง"  # ประหยัด | ปานกลาง | หรูหรา -- matches the frontend's budgetList directly
+    area_scope: str = "ทั่วขอนแก่น"  # เมือง | ทั่วขอนแก่น -- matches the frontend's areaScopeList directly
     start_time: str = "09:00"
     end_time: str = "18:00"
 
@@ -97,3 +99,16 @@ class TripResponse(BaseModel):
     total_cost_estimate: float
     note: str
     summary: Optional[TripSummary] = None
+    planning_rationale: str = ""  # judge's user-facing explanation, "" hides the frontend block
+
+
+class JudgeVerdict(BaseModel):
+    """Internal-only -- never returned from the API as-is (its `rationale`
+    field is copied into TripResponse.planning_rationale)."""
+    passed: bool
+    score: float              # 0.0-1.0, as reported by the judge LLM
+    pacing_ok: bool           # STRICT RULE #3 (back-to-back heavy meals, logical mix, pace density)
+    intent_match_ok: bool     # reflects interests/must_go/budget_level beyond candidate-list filtering
+    issues: List[str] = []
+    feedback: str = ""        # re-injected verbatim into the next generation prompt (model-facing)
+    rationale: str = ""       # short Thai, user-facing explanation of the plan's logic (human-facing)

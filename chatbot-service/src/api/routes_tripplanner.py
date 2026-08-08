@@ -24,7 +24,7 @@ def generate_trip_llm(user_input: TripInput):
     # so the frontend shows it and lets the user retry, per the plan's
     # trip-planner failure-handling decision.
     try:
-        final_itinerary = planner.solve_route_with_llm(user_input, pace_inst, budget_inst)
+        final_itinerary, planning_rationale = planner.solve_route_with_llm(user_input, pace_inst, budget_inst)
     except Exception as e:
         logger.error("trip planning failed for %d-day trip (%d candidates): %s", user_input.trip_duration_days, len(candidates), e)
         raise HTTPException(status_code=502, detail=f"Trip planning failed: {e}")
@@ -43,4 +43,5 @@ def generate_trip_llm(user_input: TripInput):
         total_cost_estimate=round(total_cost, 2),
         note=note,
         summary=summary_data,
+        planning_rationale=planning_rationale,
     )

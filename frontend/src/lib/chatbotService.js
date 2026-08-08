@@ -57,3 +57,20 @@ export async function requestTripPlan(tripInput) {
   }
   return res.json() // TripResponse
 }
+
+// Admin-only helper: LLM-extracts event form fields (name, dateRange,
+// venueName, ...) from raw text an admin pastes in from a Facebook post. The
+// admin always reviews/edits the prefilled form before saving -- this never
+// writes to the events table itself.
+export async function extractEventFromText(text) {
+  const res = await fetch(`${BASE_URL}/events/extract`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(body.detail || `chatbot-service /events/extract failed (${res.status})`)
+  }
+  return res.json()
+}

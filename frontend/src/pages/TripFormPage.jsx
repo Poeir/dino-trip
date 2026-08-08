@@ -138,6 +138,18 @@ export default function TripFormPage() {
                   </div>
                 ))}
               </div>
+              <label style={{ fontSize: 13, fontWeight: 700, color: '#1B5E20', display: 'block', margin: '22px 0 12px' }}>ขอบเขตพื้นที่</label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {derived.areaScopeOptionsView.map((opt) => (
+                  <div key={opt.label} onClick={opt.onClick} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderRadius: 14, padding: '16px 18px', cursor: 'pointer', transition: 'all 0.2s ease', border: `2px solid ${opt.borderColor}`, background: opt.bg }}>
+                    <div>
+                      <div style={{ fontWeight: 800, fontSize: 15, color: opt.color }}>{opt.label}</div>
+                      <div style={{ fontSize: 12.5, color: opt.descColor, marginTop: 2 }}>{opt.desc}</div>
+                    </div>
+                    <div style={{ width: 22, height: 22, borderRadius: '50%', border: `2px solid ${opt.color}`, background: opt.dotBg }}></div>
+                  </div>
+                ))}
+              </div>
             </>
           )}
 

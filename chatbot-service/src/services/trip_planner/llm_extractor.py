@@ -4,11 +4,19 @@ import math
 import time
 from datetime import datetime, timedelta
 from openai import OpenAI
-from typing import List
+from typing import List, Tuple
 from src.core.config import API_KEY, BASE_URL, MODEL_NAME
-from .models import Place, TripInput, DailyItinerary, TimeSlot
+from .json_utils import clean_json_string
+from .judge import TripItineraryJudge
+from .models import Place, TripInput, DailyItinerary, TimeSlot, JudgeVerdict
 
 logger = logging.getLogger(__name__)
+
+# Max "generate -> judge" cycles before giving up on quality and returning the
+# last itinerary anyway. Kept small and NOT an env var (application-logic
+# tunable, not a deployment secret) -- there is no request timeout anywhere in
+# this stack, so this cap is the only thing bounding worst-case latency.
+MAX_JUDGE_ATTEMPTS = 2
 
 # Category-based visit durations, keyed by our normalized Thai categories
 # instead of Google's raw type slugs (place_of_worship, museum, ...) -- we
@@ -31,6 +39,7 @@ class LLMTripPlanner:
         self.location_map = {loc.id: loc for loc in candidates}
         self.default_model = MODEL_NAME
         self.client = OpenAI(api_key=API_KEY, base_url=BASE_URL)
+        self.judge = TripItineraryJudge()
 
     def calculate_distance(self, loc1: Place, loc2: Place) -> float:
         R = 6371
@@ -89,7 +98,7 @@ class LLMTripPlanner:
         name_lower = loc.name.lower()
         return any(kw in name_lower for kw in EVENING_KEYWORDS)
 
-    def generate_prompt(self, user_input: TripInput, pace_instruction: str, budget_instruction: str) -> str:
+    def generate_prompt(self, user_input: TripInput, pace_instruction: str, budget_instruction: str, feedback_block: str = "") -> str:
         places_str = "".join(
             f"- ID: {loc.id}, Name: {loc.name}, Category: {loc.category}, Rating: {loc.rating}, Hours: {loc.hours or 'unknown'}\n"
             for loc in self.candidates
@@ -100,6 +109,17 @@ class LLMTripPlanner:
             f"Day {i + 1} = {(trip_start_date + timedelta(days=i)).strftime('%Y-%m-%d (%A)')}"
             for i in range(user_input.trip_duration_days)
         )
+
+        # Appended at the very end, deliberately: models weight the tail of a
+        # long prompt more heavily as "the final word".
+        feedback_section = ""
+        if feedback_block:
+            feedback_section = f"""
+
+        [JUDGE FEEDBACK - FIX THESE ISSUES FROM THE PREVIOUS ATTEMPT]
+        {feedback_block}
+        Generate a corrected itinerary that resolves the above issues while still obeying every [STRICT RULE] above.
+        """
 
         return f"""
         You are a proficient travel planner. Based on the provided candidate locations and the user query, please create a detailed travel plan.
@@ -143,17 +163,8 @@ class LLMTripPlanner:
                 }}
             ]
         }}
+        {feedback_section}
         """
-
-    def clean_json_string(self, json_str: str) -> str:
-        json_str = json_str.strip()
-        if json_str.startswith("```json"):
-            json_str = json_str[7:]
-        elif json_str.startswith("```"):
-            json_str = json_str[3:]
-        if json_str.endswith("```"):
-            json_str = json_str[:-3]
-        return json_str.strip()
 
     def _call_llm_for_itinerary(self, prompt: str) -> dict:
         response = self.client.chat.completions.create(
@@ -179,11 +190,9 @@ class LLMTripPlanner:
             response_format={"type": "json_object"},
         )
         content = response.choices[0].message.content
-        return json.loads(self.clean_json_string(content))
+        return json.loads(clean_json_string(content))
 
-    def solve_route_with_llm(self, user_input: TripInput, pace_instruction: str, budget_instruction: str) -> List[DailyItinerary]:
-        prompt = self.generate_prompt(user_input, pace_instruction, budget_instruction)
-
+    def _generate_itinerary_data(self, prompt: str) -> dict:
         t0 = time.time()
         data = None
         last_err = None
@@ -197,8 +206,44 @@ class LLMTripPlanner:
         if data is None:
             logger.error("trip planner LLM failed after retry, giving up: %s", last_err)
             raise last_err
-        logger.info("trip planner LLM responded in %.2fs (days=%d)", time.time() - t0, user_input.trip_duration_days)
+        logger.info("trip planner LLM responded in %.2fs", time.time() - t0)
+        return data
 
+    def _build_feedback_block(self, verdict: JudgeVerdict) -> str:
+        # Not cumulative across rounds -- only the latest verdict's feedback
+        # is used, avoiding piling up contradictory feedback if the cap is
+        # ever raised later.
+        issues_str = "\n".join(f"- {issue}" for issue in verdict.issues) or f"- {verdict.feedback}"
+        return f"{issues_str}\n{verdict.feedback}".strip()
+
+    def solve_route_with_llm(self, user_input: TripInput, pace_instruction: str, budget_instruction: str) -> Tuple[List[DailyItinerary], str]:
+        feedback_block = ""
+        final_itinerary = None
+        verdict = None
+
+        for judge_round in range(1, MAX_JUDGE_ATTEMPTS + 1):
+            prompt = self.generate_prompt(user_input, pace_instruction, budget_instruction, feedback_block)
+            data = self._generate_itinerary_data(prompt)
+            final_itinerary = self._apply_deterministic_backstops(data, user_input)
+
+            verdict = self.judge.evaluate(user_input, final_itinerary)
+            if verdict.passed:
+                logger.info("trip planner: judge passed on round %d/%d (score=%.2f)", judge_round, MAX_JUDGE_ATTEMPTS, verdict.score)
+                return final_itinerary, verdict.rationale
+
+            logger.info(
+                "trip planner: judge rejected round %d/%d (score=%.2f, pacing_ok=%s, intent_match_ok=%s, issues=%s) - regenerating",
+                judge_round, MAX_JUDGE_ATTEMPTS, verdict.score, verdict.pacing_ok, verdict.intent_match_ok, verdict.issues,
+            )
+            feedback_block = self._build_feedback_block(verdict)
+
+        logger.warning(
+            "trip planner: judge did not pass within %d attempt(s), returning last itinerary anyway (final score=%.2f, issues=%s)",
+            MAX_JUDGE_ATTEMPTS, verdict.score, verdict.issues,
+        )
+        return final_itinerary, verdict.rationale
+
+    def _apply_deterministic_backstops(self, data: dict, user_input: TripInput) -> List[DailyItinerary]:
         # check_is_open() keys off current_dt.weekday(), so each day of a
         # multi-day trip needs its own real calendar date -- using bare
         # start_time (defaults to 1900-01-01, always a Monday) made every

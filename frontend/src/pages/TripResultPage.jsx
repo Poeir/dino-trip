@@ -52,6 +52,13 @@ export default function TripResultPage() {
             </div>
           </div>
 
+          {state.tripPlanRationale && (
+            <div style={{ background: '#FFF8E1', border: '1px solid #FBC02D', borderRadius: 16, padding: '14px 16px' }}>
+              <div style={{ fontWeight: 800, fontSize: 12.5, color: '#8a6d00', marginBottom: 4 }}>✦ ทำไมน้องไดโนจัดแบบนี้</div>
+              <div style={{ fontSize: 13, color: '#6d5f2a', lineHeight: 1.5 }}>{state.tripPlanRationale}</div>
+            </div>
+          )}
+
           <div style={{ background: 'linear-gradient(135deg,#F1F8E9,#E8F5E9)', border: '1px solid #C8E6C9', borderRadius: 20, padding: 22 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
               <PencilIcon size={17} />

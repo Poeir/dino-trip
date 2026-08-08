@@ -1,4 +1,5 @@
 from datetime import datetime
+from itertools import zip_longest
 from src.core.db import find_place_by_name
 from src.services.rag.retriever import PlaceRetriever
 from .models import Place, TripInput, TripSummary, DaySummary
@@ -15,6 +16,20 @@ BUDGET_PRICE_RANGES = {
     "ปานกลาง": [0, 1, 2],
     "หรูหรา": [2, 3, 4],
 }
+
+# Google's administrative_area_level_2 name for Khon Kaen's city district
+# (see import-places.js's mapDistrict()) comes back inconsistently across
+# rows -- confirmed against the live `places` table: "อำเภอเมืองขอนแก่น" (the
+# majority), plus "เมือง", "อ.เมือง", "อ.เมืองขอนแก่น", "Muang", and other
+# prefix/casing variants, all referring to the same district. None of the
+# *other* (non-Mueang) districts in the data contain "เมือง" as a substring
+# (ภูเวียง, อุบลรัตน์, ชุมแพ, หนองเรือ, ... all clearly outlying names), so a
+# substring/casefold check reliably identifies Mueang without needing a
+# lookup table for every prefix variant.
+def _is_mueang_district(district: str | None) -> bool:
+    if not district:
+        return False
+    return "เมือง" in district or "muang" in district.lower()
 
 
 class TripBuilderService:
@@ -60,8 +75,30 @@ class TripBuilderService:
 
         interest_list = []
         if remaining_slots > 0:
-            query_str = ", ".join(user_input.interests) or "สถานที่ท่องเที่ยวยอดนิยม ขอนแก่น"
-            rag_results = self.retriever.search_and_expand(query=query_str, limit=remaining_slots * 5)
+            if user_input.interests:
+                # One retrieval call PER interest, then round-robin merge --
+                # not one call on ", ".join(interests). Regression: a single
+                # combined query let an interest with many real matches (e.g.
+                # 140 temples for "วัฒนธรรม/ศาสนา") drown out one with few (3
+                # spots for "ไดโนเสาร์") in the top-N ranking, even though the
+                # small interest had exact tag matches -- confirmed live: the
+                # 3 dinosaur places never appeared in a combined-query
+                # candidate list, but all 3 appeared when queried alone.
+                # Round-robin (index 0 of every interest, then index 1, ...)
+                # guarantees each stated interest gets a fair shot at a slot
+                # before any single interest's larger result count crowds out
+                # the rest.
+                per_interest_results = [
+                    self.retriever.search_and_expand(query=interest, limit=remaining_slots * 5)
+                    for interest in user_input.interests
+                ]
+                rag_results = [
+                    row for group in zip_longest(*per_interest_results) for row in group if row is not None
+                ]
+            else:
+                rag_results = self.retriever.search_and_expand(
+                    query="สถานที่ท่องเที่ยวยอดนิยม ขอนแก่น", limit=remaining_slots * 5
+                )
 
             existing_ids = {p.id for p in must_go_list}
             allowed_prices = BUDGET_PRICE_RANGES.get(user_input.budget_level, [0, 1, 2])
@@ -77,6 +114,13 @@ class TripBuilderService:
                 if place.price_level is not None and place.price_level not in allowed_prices:
                     continue
                 if place.category == "ที่พัก":
+                    continue
+                # Only applies to RAG-sourced candidates, same as the budget
+                # filter above -- must_go places are honored regardless of
+                # district. Rows without a district tag (place.district is
+                # None) are excluded here: don't show a place as "in the
+                # city" when we're not actually sure.
+                if user_input.area_scope == "เมือง" and not _is_mueang_district(place.district):
                     continue
                 interest_list.append(place)
                 existing_ids.add(place_id)

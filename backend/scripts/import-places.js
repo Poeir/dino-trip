@@ -274,6 +274,19 @@ const NAME_KEYWORD_TAGS = [
   [/เวียดนาม/, 'อาหารเวียดนาม'],
   [/ญี่ปุ่น|ซูชิ|sushi/i, 'อาหารญี่ปุ่น'],
   [/ทะเล|seafood/i, 'อาหารทะเล'],
+  // Regression: real dinosaur attractions (Phu Wiang dinosaur museum/park)
+  // had the word right in their name but no interest tag at all -- the
+  // "ไดโนเสาร์" interest option on the trip form matched zero places despite
+  // these existing, because category-based mapTags() below has no dinosaur
+  // rule and this name-keyword list didn't either.
+  [/ไดโนเสาร์|dinosaur/i, 'ไดโนเสาร์'],
+  // Name-based, not category-based: category === 'ตลาด' ("market") is a noisy
+  // bucket in this dataset -- 79 of its 122 rows don't even say "ตลาด" in the
+  // name and are actually unrelated businesses (contractors, wholesalers,
+  // tool dealers) that Google's Nearby Search swept into the same type
+  // grouping mapCategory() maps to "ตลาด". Tagging by name keyword instead of
+  // blanket-tagging the whole category avoids surfacing those as "shopping".
+  [/ตลาด|ถนนคนเดิน|หัตถกรรม|ผ้าไหม|OTOP|ของฝาก/i, 'ช้อปปิ้ง/หัตถกรรม'],
 ]
 
 function tagsFromName(name) {
@@ -290,6 +303,9 @@ function mapTags(category, goodForChildren, types, name) {
   if (category === 'สวนสาธารณะ' || category === 'สถานที่ท่องเที่ยว' || category === 'อุทยานแห่งชาติ') tags.add('ธรรมชาติ')
   if (category === 'คาเฟ่') tags.add('คาเฟ่')
   if (category === 'ร้านอาหาร') tags.add('อาหารพื้นถิ่น')
+  // Museums had no interest tag at all -- treating them as a cultural stop,
+  // same as this dataset already treats วัด.
+  if (category === 'พิพิธภัณฑ์') tags.add('วัฒนธรรม/ศาสนา')
   if (goodForChildren) tags.add('ครอบครัว')
   for (const t of types || []) {
     if (FOOD_TYPE_TAGS[t]) tags.add(FOOD_TYPE_TAGS[t])

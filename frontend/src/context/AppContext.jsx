@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  categories, categoryIcons, interestList, budgetList, budgetMeta
+  categories, categoryIcons, interestList, budgetList, budgetMeta, areaScopeList, areaScopeMeta
 } from '../data/seed.js'
 import {
   fetchPlaces, createPlace, updatePlace, deletePlace,
@@ -30,13 +30,14 @@ const initialState = {
   chatMessages: [
     { from: 'bot', text: 'สวัสดีครับ! ผมน้องไดโน ผู้ช่วยนำเที่ยวขอนแก่น สอบถามเรื่องสถานที่ อาหาร หรือเทศกาลได้เลยครับ' }
   ],
-  tripForm: { startDate: '', endDate: '', interests: [], budget: 'ปานกลาง', accommodation: '', mustGo: [], pace: 'standard', dailyStart: '09:00', dailyEnd: '18:00' },
+  tripForm: { startDate: '', endDate: '', interests: [], budget: 'ปานกลาง', areaScope: 'ทั่วขอนแก่น', accommodation: '', mustGo: [], pace: 'standard', dailyStart: '09:00', dailyEnd: '18:00' },
   mustGoQuery: '',
   tripFormError: '',
   tripStep: 0,
   tripPlanning: false,
   tripPlan: null,
   tripPlanNote: '',
+  tripPlanRationale: '',
   feedbackText: '',
   scanState: 'idle',
   scanResultPoints: 0,
@@ -258,6 +259,7 @@ export function AppProvider({ children }) {
     return { tripForm: { ...s.tripForm, interests: has ? s.tripForm.interests.filter((x) => x !== tag) : [...s.tripForm.interests, tag] } }
   })
   const setBudget = (b) => setState((s) => ({ tripForm: { ...s.tripForm, budget: b } }))
+  const setAreaScope = (a) => setState((s) => ({ tripForm: { ...s.tripForm, areaScope: a } }))
 
   // Reshapes chatbot-service's TripResponse (itinerary/schedule/place, snake_case)
   // into the shape the rest of the app already renders (days/items/place,
@@ -305,6 +307,7 @@ export function AppProvider({ children }) {
         interests: f.interests,
         trip_pace: f.pace,
         budget_level: f.budget,
+        area_scope: f.areaScope,
         start_time: f.dailyStart,
         end_time: f.dailyEnd,
       })
@@ -312,7 +315,7 @@ export function AppProvider({ children }) {
         setState({ tripPlanning: false, tripFormError: resp.note || 'ไม่พบสถานที่ที่ตรงกับเงื่อนไข ลองปรับความสนใจหรืองบประมาณดูนะครับ' })
         return
       }
-      setState({ tripPlan: tripResponseToPlan(resp, f.startDate), tripPlanNote: resp.note, tripPlanning: false, feedbackText: '' })
+      setState({ tripPlan: tripResponseToPlan(resp, f.startDate), tripPlanNote: resp.note, tripPlanRationale: resp.planning_rationale || '', tripPlanning: false, feedbackText: '' })
       navigate('/trip/result')
     } catch (err) {
       console.error('Trip plan request failed:', err)
@@ -368,7 +371,10 @@ export function AppProvider({ children }) {
         return { ...it, liked: null }
       })
     }))
-    setState({ tripPlan: { ...plan, days: newDays }, feedbackText: '' })
+    // Client-side reshuffle only, no /trip/llm call -- the judge's rationale
+    // describes the AI's original ordering logic, which may no longer hold
+    // once places get swapped, so clear it rather than leave stale text.
+    setState({ tripPlan: { ...plan, days: newDays }, tripPlanRationale: '', feedbackText: '' })
   }
 
   const startScan = () => {
@@ -475,7 +481,7 @@ export function AppProvider({ children }) {
     onStartDateChange, onEndDateChange, onAccommodationChange, setTripDatePreset,
     onMustGoQueryChange, addMustGo, removeMustGo, onMustGoKeyDown,
     setPace, onDailyStartChange, onDailyEndChange,
-    onFeedbackChange, toggleInterest, setBudget, submitTripForm, setItemLike, swapItem, regeneratePlan,
+    onFeedbackChange, toggleInterest, setBudget, setAreaScope, submitTripForm, setItemLike, swapItem, regeneratePlan,
     startScan, resetScan, redeemReward,
     adminLogin, adminLogout, openCreateForm, openEditForm, updateFormField, cancelForm,
     saveForm, deleteItem, onNewPlace, onNewEvent, onNewKb, onNewQr, onNewReward,
@@ -532,6 +538,14 @@ export function AppProvider({ children }) {
     const active = b === s.tripForm.budget
     return {
       label: b, onClick: () => setBudget(b), desc: budgetMeta[b],
+      bg: active ? '#E8F5E9' : '#fff', color: active ? '#1B5E20' : '#3c463f', descColor: active ? '#2E7D32' : '#8a938c', borderColor: active ? '#2E7D32' : '#E7E3D2',
+      dotBg: active ? 'linear-gradient(135deg,#66BB6A,#388E3C)' : '#fff'
+    }
+  })
+  const areaScopeOptionsView = areaScopeList.map((a) => {
+    const active = a === s.tripForm.areaScope
+    return {
+      label: a, onClick: () => setAreaScope(a), desc: areaScopeMeta[a],
       bg: active ? '#E8F5E9' : '#fff', color: active ? '#1B5E20' : '#3c463f', descColor: active ? '#2E7D32' : '#8a938c', borderColor: active ? '#2E7D32' : '#E7E3D2',
       dotBg: active ? 'linear-gradient(135deg,#66BB6A,#388E3C)' : '#fff'
     }
@@ -621,7 +635,7 @@ export function AppProvider({ children }) {
     categoriesView, categoriesViewIcons, filteredPlaces, placesEmpty: filteredPlaces.length === 0, eventsView,
     qrPlacesList,
     chatMessagesView: s.chatMessages.map((m) => ({ ...m, align: m.from === 'user' ? 'flex-end' : 'flex-start', bg: m.from === 'user' ? '#2E7D32' : '#f0efe7', color: m.from === 'user' ? '#fff' : '#1f2a24' })),
-    interestOptionsView, budgetOptionsView, paceOptionsView, datePresetOptions, mustGoSuggestionsView, mustGoChipsView,
+    interestOptionsView, budgetOptionsView, areaScopeOptionsView, paceOptionsView, datePresetOptions, mustGoSuggestionsView, mustGoChipsView,
     isStep0: s.tripStep === 0, isStep1: s.tripStep === 1, isStep2: s.tripStep === 2, isStep3: s.tripStep === 3,
     primaryLabel: s.tripStep === 3 ? 'สร้างแผนการเดินทาง →' : 'ถัดไป →',
     onPrimaryStep: s.tripStep === 3 ? submitTripForm : nextStep,

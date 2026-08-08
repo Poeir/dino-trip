@@ -53,6 +53,8 @@ export const categoryIcons = { 'ทั้งหมด': 'grid', 'คาเฟ่
 export const interestList = ['ธรรมชาติ', 'วัฒนธรรม/ศาสนา', 'ไดโนเสาร์', 'อาหารพื้นถิ่น', 'คาเฟ่', 'ช้อปปิ้ง/หัตถกรรม', 'ครอบครัว']
 export const budgetList = ['ประหยัด', 'ปานกลาง', 'หรูหรา']
 export const budgetMeta = { 'ประหยัด': 'เดินทางคุ้มค่า เน้นที่เที่ยวไม่มีค่าใช้จ่าย', 'ปานกลาง': 'สมดุลระหว่างคุณภาพและราคา', 'หรูหรา': 'เน้นความสะดวกสบายระดับพรีเมียม' }
+export const areaScopeList = ['เมือง', 'ทั่วขอนแก่น']
+export const areaScopeMeta = { 'เมือง': 'เฉพาะในตัวเมืองขอนแก่น', 'ทั่วขอนแก่น': 'รวมสถานที่รอบนอกด้วย เช่น ภูเวียง, อุบลรัตน์' }
 export const adminTabs = [
   { key: 'dashboard', label: 'แดชบอร์ด', icon: 'dashboard' },
   { key: 'places', label: 'สถานที่', icon: 'places' },
