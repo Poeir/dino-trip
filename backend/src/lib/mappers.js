@@ -25,6 +25,7 @@ export function rowToPlace(row) {
     reviewsList: row.reviews || [],
     location: row.lat != null && row.lng != null ? { lat: row.lat, lng: row.lng } : null,
     img: row.img,
+    images: row.images && row.images.length ? row.images : (row.img ? [row.img] : []),
     businessStatus: row.business_status,
   }
 }

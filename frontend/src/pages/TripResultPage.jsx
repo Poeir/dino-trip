@@ -106,6 +106,9 @@ export default function TripResultPage() {
                           <button onClick={item.onDislike} style={{ display: 'flex', alignItems: 'center', gap: 5, border: `1px solid ${item.dislikeBorder}`, background: item.dislikeBg, color: item.dislikeColor, borderRadius: 12, padding: '4px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
                             <span style={{ width: 0, height: 0, borderLeft: '5px solid transparent', borderRight: '5px solid transparent', borderTop: `7px solid ${item.dislikeColor}` }}></span>ไม่ถูกใจ
                           </button>
+                          <button onClick={item.onSwap} style={{ display: 'flex', alignItems: 'center', gap: 5, border: '1px solid #DCD8C6', background: '#fff', color: '#6d7a72', borderRadius: 12, padding: '4px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                            <RouteIcon size={12} color="#6d7a72" box={false} />สลับที่นี่
+                          </button>
                         </div>
                       </div>
                     </div>

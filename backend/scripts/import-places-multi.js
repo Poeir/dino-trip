@@ -227,7 +227,7 @@ function toRow(p) {
     has_qr: false,
     qr_points: 0,
     reviews: mapReviews(p),
-    img: './assets/picture01.jpg',
+    img: '/assets/picture01.jpg',
   }
 }
 

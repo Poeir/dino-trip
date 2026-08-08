@@ -6,12 +6,14 @@
 // Usage: cd backend && npm run import:places
 
 import 'dotenv/config'
-import { readFileSync } from 'node:fs'
+import { readFileSync, existsSync, readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { createClient } from '@supabase/supabase-js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
+const PHOTOS_DIR = join(__dirname, '..', 'data', 'photos')
+const PHOTO_BUCKET = 'place-photos'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -22,6 +24,35 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
 }
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+
+async function ensurePhotoBucket() {
+  const { error } = await supabase.storage.createBucket(PHOTO_BUCKET, { public: true })
+  if (error && !/already exists/i.test(error.message)) {
+    console.error('Could not create/verify Storage bucket:', error.message)
+  }
+}
+
+// Uploads the photos fetch-places.js already downloaded for this place (if
+// any) to our own Storage bucket, so `images` points at URLs we control
+// instead of Google's (expiring, API-key-bearing) photo endpoint.
+async function uploadPhotos(placeId) {
+  const dir = join(PHOTOS_DIR, placeId)
+  if (!existsSync(dir)) return []
+  const files = readdirSync(dir).filter((f) => f.endsWith('.jpg')).sort()
+  const urls = []
+  for (const file of files) {
+    const storagePath = `${placeId}/${file}`
+    const { error } = await supabase.storage
+      .from(PHOTO_BUCKET)
+      .upload(storagePath, readFileSync(join(dir, file)), { contentType: 'image/jpeg', upsert: true })
+    if (error) {
+      console.error(`  Photo upload failed for ${placeId}/${file}:`, error.message)
+      continue
+    }
+    urls.push(supabase.storage.from(PHOTO_BUCKET).getPublicUrl(storagePath).data.publicUrl)
+  }
+  return urls
+}
 
 const priceLevelLabel = {
   PRICE_LEVEL_FREE: 'ไม่มีค่าใช้จ่าย',
@@ -55,15 +86,77 @@ function isCafeName(name) {
   return /คาเฟ่|cafe|coffee/i.test(name)
 }
 
+// Google's Table A has 200+ place types (developers.google.com/maps/documentation/places/web-service/place-types)
+// that don't map 1:1 onto our 8 fixed categories. This routes every type
+// fetch-places.js's search scope can plausibly surface (restaurant,
+// cafe+bakery, tourist_attraction+museum+park, place_of_worship, lodging) to
+// the closest category. Anything not listed here -- overwhelmingly the
+// Food and Drink header's many *_restaurant/bar/pub subtypes -- is correctly
+// left to fall through to the 'ร้านอาหาร' default below.
+const CATEGORY_BY_TYPE = {
+  // Places of Worship
+  place_of_worship: 'วัด', buddhist_temple: 'วัด', hindu_temple: 'วัด',
+  mosque: 'วัด', church: 'วัด', shinto_shrine: 'วัด', synagogue: 'วัด',
+
+  // Culture -- Google's own "Culture" header, mapped as one group instead of
+  // re-split by our own judgment call (a castle/monument/historical_place is
+  // exactly as much "พิพิธภัณฑ์" to Google as an actual museum building is).
+  museum: 'พิพิธภัณฑ์', art_museum: 'พิพิธภัณฑ์', art_gallery: 'พิพิธภัณฑ์',
+  art_studio: 'พิพิธภัณฑ์', auditorium: 'พิพิธภัณฑ์', castle: 'พิพิธภัณฑ์',
+  cultural_landmark: 'พิพิธภัณฑ์', fountain: 'พิพิธภัณฑ์', historical_place: 'พิพิธภัณฑ์',
+  history_museum: 'พิพิธภัณฑ์', monument: 'พิพิธภัณฑ์', performing_arts_theater: 'พิพิธภัณฑ์',
+  sculpture: 'พิพิธภัณฑ์',
+
+  // Green space / parks. `national_park` gets its own category, not
+  // "สวนสาธารณะ" -- an อุทยานแห่งชาติ (with waterfalls, hiking, wildlife) reads
+  // to a Thai visitor as a destination, not a city park.
+  park: 'สวนสาธารณะ', state_park: 'สวนสาธารณะ',
+  city_park: 'สวนสาธารณะ', garden: 'สวนสาธารณะ', botanical_garden: 'สวนสาธารณะ',
+  playground: 'สวนสาธารณะ', picnic_ground: 'สวนสาธารณะ', dog_park: 'สวนสาธารณะ',
+  cycling_park: 'สวนสาธารณะ',
+
+  national_park: 'อุทยานแห่งชาติ',
+
+  // Everything else scenic/notable -- Entertainment and Recreation /
+  // Natural Features / Services headers that aren't a park or Culture.
+  // `historical_landmark` stays here (not in พิพิธภัณฑ์ above) because
+  // Google files it under Entertainment and Recreation, not Culture.
+  tourist_attraction: 'สถานที่ท่องเที่ยว', scenic_spot: 'สถานที่ท่องเที่ยว',
+  beach: 'สถานที่ท่องเที่ยว', island: 'สถานที่ท่องเที่ยว', lake: 'สถานที่ท่องเที่ยว',
+  mountain_peak: 'สถานที่ท่องเที่ยว', river: 'สถานที่ท่องเที่ยว', woods: 'สถานที่ท่องเที่ยว',
+  nature_preserve: 'สถานที่ท่องเที่ยว', wildlife_refuge: 'สถานที่ท่องเที่ยว',
+  wildlife_park: 'สถานที่ท่องเที่ยว', zoo: 'สถานที่ท่องเที่ยว', aquarium: 'สถานที่ท่องเที่ยว',
+  hiking_area: 'สถานที่ท่องเที่ยว', amusement_park: 'สถานที่ท่องเที่ยว', water_park: 'สถานที่ท่องเที่ยว',
+  historical_landmark: 'สถานที่ท่องเที่ยว', cultural_center: 'สถานที่ท่องเที่ยว',
+  planetarium: 'สถานที่ท่องเที่ยว', plaza: 'สถานที่ท่องเที่ยว',
+  visitor_center: 'สถานที่ท่องเที่ยว', tourist_information_center: 'สถานที่ท่องเที่ยว',
+  marina: 'สถานที่ท่องเที่ยว', vineyard: 'สถานที่ท่องเที่ยว', observation_deck: 'สถานที่ท่องเที่ยว',
+  ferris_wheel: 'สถานที่ท่องเที่ยว', bridge: 'สถานที่ท่องเที่ยว',
+
+  // Shopping -- only the touristy/market types. Supermarkets/convenience
+  // stores etc. are out of fetch-places.js's search scope, left unmapped.
+  market: 'ตลาด', flea_market: 'ตลาด', farmers_market: 'ตลาด', shopping_mall: 'ตลาด',
+
+  // Lodging
+  hotel: 'ที่พัก', resort_hotel: 'ที่พัก', motel: 'ที่พัก', hostel: 'ที่พัก',
+  inn: 'ที่พัก', guest_house: 'ที่พัก', bed_and_breakfast: 'ที่พัก', cottage: 'ที่พัก',
+  farmstay: 'ที่พัก', extended_stay_hotel: 'ที่พัก', lodging: 'ที่พัก',
+  campground: 'ที่พัก', rv_park: 'ที่พัก', camping_cabin: 'ที่พัก',
+  private_guest_room: 'ที่พัก', mobile_home_park: 'ที่พัก',
+  japanese_inn: 'ที่พัก', budget_japanese_inn: 'ที่พัก',
+
+  // Food and Drink -- cafe-shaped subtypes that aren't literally "restaurant"
+  cafe: 'คาเฟ่', coffee_shop: 'คาเฟ่', coffee_stand: 'คาเฟ่', coffee_roastery: 'คาเฟ่',
+  cat_cafe: 'คาเฟ่', dog_cafe: 'คาเฟ่', bakery: 'คาเฟ่', cake_shop: 'คาเฟ่',
+  pastry_shop: 'คาเฟ่', dessert_shop: 'คาเฟ่', dessert_restaurant: 'คาเฟ่',
+  ice_cream_shop: 'คาเฟ่', donut_shop: 'คาเฟ่', candy_store: 'คาเฟ่',
+  chocolate_shop: 'คาเฟ่', chocolate_factory: 'คาเฟ่', confectionery: 'คาเฟ่',
+  juice_shop: 'คาเฟ่', tea_house: 'คาเฟ่', bagel_shop: 'คาเฟ่', acai_shop: 'คาเฟ่',
+}
+
 function mapCategory(p, name) {
-  switch (p.primaryType) {
-    case 'place_of_worship': return 'วัด'
-    case 'state_park': return 'สวนสาธารณะ'
-    case 'tourist_attraction': return 'สถานที่ท่องเที่ยว'
-    case 'hotel': return 'ที่พัก'
-    case 'bakery': return 'คาเฟ่'
-    default: return isCafeName(name) ? 'คาเฟ่' : 'ร้านอาหาร'
-  }
+  if (CATEGORY_BY_TYPE[p.primaryType]) return CATEGORY_BY_TYPE[p.primaryType]
+  return isCafeName(name) ? 'คาเฟ่' : 'ร้านอาหาร'
 }
 
 function mapPrice(p, category) {
@@ -167,7 +260,7 @@ function tagsFromName(name) {
 function mapTags(category, goodForChildren, types, name) {
   const tags = new Set()
   if (category === 'วัด') tags.add('วัฒนธรรม/ศาสนา')
-  if (category === 'สวนสาธารณะ' || category === 'สถานที่ท่องเที่ยว') tags.add('ธรรมชาติ')
+  if (category === 'สวนสาธารณะ' || category === 'สถานที่ท่องเที่ยว' || category === 'อุทยานแห่งชาติ') tags.add('ธรรมชาติ')
   if (category === 'คาเฟ่') tags.add('คาเฟ่')
   if (category === 'ร้านอาหาร') tags.add('อาหารพื้นถิ่น')
   if (goodForChildren) tags.add('ครอบครัว')
@@ -202,10 +295,12 @@ function mapReviews(p) {
     .filter((r) => r.text)
 }
 
-function toRow(p) {
+async function toRow(p) {
   const name = p.displayName?.text || 'ไม่ทราบชื่อสถานที่'
   const category = mapCategory(p, name)
   const qrPoints = qrPointsByName[name] || 0
+  const images = await uploadPhotos(p.id)
+  const img = images[0] || '/assets/picture01.jpg'
   return {
     source: 'google',
     google_place_id: p.id,
@@ -229,16 +324,18 @@ function toRow(p) {
     has_qr: qrPoints > 0,
     qr_points: qrPoints,
     reviews: mapReviews(p),
-    img: './assets/picture01.jpg',
+    img,
+    images: images.length ? images : [img],
     business_status: p.businessStatus || null,
     raw_data: p,
   }
 }
 
 async function main() {
+  await ensurePhotoBucket()
   const jsonPath = join(__dirname, '..', 'data', 'places.json')
   const raw = JSON.parse(readFileSync(jsonPath, 'utf-8'))
-  const rows = raw.map(toRow)
+  const rows = await Promise.all(raw.map(toRow))
 
   const needsReview = rows.filter((r) => !r.category)
   console.log(`Importing ${rows.length} places (${needsReview.length} need manual category review)...`)

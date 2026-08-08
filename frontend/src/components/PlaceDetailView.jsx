@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useApp } from '../context/AppContext.jsx'
 import ImageSlot from './ImageSlot.jsx'
+import ImageGallery from './ImageGallery.jsx'
 import { ChecklistIcon, StarIcon, PinIcon, ClockIcon, PhoneIcon, RouteIcon, PencilIcon, ShareArrowIcon, HeartIcon, AmenityIcon } from './Icons.jsx'
 
 const mockReviews = [
@@ -63,9 +64,11 @@ export default function PlaceDetailView({ place: p, imageHeight = 460 }) {
               ))}
             </div>
           )}
-          <div style={{ borderRadius: 16, overflow: 'hidden' }}>
-            <ImageSlot src={p.img} shape="rect" style={{ width: '100%', height: imageHeight }} placeholder="แกลเลอรีภาพสถานที่" />
-          </div>
+          <ImageGallery
+            images={p.images && p.images.length ? p.images : (p.img ? [p.img] : [])}
+            height={imageHeight}
+            placeholder="แกลเลอรีภาพสถานที่"
+          />
           <div style={{ display: 'flex', gap: 10, marginTop: 20, flexWrap: 'wrap' }}>
             {p.mapsUrl && <a href={p.mapsUrl} target="_blank" rel="noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 7, background: 'linear-gradient(135deg,#66BB6A,#388E3C)', color: '#fff', border: 'none', padding: '10px 18px', borderRadius: 20, fontSize: 13.5, fontWeight: 700, cursor: 'pointer' }}><RouteIcon size={16} color="#fff" box={false} />เปิดเส้นทาง Google Maps</a>}
             {p.phone && <a href={`tel:${p.phone}`} style={{ display: 'flex', alignItems: 'center', gap: 7, background: '#fff', color: '#1f2a24', border: '1px solid #DCD8C6', padding: '10px 18px', borderRadius: 20, fontSize: 13.5, fontWeight: 700, cursor: 'pointer' }}><PhoneIcon size={16} color="#1f2a24" box={false} />โทรติดต่อ</a>}

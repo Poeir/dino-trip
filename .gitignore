@@ -14,3 +14,9 @@ Thumbs.db
 
 .vscode/
 .idea/
+
+# fetch-places.js output: raw Google API dump + downloaded photos, both
+# regenerable via `npm run fetch:places` (a paid call) and already uploaded
+# to Supabase Storage by `npm run import:places` -- no reason to commit them.
+backend/data/places.json
+backend/data/photos/

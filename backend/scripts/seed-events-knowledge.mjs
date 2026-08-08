@@ -33,7 +33,7 @@ const events = [
     suitable_for: ['ครอบครัว', 'นักท่องเที่ยวต่างชาติ', 'ผู้สนใจผ้าไหม'],
     description: 'งานประจำปีที่ยิ่งใหญ่ที่สุดของขอนแก่น รวมนิทรรศการและออกร้านผ้าไหมมัดหมี่ พิธีผูกเสี่ยว (ผูกข้อมือสร้างสายสัมพันธ์ฉันมิตร) งานกาชาด ขบวนแห่เปิดงาน และการแสดงศิลปวัฒนธรรมอีสาน',
     status: 'upcoming',
-    img: null,
+    img: 'https://upload.wikimedia.org/wikipedia/commons/a/a3/Traditional_Thai_silk_making.jpg',
   },
   {
     name: 'งานประเพณีสุดยอดสงกรานต์อีสาน เทศกาลดอกคูนเสียงแคน และถนนข้าวเหนียว ประจำปี 2569',
@@ -45,7 +45,7 @@ const events = [
     suitable_for: ['ครอบครัว', 'วัยรุ่น', 'นักท่องเที่ยว'],
     description: 'เทศกาลสงกรานต์ที่ยิ่งใหญ่ที่สุดของภาคอีสาน มีพิธีเปิดและคอนเสิร์ตที่บึงแก่นนคร การประกวดเทพธิดาดอกคูนเสียงแคน ขบวนแห่พระพุทธรูปศักดิ์สิทธิ์จาก 20 คุ้มวัด และกิจกรรม Human Wave เล่นน้ำสงกรานต์แบบไร้แอลกอฮอล์บนถนนข้าวเหนียว',
     status: 'published',
-    img: null,
+    img: 'https://upload.wikimedia.org/wikipedia/commons/c/c7/Grand_songkran_%28Thai_New_Year_%29_Water_Festival.jpg',
   },
   {
     name: 'ประเพณีลอยกระทง บึงแก่นนคร ขอนแก่น ประจำปี 2569',
@@ -57,7 +57,7 @@ const events = [
     suitable_for: ['ครอบครัว', 'คู่รัก'],
     description: 'งานลอยกระทงประจำปีที่ใหญ่ที่สุดในขอนแก่น จัดขึ้นที่บึงแก่นนครและบึงสำคัญทั่วเมือง มีพิธีทำกระทง การประกวดกระทง การแสดงทางวัฒนธรรม และตลาดสินค้า OTOP',
     status: 'upcoming',
-    img: null,
+    img: 'https://upload.wikimedia.org/wikipedia/commons/4/46/Phra_Mahathat_Kaen_Nakhon_temple%2C_Khon_Kaen%2C_Thailand.jpg',
   },
   {
     name: 'งานบวงสรวงพระธาตุขามแก่น',
@@ -69,7 +69,7 @@ const events = [
     suitable_for: ['ครอบครัว', 'ผู้สนใจศาสนาและวัฒนธรรม'],
     description: 'พิธีบวงสรวงสักการะพระธาตุขามแก่น ปูชนียสถานศักดิ์สิทธิ์คู่บ้านคู่เมืองขอนแก่นตามคำขวัญประจำจังหวัด จัดขึ้นเป็นประจำทุกปีในวันเพ็ญเดือน 6',
     status: 'published',
-    img: null,
+    img: 'https://upload.wikimedia.org/wikipedia/commons/3/3f/Phra_That_Kham_Kaen_9102.jpg',
   },
 ]
 

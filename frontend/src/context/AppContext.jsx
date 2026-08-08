@@ -29,7 +29,8 @@ const initialState = {
   chatMessages: [
     { from: 'bot', text: 'สวัสดีครับ! ผมน้องไดโน ผู้ช่วยนำเที่ยวขอนแก่น สอบถามเรื่องสถานที่ อาหาร หรือเทศกาลได้เลยครับ' }
   ],
-  tripForm: { startDate: '', endDate: '', interests: [], budget: 'ปานกลาง', accommodation: '', mustGo: '', pace: 'standard', dailyStart: '09:00', dailyEnd: '18:00' },
+  tripForm: { startDate: '', endDate: '', interests: [], budget: 'ปานกลาง', accommodation: '', mustGo: [], pace: 'standard', dailyStart: '09:00', dailyEnd: '18:00' },
+  mustGoQuery: '',
   tripFormError: '',
   tripStep: 0,
   tripPlanning: false,
@@ -59,6 +60,14 @@ const initialState = {
 function timeToMinutes(t) {
   const [h, m] = t.split(':').map(Number)
   return h * 60 + m
+}
+function addDays(d, n) {
+  const r = new Date(d)
+  r.setDate(r.getDate() + n)
+  return r
+}
+function fmtDate(d) {
+  return d.toISOString().slice(0, 10)
 }
 function validateTripDates(f) {
   if (!f.startDate || !f.endDate) return ''
@@ -195,7 +204,32 @@ export function AppProvider({ children }) {
   const onStartDateChange = (e) => updateTripField('startDate', e.target.value)
   const onEndDateChange = (e) => updateTripField('endDate', e.target.value)
   const onAccommodationChange = (e) => updateTripField('accommodation', e.target.value)
-  const onMustGoChange = (e) => updateTripField('mustGo', e.target.value)
+  const setTripDatePreset = (preset) => {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    let start = today, end = today
+    if (preset === 'today') { end = today }
+    else if (preset === '2days') { end = addDays(today, 1) }
+    else if (preset === '3days') { end = addDays(today, 2) }
+    else if (preset === 'weekend') {
+      const untilSat = (6 - today.getDay() + 7) % 7
+      start = addDays(today, untilSat)
+      end = addDays(start, 1)
+    }
+    setState((s) => ({ tripForm: { ...s.tripForm, startDate: fmtDate(start), endDate: fmtDate(end) }, tripFormError: '' }))
+  }
+  const onMustGoQueryChange = (e) => setState({ mustGoQuery: e.target.value })
+  const addMustGo = (name) => {
+    const trimmed = name.trim()
+    if (!trimmed) return
+    setState((s) => s.tripForm.mustGo.includes(trimmed)
+      ? { mustGoQuery: '' }
+      : { tripForm: { ...s.tripForm, mustGo: [...s.tripForm.mustGo, trimmed] }, mustGoQuery: '', tripFormError: '' })
+  }
+  const removeMustGo = (name) => setState((s) => ({ tripForm: { ...s.tripForm, mustGo: s.tripForm.mustGo.filter((x) => x !== name) } }))
+  const onMustGoKeyDown = (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); addMustGo(stateRef.current.mustGoQuery) }
+  }
   const setPace = (p) => setState((s) => ({ tripForm: { ...s.tripForm, pace: p } }))
   const onDailyStartChange = (e) => updateTripField('dailyStart', e.target.value)
   const onDailyEndChange = (e) => updateTripField('dailyEnd', e.target.value)
@@ -248,7 +282,7 @@ export function AppProvider({ children }) {
         trip_duration_days: days,
         start_date: f.startDate,
         accommodation_name: f.accommodation,
-        must_go: f.mustGo.split(',').map((s) => s.trim()).filter(Boolean),
+        must_go: f.mustGo,
         interests: f.interests,
         trip_pace: f.pace,
         budget_level: f.budget,
@@ -272,6 +306,27 @@ export function AppProvider({ children }) {
       tripPlan: {
         ...s.tripPlan,
         days: s.tripPlan.days.map((d) => d.dayNum !== dayNum ? d : { ...d, items: d.items.map((it) => it.placeId !== placeId ? it : { ...it, liked: it.liked === val ? null : val }) })
+      }
+    }))
+  }
+
+  const swapItem = (dayNum, placeId) => {
+    const s = stateRef.current
+    const plan = s.tripPlan
+    const usedIds = new Set(plan.days.flatMap((d) => d.items.map((i) => i.placeId)))
+    const current = plan.days.flatMap((d) => d.items).find((i) => i.placeId === placeId)
+    const currentCategory = current && current.place && current.place.category
+    const sameCategory = s.places.filter((p) => !usedIds.has(p.id) && p.category === currentCategory)
+    const pool = sameCategory.length ? sameCategory : s.places.filter((p) => !usedIds.has(p.id))
+    if (!pool.length) { showToast('ไม่มีสถานที่อื่นให้สลับแล้วครับ'); return }
+    const replacement = pool[Math.floor(Math.random() * pool.length)]
+    setState((s2) => ({
+      tripPlan: {
+        ...s2.tripPlan,
+        days: s2.tripPlan.days.map((d) => d.dayNum !== dayNum ? d : {
+          ...d,
+          items: d.items.map((it) => it.placeId !== placeId ? it : { placeId: replacement.id, time: it.time, liked: null })
+        })
       }
     }))
   }
@@ -398,8 +453,10 @@ export function AppProvider({ children }) {
     setEventSearchQuery, onEventSearchChange, toggleFavorite,
     onAuthNameChange, onAuthEmailChange, onAuthPasswordChange, submitLogin, submitSignup, logout,
     toggleChat, onChatInputChange, sendChat,
-    onStartDateChange, onEndDateChange, onAccommodationChange, onMustGoChange, setPace, onDailyStartChange, onDailyEndChange,
-    onFeedbackChange, toggleInterest, setBudget, submitTripForm, setItemLike, regeneratePlan,
+    onStartDateChange, onEndDateChange, onAccommodationChange, setTripDatePreset,
+    onMustGoQueryChange, addMustGo, removeMustGo, onMustGoKeyDown,
+    setPace, onDailyStartChange, onDailyEndChange,
+    onFeedbackChange, toggleInterest, setBudget, submitTripForm, setItemLike, swapItem, regeneratePlan,
     startScan, resetScan, redeemReward,
     adminLogin, adminLogout, openCreateForm, openEditForm, updateFormField, cancelForm,
     saveForm, deleteItem, onNewPlace, onNewEvent, onNewKb, onNewQr, onNewReward,
@@ -413,8 +470,8 @@ export function AppProvider({ children }) {
     bg: c === s.activeCategory ? 'linear-gradient(135deg,#66BB6A,#388E3C)' : '#fff', color: c === s.activeCategory ? '#fff' : '#1f2a24',
     iconBorder: c === s.activeCategory ? '#fff' : '#2E7D32'
   }))
-  const isGrid = (k) => k === 'grid', isCup = (k) => k === 'cup', isTemple = (k) => k === 'temple', isMuseum = (k) => k === 'museum', isTree = (k) => k === 'tree', isBasket = (k) => k === 'basket', isCamera = (k) => k === 'camera', isFood = (k) => k === 'food', isBed = (k) => k === 'bed'
-  const categoriesViewIcons = categoriesView.map((c) => ({ ...c, showGrid: isGrid(c.icon), showCup: isCup(c.icon), showTemple: isTemple(c.icon), showMuseum: isMuseum(c.icon), showTree: isTree(c.icon), showBasket: isBasket(c.icon), showCamera: isCamera(c.icon), showFood: isFood(c.icon), showBed: isBed(c.icon) }))
+  const isGrid = (k) => k === 'grid', isCup = (k) => k === 'cup', isTemple = (k) => k === 'temple', isMuseum = (k) => k === 'museum', isTree = (k) => k === 'tree', isMountain = (k) => k === 'mountain', isBasket = (k) => k === 'basket', isCamera = (k) => k === 'camera', isFood = (k) => k === 'food', isBed = (k) => k === 'bed'
+  const categoriesViewIcons = categoriesView.map((c) => ({ ...c, showGrid: isGrid(c.icon), showCup: isCup(c.icon), showTemple: isTemple(c.icon), showMuseum: isMuseum(c.icon), showTree: isTree(c.icon), showMountain: isMountain(c.icon), showBasket: isBasket(c.icon), showCamera: isCamera(c.icon), showFood: isFood(c.icon), showBed: isBed(c.icon) }))
   const placeBadge = (p) => p.reviews >= 1500 ? { label: 'ยอดนิยม', bg: '#FDEEE3', color: '#E07B39' } : { label: '', bg: '', color: '' }
   const filteredPlaces = s.places.filter((p) => {
     const catOk = s.activeCategory === 'ทั้งหมด' || p.category === s.activeCategory
@@ -428,6 +485,20 @@ export function AppProvider({ children }) {
     return !q || e.name.toLowerCase().includes(q) || (e.desc || '').toLowerCase().includes(q)
   }).map((e) => ({ ...e, onOpen: () => openEvent(e.id) }))
   const qrPlacesList = s.places.filter((p) => p.hasQR).map((p) => ({ ...p, onOpen: () => openPlace(p.id) }))
+
+  const datePresetOptions = [
+    { key: 'today', label: 'วันนี้ (เดย์ทริป)' },
+    { key: '2days', label: '2 วัน' },
+    { key: '3days', label: '3 วัน' },
+    { key: 'weekend', label: 'สุดสัปดาห์นี้' },
+  ].map((p) => ({ ...p, onClick: () => setTripDatePreset(p.key) }))
+
+  const mustGoQueryTrim = s.mustGoQuery.trim().toLowerCase()
+  const mustGoSuggestionsView = mustGoQueryTrim
+    ? s.places.filter((p) => p.name.toLowerCase().includes(mustGoQueryTrim) && !s.tripForm.mustGo.includes(p.name))
+      .slice(0, 6).map((p) => ({ id: p.id, name: p.name, category: p.category, onClick: () => addMustGo(p.name) }))
+    : []
+  const mustGoChipsView = s.tripForm.mustGo.map((name) => ({ name, onRemove: () => removeMustGo(name) }))
 
   const interestOptionsView = interestList.map((i) => {
     const active = s.tripForm.interests.includes(i)
@@ -469,6 +540,7 @@ export function AppProvider({ children }) {
           ...it, place,
           onLike: () => setItemLike(d.dayNum, it.placeId, true),
           onDislike: () => setItemLike(d.dayNum, it.placeId, false),
+          onSwap: () => swapItem(d.dayNum, it.placeId),
           likeBg: it.liked === true ? '#E8F5E9' : '#fff', likeColor: it.liked === true ? '#2E7D32' : '#6d7a72', likeBorder: it.liked === true ? '#2E7D32' : '#DCD8C6',
           dislikeBg: it.liked === false ? '#fdecec' : '#fff', dislikeColor: it.liked === false ? '#a33232' : '#6d7a72', dislikeBorder: it.liked === false ? '#a33232' : '#DCD8C6'
         }
@@ -517,7 +589,7 @@ export function AppProvider({ children }) {
     categoriesView, categoriesViewIcons, filteredPlaces, placesEmpty: filteredPlaces.length === 0, eventsView,
     qrPlacesList,
     chatMessagesView: s.chatMessages.map((m) => ({ ...m, align: m.from === 'user' ? 'flex-end' : 'flex-start', bg: m.from === 'user' ? '#2E7D32' : '#f0efe7', color: m.from === 'user' ? '#fff' : '#1f2a24' })),
-    interestOptionsView, budgetOptionsView, paceOptionsView,
+    interestOptionsView, budgetOptionsView, paceOptionsView, datePresetOptions, mustGoSuggestionsView, mustGoChipsView,
     isStep0: s.tripStep === 0, isStep1: s.tripStep === 1, isStep2: s.tripStep === 2, isStep3: s.tripStep === 3,
     primaryLabel: s.tripStep === 3 ? 'สร้างแผนการเดินทาง →' : 'ถัดไป →',
     onPrimaryStep: s.tripStep === 3 ? submitTripForm : nextStep,

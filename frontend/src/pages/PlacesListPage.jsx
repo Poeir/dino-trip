@@ -1,6 +1,6 @@
 import { useApp } from '../context/AppContext.jsx'
 import ImageSlot from '../components/ImageSlot.jsx'
-import { GridIcon, CupIcon, TempleIcon, MuseumIcon, TreeIcon, BasketIcon, CameraIcon, FoodIcon, BedIcon, HeartIcon } from '../components/Icons.jsx'
+import { GridIcon, CupIcon, TempleIcon, MuseumIcon, TreeIcon, MountainIcon, BasketIcon, CameraIcon, FoodIcon, BedIcon, HeartIcon } from '../components/Icons.jsx'
 
 function CategoryIcon({ cat }) {
   const props = { size: 15, color: cat.iconBorder, box: false }
@@ -9,6 +9,7 @@ function CategoryIcon({ cat }) {
   if (cat.showTemple) return <TempleIcon {...props} />
   if (cat.showMuseum) return <MuseumIcon {...props} />
   if (cat.showTree) return <TreeIcon {...props} />
+  if (cat.showMountain) return <MountainIcon {...props} />
   if (cat.showBasket) return <BasketIcon {...props} />
   if (cat.showCamera) return <CameraIcon {...props} />
   if (cat.showFood) return <FoodIcon {...props} />

@@ -17,11 +17,12 @@
 // Usage: cd backend && npm run fetch:places
 
 import 'dotenv/config'
-import { writeFileSync } from 'node:fs'
+import { writeFileSync, mkdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
+const PHOTOS_DIR = join(__dirname, '..', 'data', 'photos')
 
 const API_KEY = process.env.GOOGLE_PLACES_API_KEY
 if (!API_KEY) {
@@ -68,7 +69,7 @@ const DETAILS_FIELD_MASK = [
   'editorialSummary', 'reviews', 'businessStatus', 'goodForChildren',
   'parkingOptions', 'accessibilityOptions', 'restroom', 'outdoorSeating',
   'allowsDogs', 'delivery', 'takeout', 'reservable', 'paymentOptions',
-  'servesVegetarianFood',
+  'servesVegetarianFood', 'photos',
 ].join(',')
 
 function sleep(ms) {
@@ -102,6 +103,8 @@ async function searchNearbyIds(point, includedTypes) {
       locationRestriction: {
         circle: { center: { latitude: point.lat, longitude: point.lng }, radius: RADIUS_M },
       },
+      languageCode: 'th',
+      regionCode: 'TH',
     }),
   })
   if (!res.ok) {
@@ -124,6 +127,8 @@ async function searchTextIds(textQuery) {
       textQuery,
       includedType: 'tourist_attraction',
       maxResultCount: 20,
+      languageCode: 'th',
+      regionCode: 'TH',
     }),
   })
   if (!res.ok) {
@@ -135,7 +140,7 @@ async function searchTextIds(textQuery) {
 }
 
 async function fetchDetails(placeId) {
-  const res = await fetch(`https://places.googleapis.com/v1/places/${placeId}`, {
+  const res = await fetch(`https://places.googleapis.com/v1/places/${placeId}?languageCode=th&regionCode=TH`, {
     headers: {
       'X-Goog-Api-Key': API_KEY,
       'X-Goog-FieldMask': DETAILS_FIELD_MASK,
@@ -146,6 +151,34 @@ async function fetchDetails(placeId) {
     return null
   }
   return res.json()
+}
+
+// Up to this many photos per place, for a gallery instead of one hero image.
+// Each is a separate billed Photo Media request (first 1,000/month free,
+// $7/1,000 after) -- keep this modest so a full-scope run doesn't multiply
+// the Place Details cost several times over.
+const MAX_PHOTOS_PER_PLACE = 5
+
+// Photo `name` values expire and can't be cached, so we resolve + download
+// the actual image bytes to disk in the same run we fetched Details --
+// import-places.js then uploads these to our own Supabase Storage bucket so
+// the site never depends on Google's (temporary, API-key-bearing) photo URL.
+async function downloadPhotos(photos, placeId) {
+  const dir = join(PHOTOS_DIR, placeId)
+  let saved = 0
+  for (const photo of (photos || []).slice(0, MAX_PHOTOS_PER_PLACE)) {
+    const url = `https://places.googleapis.com/v1/${photo.name}/media?maxWidthPx=1200&key=${API_KEY}`
+    const res = await fetch(url)
+    if (!res.ok) {
+      console.error(`  Photo download failed (${res.status}) for ${placeId}`)
+      continue
+    }
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, `${saved}.jpg`), Buffer.from(await res.arrayBuffer()))
+    saved++
+    await sleep(150)
+  }
+  return saved
 }
 
 async function main() {
@@ -174,7 +207,10 @@ async function main() {
   let done = 0
   for (const id of ids) {
     const details = await fetchDetails(id)
-    if (details) places.push(details)
+    if (details) {
+      places.push(details)
+      await downloadPhotos(details.photos, id)
+    }
     done++
     if (done % 20 === 0) console.log(`  ${done}/${ids.size}...`)
     await sleep(150)

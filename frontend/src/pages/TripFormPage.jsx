@@ -41,6 +41,11 @@ export default function TripFormPage() {
                 <CalendarIcon />
                 <h2 style={{ fontSize: 20, fontWeight: 800, color: '#1B5E20', margin: 0 }}>คุณจะเดินทางเมื่อไหร่?</h2>
               </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 18 }}>
+                {derived.datePresetOptions.map((p) => (
+                  <button key={p.key} type="button" onClick={p.onClick} style={{ border: '1px solid #C8E6C9', background: '#F1F8E9', color: '#2E7D32', borderRadius: 20, padding: '7px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>{p.label}</button>
+                ))}
+              </div>
               <div data-role="trip-two-col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 18 }}>
                 <div>
                   <label style={{ fontSize: 13, fontWeight: 700, color: '#1B5E20', display: 'block', marginBottom: 6 }}>วันเริ่มต้น</label>
@@ -54,7 +59,35 @@ export default function TripFormPage() {
               <label style={{ fontSize: 13, fontWeight: 700, color: '#1B5E20', display: 'block', marginBottom: 6 }}>พักที่ไหน?</label>
               <input value={f.accommodation} onChange={actions.onAccommodationChange} placeholder="เช่น โรงแรมพูลแมน ขอนแก่น" style={{ width: '100%', border: '1px solid #DCD8C6', borderRadius: 10, padding: 11, fontSize: 14, marginBottom: 18 }} />
               <label style={{ fontSize: 13, fontWeight: 700, color: '#1B5E20', display: 'block', marginBottom: 6 }}>มีสถานที่ที่อยากไปแน่ๆ มั้ย? (ถ้ามี)</label>
-              <input value={f.mustGo} onChange={actions.onMustGoChange} placeholder="เช่น วัดหนองแวง, บึงแก่นนคร (คั่นด้วยจุลภาคถ้ามีหลายที่)" style={{ width: '100%', border: '1px solid #DCD8C6', borderRadius: 10, padding: 11, fontSize: 14 }} />
+              {derived.mustGoChipsView.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+                  {derived.mustGoChipsView.map((chip) => (
+                    <span key={chip.name} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#E8F5E9', color: '#1B5E20', border: '1px solid #C8E6C9', borderRadius: 16, padding: '5px 6px 5px 12px', fontSize: 13, fontWeight: 700 }}>
+                      {chip.name}
+                      <button type="button" onClick={chip.onRemove} aria-label={`ลบ ${chip.name}`} style={{ background: 'transparent', border: 'none', color: '#2E7D32', cursor: 'pointer', fontSize: 15, lineHeight: 1, padding: '0 4px' }}>×</button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div style={{ position: 'relative' }}>
+                <input
+                  value={state.mustGoQuery}
+                  onChange={actions.onMustGoQueryChange}
+                  onKeyDown={actions.onMustGoKeyDown}
+                  placeholder="พิมพ์ค้นหาสถานที่ แล้วกด Enter หรือเลือกจากรายการ"
+                  style={{ width: '100%', border: '1px solid #DCD8C6', borderRadius: 10, padding: 11, fontSize: 14 }}
+                />
+                {derived.mustGoSuggestionsView.length > 0 && (
+                  <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4, background: '#fff', border: '1px solid #E7E3D2', borderRadius: 12, boxShadow: '0 12px 28px rgba(46,125,50,0.14)', zIndex: 5, overflow: 'hidden' }}>
+                    {derived.mustGoSuggestionsView.map((sug) => (
+                      <div key={sug.id} onClick={sug.onClick} style={{ padding: '10px 14px', cursor: 'pointer', fontSize: 13.5, display: 'flex', justifyContent: 'space-between', gap: 10, borderBottom: '1px solid #F1F1EA' }}>
+                        <span style={{ fontWeight: 700, color: '#1f2a24' }}>{sug.name}</span>
+                        <span style={{ color: '#8a938c', fontSize: 12 }}>{sug.category}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </>
           )}
 

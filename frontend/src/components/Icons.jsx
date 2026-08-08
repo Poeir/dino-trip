@@ -294,6 +294,16 @@ export function TreeIcon({ size = 24, color = stroke, box = true } = {}) {
   )
 }
 
+export function MountainIcon({ size = 24, color = stroke, box = true } = {}) {
+  return wrap(
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <path d="M3 18.5 9.5 7l3.6 5.8L15.5 9l5.5 9.5H3Z" stroke={color} strokeWidth={sw} strokeLinejoin="round" />
+      <path d="M18.5 18.5 15.5 9l-2.4 3.8" stroke={color} strokeWidth={sw} strokeLinejoin="round" />
+    </svg>,
+    box
+  )
+}
+
 export function BasketIcon({ size = 24, color = stroke, box = true } = {}) {
   return wrap(
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
