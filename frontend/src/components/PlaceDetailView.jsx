@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useApp } from '../context/AppContext.jsx'
 import ImageSlot from './ImageSlot.jsx'
 import ImageGallery from './ImageGallery.jsx'
-import { ChecklistIcon, StarIcon, PinIcon, ClockIcon, PhoneIcon, RouteIcon, PencilIcon, ShareArrowIcon, HeartIcon, AmenityIcon } from './Icons.jsx'
+import { ChecklistIcon, StarIcon, PinIcon, ClockIcon, PhoneIcon, RouteIcon, PencilIcon, ShareArrowIcon, HeartIcon, AmenityIcon, SparkleAIIcon, groupAmenities } from './Icons.jsx'
 
 const mockReviews = [
   { stars: 5, name: 'นักท่องเที่ยว', text: 'บริการดี บรรยากาศน่ามาเยือน แนะนำมาก' },
@@ -83,17 +83,32 @@ export default function PlaceDetailView({ place: p, imageHeight = 460 }) {
           </div>
         </div>
         <div>
-          <p style={{ fontSize: 15, lineHeight: 1.75, color: '#3c463f', margin: '0 0 24px' }}>{p.desc}</p>
+          <div className="dc-ai-summary">
+            <div className="dc-ai-summary-inner">
+              <div className="dc-ai-summary-badge">
+                <SparkleAIIcon size={14} color="#2E7D32" />
+                <span className="dc-ai-summary-badge-text">สรุปโดย Dino AI</span>
+              </div>
+              <p style={{ fontSize: 15, lineHeight: 1.75, color: '#3c463f', margin: 0 }}>{p.desc}</p>
+            </div>
+          </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
             <ChecklistIcon />
             <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1B5E20', margin: 0 }}>สิ่งอำนวยความสะดวก</h3>
           </div>
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 28 }}>
-            {(p.amenities || []).map((am, i) => (
-              <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, background: '#F1F8E9', border: '1px solid #C8E6C9', padding: '6px 13px', borderRadius: 14, color: '#2E7D32' }}>
-                <AmenityIcon label={am} />
-                {am}
-              </span>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '14px 20px', marginBottom: 28 }}>
+            {groupAmenities(p.amenities || []).map(({ group, items }) => (
+              <div key={group}>
+                <div style={{ fontSize: 11.5, fontWeight: 700, color: '#6d7a72', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 7 }}>{group}</div>
+                <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+                  {items.map((am, i) => (
+                    <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12.5, background: '#F1F8E9', border: '1px solid #C8E6C9', padding: '5px 10px', borderRadius: 12, color: '#2E7D32' }}>
+                      <AmenityIcon label={am} size={13} />
+                      {am}
+                    </span>
+                  ))}
+                </div>
+              </div>
             ))}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
@@ -169,8 +184,18 @@ export default function PlaceDetailView({ place: p, imageHeight = 460 }) {
               </div>
             </div>
           </div>
+          {(p.createdAt || p.updatedAt) && (
+            <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', fontSize: 12, color: '#a3ab9e', marginTop: 14 }}>
+              {p.createdAt && <span>เพิ่มข้อมูลเมื่อ {formatPlaceDate(p.createdAt)}</span>}
+              {p.updatedAt && <span>อัปเดตล่าสุด {formatPlaceDate(p.updatedAt)}</span>}
+            </div>
+          )}
         </div>
       </div>
     </div>
   )
+}
+
+function formatPlaceDate(iso) {
+  return new Date(iso).toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })
 }

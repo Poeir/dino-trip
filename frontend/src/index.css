@@ -95,6 +95,47 @@ input, textarea, select, button { font-family: inherit; }
 @keyframes dc-fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes dc-particle-float { 0%, 100% { transform: translate(0,0) scale(1); opacity: 0.35; } 50% { transform: translate(10px,-24px) scale(1.35); opacity: 0.9; } }
 @keyframes dc-typing-dot { 0%, 60%, 100% { transform: translateY(0); opacity: 0.4; } 30% { transform: translateY(-4px); opacity: 1; } }
+@keyframes dc-gradient-run { 0% { background-position: 0% 50%; } 100% { background-position: 300% 50%; } }
+@keyframes dc-ai-glow { 0%, 100% { opacity: 0.6; transform: scale(1); } 50% { opacity: 1; transform: scale(1.12); } }
+
+.dc-ai-summary {
+  position: relative;
+  border-radius: 18px;
+  padding: 1.5px;
+  margin: 0 0 24px;
+  background: linear-gradient(115deg, #1B5E20, #66BB6A, #FBC02D, #29B6F6, #1B5E20, #66BB6A, #FBC02D);
+  background-size: 400% 400%;
+  animation: dc-gradient-run 6s linear infinite;
+  box-shadow: 0 10px 26px rgba(27,94,32,0.14);
+}
+.dc-ai-summary-inner {
+  background: #fdfdf8;
+  border-radius: 16.5px;
+  padding: 16px 20px 18px;
+}
+.dc-ai-summary-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  padding: 5px 13px 5px 10px;
+  border-radius: 20px;
+  margin-bottom: 10px;
+  background: linear-gradient(100deg, rgba(27,94,32,0.09), rgba(251,192,45,0.13), rgba(41,182,246,0.09), rgba(27,94,32,0.09));
+  background-size: 300% 100%;
+  animation: dc-gradient-run 6s linear infinite;
+}
+.dc-ai-summary-badge svg { animation: dc-ai-glow 2.4s ease-in-out infinite; flex-shrink: 0; }
+.dc-ai-summary-badge-text {
+  background: linear-gradient(100deg, #1B5E20, #388E3C, #FBC02D, #29B6F6, #1B5E20);
+  background-size: 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: dc-gradient-run 6s linear infinite;
+}
 
 .dc-chat-fab { transition: transform 0.25s cubic-bezier(.34,1.56,.64,1); }
 .dc-chat-fab img { filter: drop-shadow(0 8px 16px rgba(0,0,0,0.28)); transition: filter 0.25s ease; }

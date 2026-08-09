@@ -28,6 +28,8 @@ export function rowToPlace(row) {
     img: row.img,
     images: row.images && row.images.length ? row.images : (row.img ? [row.img] : []),
     businessStatus: row.business_status,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   }
 }
 

@@ -23,6 +23,15 @@ export function CalendarIcon({ size = 24, color = stroke, box = true } = {}) {
   )
 }
 
+export function SparkleAIIcon({ size = 16, color = stroke, box = false } = {}) {
+  return wrap(
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <path d="M12 2.5c.55 3.7 1.45 6.05 3.05 7.65 1.6 1.6 3.95 2.5 7.65 3.05-3.7.55-6.05 1.45-7.65 3.05-1.6 1.6-2.5 3.95-3.05 7.65-.55-3.7-1.45-6.05-3.05-7.65-1.6-1.6-3.95-2.5-7.65-3.05 3.7-.55 6.05-1.45 7.65-3.05 1.6-1.6 2.5-3.95 3.05-7.65Z" fill={color} />
+    </svg>,
+    box
+  )
+}
+
 export function PinIcon({ box = true, color = stroke } = {}) {
   return wrap(
     <svg width="22" height="26" viewBox="0 0 24 28" fill="none">
@@ -336,22 +345,219 @@ export function DotIcon({ size = 24, color = stroke, box = true } = {}) {
   )
 }
 
-const amenityKeywordIcons = [
-  [['จอดรถ'], ParkingIcon],
-  [['wi-fi', 'wifi'], WifiIcon],
-  [['บัตร'], CardIcon],
-  [['ผู้พิการ'], AccessibilityIcon],
-  [['ของที่ระลึก', 'หัตถกรรม'], ShopIcon],
-  [['ไกด์'], GuideIcon],
-  [['วิ่ง'], RunIcon],
-  [['อาหาร'], FoodIcon],
-  [['ชาร์จ'], BoltIcon],
-  [['ถ่ายรูป'], CameraIcon],
+export function RestroomIcon({ size = 24, color = stroke, box = true } = {}) {
+  return wrap(
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="5" r="2.2" stroke={color} strokeWidth={sw} />
+      <path d="M12 8v6M9 10.5h6M9.5 14 8 20M14.5 14 16 20" stroke={color} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" />
+    </svg>,
+    box
+  )
+}
+
+export function OutdoorSeatIcon({ size = 24, color = stroke, box = true } = {}) {
+  return wrap(
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <path d="M12 3c4.5 0 8 3 8 6.5H4C4 6 7.5 3 12 3Z" stroke={color} strokeWidth={sw} strokeLinejoin="round" />
+      <path d="M12 9.5V19M9 21h6" stroke={color} strokeWidth={sw} strokeLinecap="round" />
+    </svg>,
+    box
+  )
+}
+
+export function SmileyIcon({ size = 24, color = stroke, box = true } = {}) {
+  return wrap(
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="12" r="8.5" stroke={color} strokeWidth={sw} />
+      <circle cx="9" cy="10" r="1" fill={color} />
+      <circle cx="15" cy="10" r="1" fill={color} />
+      <path d="M8.5 14.5c1 1.3 2.2 2 3.5 2s2.5-.7 3.5-2" stroke={color} strokeWidth={sw} strokeLinecap="round" />
+    </svg>,
+    box
+  )
+}
+
+export function PawIcon({ size = 24, color = stroke, box = true } = {}) {
+  return wrap(
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <circle cx="7.5" cy="9.5" r="1.7" fill={color} />
+      <circle cx="12" cy="6.5" r="1.7" fill={color} />
+      <circle cx="16.5" cy="9.5" r="1.7" fill={color} />
+      <path d="M12 12c-3.2 0-5.5 2.1-5.5 4.5 0 1.8 1.5 3 3.2 2.3.9-.35 1.4-.35 2.3 0 1.7.7 3.2-.5 3.2-2.3 0-2.4-2.3-4.5-5.2-4.5Z" fill={color} />
+    </svg>,
+    box
+  )
+}
+
+export function DeliveryIcon({ size = 24, color = stroke, box = true } = {}) {
+  return wrap(
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <rect x="4.5" y="7.5" width="15" height="12" rx="1.5" stroke={color} strokeWidth={sw} />
+      <path d="M4.5 12h15M12 7.5v12" stroke={color} strokeWidth={sw} />
+      <path d="M1.5 9.5h1.8M1.5 12h1.8M1.5 14.5h1.8" stroke={color} strokeWidth={sw} strokeLinecap="round" />
+    </svg>,
+    box
+  )
+}
+
+export function TakeoutBagIcon({ size = 24, color = stroke, box = true } = {}) {
+  return wrap(
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <path d="M6 8.5h12l-1.2 10.5a2 2 0 0 1-2 1.8H9.2a2 2 0 0 1-2-1.8L6 8.5Z" stroke={color} strokeWidth={sw} strokeLinejoin="round" />
+      <path d="M9 8.5V6a3 3 0 0 1 6 0v2.5" stroke={color} strokeWidth={sw} strokeLinecap="round" />
+    </svg>,
+    box
+  )
+}
+
+export function ReserveIcon({ size = 24, color = stroke, box = true } = {}) {
+  return wrap(
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <rect x="3.5" y="5.5" width="17" height="14.5" rx="2.3" stroke={color} strokeWidth={sw} />
+      <path d="M8 3.5v4M16 3.5v4M3.5 10h17" stroke={color} strokeWidth={sw} strokeLinecap="round" />
+      <path d="M8.5 15l2 2 4.5-4.5" stroke={color} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" />
+    </svg>,
+    box
+  )
+}
+
+export function TableIcon({ size = 24, color = stroke, box = true } = {}) {
+  return wrap(
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <path d="M4 20V13a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3v7" stroke={color} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M4 20h3M17 20h3M4 17h16" stroke={color} strokeWidth={sw} strokeLinecap="round" />
+    </svg>,
+    box
+  )
+}
+
+export function LeafIcon({ size = 24, color = stroke, box = true } = {}) {
+  return wrap(
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <path d="M6 19c0-8 6-13.5 13-14-1 8-5.5 13-13 14Z" stroke={color} strokeWidth={sw} strokeLinejoin="round" />
+      <path d="M8 17c3-3 6-6 9-10.5" stroke={color} strokeWidth={sw} strokeLinecap="round" />
+    </svg>,
+    box
+  )
+}
+
+export function WineGlassIcon({ size = 24, color = stroke, box = true } = {}) {
+  return wrap(
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <path d="M7 4h10l-1 6a4 4 0 0 1-8 0L7 4Z" stroke={color} strokeWidth={sw} strokeLinejoin="round" />
+      <path d="M12 14v5M9 20.5h6" stroke={color} strokeWidth={sw} strokeLinecap="round" />
+    </svg>,
+    box
+  )
+}
+
+export function DessertIcon({ size = 24, color = stroke, box = true } = {}) {
+  return wrap(
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <path d="M7 10a5 5 0 0 1 10 0c0 2-1.2 3.3-2.3 4.2L12 21l-2.7-6.8C8.2 13.3 7 12 7 10Z" stroke={color} strokeWidth={sw} strokeLinejoin="round" />
+      <circle cx="9.3" cy="8.5" r="0.9" fill={color} />
+      <circle cx="12" cy="7" r="0.9" fill={color} />
+      <circle cx="14.7" cy="8.5" r="0.9" fill={color} />
+    </svg>,
+    box
+  )
+}
+
+export function MusicNoteIcon({ size = 24, color = stroke, box = true } = {}) {
+  return wrap(
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <path d="M9 17V5l10-2v12" stroke={color} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="7" cy="18" r="2.3" stroke={color} strokeWidth={sw} />
+      <circle cx="17" cy="15.5" r="2.3" stroke={color} strokeWidth={sw} />
+    </svg>,
+    box
+  )
+}
+
+export function GroupIcon({ size = 24, color = stroke, box = true } = {}) {
+  return wrap(
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <circle cx="8.5" cy="8" r="2.6" stroke={color} strokeWidth={sw} />
+      <circle cx="16" cy="8.5" r="2.2" stroke={color} strokeWidth={sw} />
+      <path d="M3.5 20c0-3.5 2.5-6 5-6s5 2.5 5 6" stroke={color} strokeWidth={sw} strokeLinecap="round" />
+      <path d="M13.5 14.3c2 .3 3.5 2.3 4 5.7" stroke={color} strokeWidth={sw} strokeLinecap="round" />
+    </svg>,
+    box
+  )
+}
+
+export function ScreenSportsIcon({ size = 24, color = stroke, box = true } = {}) {
+  return wrap(
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <rect x="3" y="5" width="18" height="12" rx="1.8" stroke={color} strokeWidth={sw} />
+      <path d="M9 21h6M12 17v4" stroke={color} strokeWidth={sw} strokeLinecap="round" />
+      <circle cx="12" cy="11" r="3" stroke={color} strokeWidth={sw} />
+    </svg>,
+    box
+  )
+}
+
+export function CarIcon({ size = 24, color = stroke, box = true } = {}) {
+  return wrap(
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <path d="M4 15.5 5.3 10a2 2 0 0 1 2-1.5h9.4a2 2 0 0 1 2 1.5l1.3 5.5" stroke={color} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" />
+      <rect x="3" y="15.5" width="18" height="3.5" rx="1.2" stroke={color} strokeWidth={sw} />
+      <circle cx="7.5" cy="19" r="1.4" stroke={color} strokeWidth={sw} />
+      <circle cx="16.5" cy="19" r="1.4" stroke={color} strokeWidth={sw} />
+    </svg>,
+    box
+  )
+}
+
+const AMENITY_META = [
+  { keywords: ['รับที่รถ'], icon: CarIcon, group: 'บริการ' },
+  { keywords: ['จอดรถ'], icon: ParkingIcon, group: 'ทั่วไป' },
+  { keywords: ['wi-fi', 'wifi'], icon: WifiIcon, group: 'ทั่วไป' },
+  { keywords: ['บัตร'], icon: CardIcon, group: 'ทั่วไป' },
+  { keywords: ['ผู้พิการ'], icon: AccessibilityIcon, group: 'ทั่วไป' },
+  { keywords: ['ห้องน้ำ'], icon: RestroomIcon, group: 'ทั่วไป' },
+  { keywords: ['กลางแจ้ง'], icon: OutdoorSeatIcon, group: 'ทั่วไป' },
+  { keywords: ['ของที่ระลึก', 'หัตถกรรม'], icon: ShopIcon, group: 'ทั่วไป' },
+  { keywords: ['ไกด์'], icon: GuideIcon, group: 'บริการ' },
+  { keywords: ['วิ่ง'], icon: RunIcon, group: 'ทั่วไป' },
+  { keywords: ['ชาร์จ'], icon: BoltIcon, group: 'ทั่วไป' },
+  { keywords: ['ถ่ายรูป'], icon: CameraIcon, group: 'ทั่วไป' },
+  { keywords: ['สัตว์เลี้ยง'], icon: PawIcon, group: 'เหมาะสำหรับ' },
+  { keywords: ['กลุ่มใหญ่'], icon: GroupIcon, group: 'เหมาะสำหรับ' },
+  { keywords: ['ดูกีฬา'], icon: ScreenSportsIcon, group: 'เหมาะสำหรับ' },
+  { keywords: ['เด็ก'], icon: SmileyIcon, group: 'เหมาะสำหรับ' },
+  { keywords: ['เดลิเวอรี'], icon: DeliveryIcon, group: 'บริการ' },
+  { keywords: ['กลับบ้าน'], icon: TakeoutBagIcon, group: 'บริการ' },
+  { keywords: ['จองโต๊ะ'], icon: ReserveIcon, group: 'บริการ' },
+  { keywords: ['นั่งทานในร้าน'], icon: TableIcon, group: 'บริการ' },
+  { keywords: ['มังสวิรัติ'], icon: LeafIcon, group: 'อาหารและเครื่องดื่ม' },
+  { keywords: ['กาแฟ'], icon: CupIcon, group: 'อาหารและเครื่องดื่ม' },
+  { keywords: ['แอลกอฮอล์'], icon: WineGlassIcon, group: 'อาหารและเครื่องดื่ม' },
+  { keywords: ['ของหวาน'], icon: DessertIcon, group: 'อาหารและเครื่องดื่ม' },
+  { keywords: ['เสิร์ฟ', 'อาหาร'], icon: FoodIcon, group: 'อาหารและเครื่องดื่ม' },
+  { keywords: ['ดนตรีสด'], icon: MusicNoteIcon, group: 'บรรยากาศ' },
 ]
 
-export function AmenityIcon({ label, size = 15, color = stroke, box = false } = {}) {
+const AMENITY_GROUP_ORDER = ['ทั่วไป', 'เหมาะสำหรับ', 'บริการ', 'อาหารและเครื่องดื่ม', 'บรรยากาศ', 'อื่นๆ']
+
+function matchAmenity(label) {
   const lower = (label || '').toLowerCase()
-  const match = amenityKeywordIcons.find(([keywords]) => keywords.some((k) => lower.includes(k)))
-  const Icon = match ? match[1] : DotIcon
+  return AMENITY_META.find((meta) => meta.keywords.some((k) => lower.includes(k)))
+}
+
+export function AmenityIcon({ label, size = 15, color = stroke, box = false } = {}) {
+  const Icon = matchAmenity(label)?.icon || DotIcon
   return <Icon size={size} color={color} box={box} />
+}
+
+export function groupAmenities(labels) {
+  const buckets = new Map()
+  for (const label of labels || []) {
+    const group = matchAmenity(label)?.group || 'อื่นๆ'
+    if (!buckets.has(group)) buckets.set(group, [])
+    buckets.get(group).push(label)
+  }
+  return AMENITY_GROUP_ORDER
+    .filter((group) => buckets.has(group))
+    .map((group) => ({ group, items: buckets.get(group) }))
 }

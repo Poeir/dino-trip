@@ -5,7 +5,7 @@ from typing import List
 
 from openai import OpenAI
 
-from src.core.config import API_KEY, BASE_URL, MODEL_NAME
+from src.core.config import API_KEY, BASE_URL, TRIP_PLANNER_MODEL_NAME
 from .json_utils import clean_json_string
 from .models import DailyItinerary, JudgeVerdict, TripInput
 
@@ -13,17 +13,21 @@ logger = logging.getLogger(__name__)
 
 # Soft gate; the two hard gates (pacing_ok/intent_match_ok) below can't be
 # bought off by a high score alone. Originally 0.6, lowered after live testing
-# showed this judge model rarely scores above 0.5 in practice -- even
-# itineraries with both hard gates passing topped out at 0.50 across every
-# real (non-fail-open) evaluation observed, so 0.6 was burning the full
-# MAX_JUDGE_ATTEMPTS budget on nearly every request regardless of quality.
+# showed gemini-2.5-flash (the judge model at the time) rarely scored above
+# 0.5 in practice -- even itineraries with both hard gates passing topped out
+# at 0.50 across every real (non-fail-open) evaluation observed, so 0.6 was
+# burning the full MAX_JUDGE_ATTEMPTS budget on nearly every request
+# regardless of quality.
+# NOT re-calibrated for TRIP_PLANNER_MODEL_NAME's current value -- different
+# models score with different generosity, so re-run the live test battery
+# before trusting this number again after a model switch.
 PASS_SCORE_THRESHOLD = 0.45
 
 
 class TripItineraryJudge:
     def __init__(self):
         self.client = OpenAI(api_key=API_KEY, base_url=BASE_URL)
-        self.default_model = MODEL_NAME
+        self.default_model = TRIP_PLANNER_MODEL_NAME
 
     def _format_itinerary_for_judge(self, itinerary: List[DailyItinerary]) -> str:
         # Dummy slots ("Free Time"/"End of Day (Return to Hotel)") are

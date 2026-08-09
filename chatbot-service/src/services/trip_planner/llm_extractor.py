@@ -5,7 +5,7 @@ import time
 from datetime import datetime, timedelta
 from openai import OpenAI
 from typing import List, Tuple
-from src.core.config import API_KEY, BASE_URL, MODEL_NAME
+from src.core.config import API_KEY, BASE_URL, TRIP_PLANNER_MODEL_NAME
 from .json_utils import clean_json_string
 from .judge import TripItineraryJudge
 from .models import Place, TripInput, DailyItinerary, TimeSlot, JudgeVerdict
@@ -37,7 +37,7 @@ class LLMTripPlanner:
         self.candidates = candidates
         self.start_point = start_point
         self.location_map = {loc.id: loc for loc in candidates}
-        self.default_model = MODEL_NAME
+        self.default_model = TRIP_PLANNER_MODEL_NAME
         self.client = OpenAI(api_key=API_KEY, base_url=BASE_URL)
         self.judge = TripItineraryJudge()
 

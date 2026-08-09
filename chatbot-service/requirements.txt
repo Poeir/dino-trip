@@ -5,4 +5,6 @@ python-dotenv
 supabase
 sentence-transformers
 openai
+requests
+beautifulsoup4
 pytest

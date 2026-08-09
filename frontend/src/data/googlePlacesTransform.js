@@ -70,6 +70,19 @@ function mapAmenities(p) {
   const pay = p.paymentOptions
   if (pay && (pay.acceptsCreditCards || pay.acceptsDebitCards || pay.acceptsNfc)) list.push('ชำระผ่านบัตร')
   if (p.servesVegetarianFood) list.push('มีเมนูมังสวิรัติ')
+  if (p.servesBreakfast) list.push('เสิร์ฟอาหารเช้า')
+  if (p.servesLunch) list.push('เสิร์ฟมื้อกลางวัน')
+  if (p.servesDinner) list.push('เสิร์ฟมื้อเย็น')
+  if (p.servesBrunch) list.push('เสิร์ฟบรันช์')
+  if (p.dineIn) list.push('นั่งทานในร้านได้')
+  if (p.servesCoffee) list.push('มีกาแฟ')
+  if (p.servesBeer || p.servesWine || p.servesCocktails) list.push('มีเครื่องดื่มแอลกอฮอล์')
+  if (p.servesDessert) list.push('มีของหวาน')
+  if (p.menuForChildren) list.push('มีเมนูสำหรับเด็ก')
+  if (p.liveMusic) list.push('มีดนตรีสด')
+  if (p.goodForGroups) list.push('เหมาะสำหรับกลุ่มใหญ่')
+  if (p.goodForWatchingSports) list.push('เหมาะสำหรับดูกีฬา')
+  if (p.curbsidePickup) list.push('รับที่รถได้')
   return list
 }
 

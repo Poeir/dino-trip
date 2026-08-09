@@ -224,6 +224,7 @@ function mapAmenities(p) {
   if (p.menuForChildren) list.push('มีเมนูสำหรับเด็ก')
   if (p.liveMusic) list.push('มีดนตรีสด')
   if (p.goodForGroups) list.push('เหมาะสำหรับกลุ่มใหญ่')
+  if (p.goodForWatchingSports) list.push('เหมาะสำหรับดูกีฬา')
   if (p.curbsidePickup) list.push('รับที่รถได้')
   return list
 }
