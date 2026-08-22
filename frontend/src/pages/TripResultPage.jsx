@@ -1,6 +1,7 @@
 import { Navigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext.jsx'
 import ImageSlot from '../components/ImageSlot.jsx'
+import DayRouteMap from '../components/DayRouteMap.jsx'
 import { CalendarIcon, WalletIcon, RouteIcon, GiftIcon, PencilIcon, PinIcon } from '../components/Icons.jsx'
 
 const sparkles = [
@@ -87,6 +88,9 @@ export default function TripResultPage() {
                   <div style={{ fontSize: 12.5, color: '#8a938c' }}>{day.date}</div>
                 </div>
               </div>
+
+              <DayRouteMap items={day.items} />
+
               <div style={{ position: 'relative', paddingLeft: 22 }}>
                 <div style={{ position: 'absolute', left: 21, top: 8, bottom: 30, width: 2, background: 'linear-gradient(180deg,#66BB6A,#C8E6C9)', transformOrigin: 'top', animation: 'dc-grow 0.6s ease both' }}></div>
                 {day.items.map((item) => (
@@ -98,8 +102,11 @@ export default function TripResultPage() {
                     )}
                     <div style={{ display: 'flex', gap: 16, alignItems: 'center', border: '1px solid #EFEBDB', borderRadius: 16, padding: 12, transition: 'transform 0.2s ease, box-shadow 0.2s ease' }}>
                       <div style={{ position: 'absolute', left: -6, top: '50%', marginTop: -7, width: 14, height: 14, borderRadius: '50%', background: '#fff', border: '3px solid #2E7D32' }}></div>
-                      <div style={{ width: 54, flexShrink: 0, textAlign: 'center' }}>
-                        <div style={{ fontWeight: 800, fontSize: 14, color: '#2E7D32' }}>{item.time}</div>
+                      <div style={{ width: 68, flexShrink: 0, textAlign: 'center' }}>
+                        <div style={{ fontWeight: 800, fontSize: 13, color: '#2E7D32', lineHeight: 1.3 }}>{item.timeRangeLabel}</div>
+                        {item.durationLabel && (
+                          <div style={{ fontSize: 10, color: '#8a938c', marginTop: 3 }}>{item.durationLabel}</div>
+                        )}
                       </div>
                       <ImageSlot src={item.place.img} shape="rounded" radius={12} style={{ width: 84, height: 84, flexShrink: 0 }} placeholder="ภาพ" />
                       <div style={{ flex: 1, minWidth: 0 }}>

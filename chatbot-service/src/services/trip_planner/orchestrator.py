@@ -1,12 +1,29 @@
+import math
 from datetime import datetime
 from itertools import zip_longest
 from src.core.db import find_place_by_name
 from src.services.rag.retriever import PlaceRetriever
 from .models import Place, TripInput, TripSummary, DaySummary
+from .route_scheduler import TYPE_DURATION_MAP
 
 # Khon Kaen city center -- fallback location if the named accommodation isn't
 # found in `places` at all (same fallback the old project used).
 DEFAULT_HOTEL_LOCATION = {"lat": 16.4322, "lng": 102.8236}
+
+# Average of route_scheduler.TYPE_DURATION_MAP's per-category base visit
+# durations -- used below to size how many candidates the LLM is offered per
+# day. Kept derived from the real per-category durations route_scheduler
+# actually schedules with (same +30/-15 pace adjustment get_visit_duration()
+# applies), instead of a number picked independently of what scheduling uses
+# -- that mismatch previously let e.g. a "relaxed" 9-hour day get only 3
+# candidate slots (int(9/2.5)) when real per-stop time (visit + travel) only
+# fits ~5, so even a full quota of LLM picks left hours of the day empty.
+_AVG_BASE_VISIT_MIN = sum(TYPE_DURATION_MAP.values()) / len(TYPE_DURATION_MAP)
+
+# Typical in-city hop between two candidate places, in minutes -- Khon
+# Kaen-scale distances between same-trip candidates are rarely more than
+# 5-8km apart, which is 10-16 min at route_scheduler's ASSUMED_SPEED_KMH.
+_AVG_TRAVEL_MIN = 15
 
 # Keyed by the frontend's actual budgetList strings (ประหยัด/ปานกลาง/หรูหรา)
 # rather than translating to English tiers first -- this app is Thai-first,
@@ -63,15 +80,28 @@ class TripBuilderService:
         end_dt = datetime.strptime(user_input.end_time, "%H:%M")
         total_trip_hours = (end_dt - start_dt).seconds / 3600
 
+        # Mirrors get_visit_duration()'s pace adjustment so the per-stop
+        # estimate used to size the candidate quota matches what scheduling
+        # actually applies (see _AVG_BASE_VISIT_MIN above).
         if user_input.trip_pace == "relaxed":
-            places_per_day = max(3, int(total_trip_hours / 2.5))
+            avg_stop_min = _AVG_BASE_VISIT_MIN + 30 + _AVG_TRAVEL_MIN
+            min_places_per_day = 3
         elif user_input.trip_pace == "packed":
-            places_per_day = max(5, int(total_trip_hours / 1.5))
+            avg_stop_min = max(30, _AVG_BASE_VISIT_MIN - 15) + _AVG_TRAVEL_MIN
+            min_places_per_day = 5
         else:
-            places_per_day = max(4, int(total_trip_hours / 2.0))
+            avg_stop_min = _AVG_BASE_VISIT_MIN + _AVG_TRAVEL_MIN
+            min_places_per_day = 4
+
+        # Round up, not down -- undercounting here is what previously
+        # starved the LLM's candidate pool below what a full day needs.
+        places_per_day = max(min_places_per_day, math.ceil(total_trip_hours * 60 / avg_stop_min))
 
         total_slots = places_per_day * user_input.trip_duration_days
         remaining_slots = total_slots - len(must_go_list)
+
+        existing_ids = {p.id for p in must_go_list}
+        allowed_prices = BUDGET_PRICE_RANGES.get(user_input.budget_level, [0, 1, 2])
 
         interest_list = []
         if remaining_slots > 0:
@@ -100,9 +130,6 @@ class TripBuilderService:
                     query="สถานที่ท่องเที่ยวยอดนิยม ขอนแก่น", limit=remaining_slots * 5
                 )
 
-            existing_ids = {p.id for p in must_go_list}
-            allowed_prices = BUDGET_PRICE_RANGES.get(user_input.budget_level, [0, 1, 2])
-
             for row in rag_results:
                 place_id = row.get("id")
                 if not place_id or place_id in existing_ids:
@@ -127,6 +154,38 @@ class TripBuilderService:
                 if len(interest_list) >= remaining_slots:
                     break
 
+        # Unconditional floor, on top of remaining_slots -- interest-only
+        # retrieval can otherwise hand back a whole trip's worth of
+        # candidates with no "ร้านอาหาร" among them at all (e.g.
+        # interests=["วัฒนธรรม","ศาสนา"]), leaving every day with zero
+        # places to eat at. A day with no meal isn't a reasonable
+        # itinerary regardless of what interests were stated, so a small
+        # reserve of restaurants is kept available for llm_extractor.py to
+        # guarantee at least one per day even when nothing above surfaced
+        # any.
+        meal_reserve_needed = user_input.trip_duration_days * 2
+        existing_restaurant_count = sum(1 for p in must_go_list + interest_list if p.category == "ร้านอาหาร")
+        if existing_restaurant_count < meal_reserve_needed:
+            meal_rows = self.retriever.search_and_expand(
+                query="ร้านอาหารแนะนำ ขอนแก่น", limit=meal_reserve_needed * 3,
+            )
+            for row in meal_rows:
+                if existing_restaurant_count >= meal_reserve_needed:
+                    break
+                place_id = row.get("id")
+                if not place_id or place_id in existing_ids:
+                    continue
+                place = Place(**row)
+                if place.category != "ร้านอาหาร":
+                    continue
+                if place.price_level is not None and place.price_level not in allowed_prices:
+                    continue
+                if user_input.area_scope == "เมือง" and not _is_mueang_district(place.district):
+                    continue
+                interest_list.append(place)
+                existing_ids.add(place_id)
+                existing_restaurant_count += 1
+
         return accommodation, must_go_list + interest_list, missing_must_go
 
     def get_dynamic_instructions(self, user_input: TripInput):
@@ -138,12 +197,16 @@ class TripBuilderService:
             "- PACE (Standard): Balance activity time and rest. A moderate schedule is fine.",
         )
 
+        # These only guide WHICH places to pick -- a deterministic scheduler
+        # (route_scheduler.py) owns geographic ordering for every trip
+        # regardless of budget tier, so these no longer instruct the LLM
+        # about driving distance/fuel cost trade-offs at all.
         budget_instruction = {
-            "ประหยัด": "- BUDGET (Economy): STRICTLY group places that are in the same area/zone together to minimize driving distance and save fuel costs. Prioritize free or cheap places.",
-            "หรูหรา": "- BUDGET (Luxury): IGNORE travel distance and fuel costs entirely. Focus ONLY on providing the most premium, high-end, and exclusive experiences, even if they are far apart.",
+            "ประหยัด": "- BUDGET (Economy): Prioritize free or cheap places.",
+            "หรูหรา": "- BUDGET (Luxury): Focus ONLY on providing the most premium, high-end, and exclusive experiences.",
         }.get(
             user_input.budget_level,
-            "- BUDGET (Standard): Balance the driving distance and the quality of the places. A moderate amount of driving is acceptable.",
+            "- BUDGET (Standard): Balance cost and the quality of the places.",
         )
 
         return pace_instruction, budget_instruction

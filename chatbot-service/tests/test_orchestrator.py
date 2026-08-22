@@ -145,7 +145,10 @@ class TestMultiInterestRoundRobin:
         })
         user_input = make_user_input(interests=["วัฒนธรรม/ศาสนา", "ไดโนเสาร์"])
         service.build_candidate_list(user_input)
-        assert service.retriever.queries_seen == ["วัฒนธรรม/ศาสนา", "ไดโนเสาร์"]
+        # Trailing call is the unconditional meal reserve (see
+        # build_candidate_list) -- fires regardless of interests since
+        # neither fixture place above is category "ร้านอาหาร".
+        assert service.retriever.queries_seen == ["วัฒนธรรม/ศาสนา", "ไดโนเสาร์", "ร้านอาหารแนะนำ ขอนแก่น"]
 
     def test_no_interests_falls_back_to_generic_single_query(self, service):
         service.retriever = FakeRetrieverByQuery({
@@ -154,4 +157,7 @@ class TestMultiInterestRoundRobin:
         user_input = make_user_input(interests=[])
         _, candidates, _ = service.build_candidate_list(user_input)
         assert "Generic1" in [p.name for p in candidates]
-        assert service.retriever.queries_seen == ["สถานที่ท่องเที่ยวยอดนิยม ขอนแก่น"]
+        # Trailing call is the unconditional meal reserve (see
+        # build_candidate_list) -- fires regardless of interests since
+        # "Generic1" above is category "คาเฟ่", not "ร้านอาหาร".
+        assert service.retriever.queries_seen == ["สถานที่ท่องเที่ยวยอดนิยม ขอนแก่น", "ร้านอาหารแนะนำ ขอนแก่น"]

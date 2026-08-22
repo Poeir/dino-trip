@@ -68,6 +68,8 @@ class TimeSlot(BaseModel):
     distance_km: float
     status: str = "Open"  # Open, Closed, Waiting, Free Time, End of Day...
     wait_time_min: int = 0
+    is_anchor: bool = False  # place had a narrow real opening window that day and anchored the schedule around it
+    meal_role: Optional[str] = None  # "lunch" | "dinner" | None, for ร้านอาหาร category places
 
 
 class DailyItinerary(BaseModel):

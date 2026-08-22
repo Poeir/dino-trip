@@ -20,7 +20,11 @@ logger = logging.getLogger(__name__)
 # regardless of quality.
 # NOT re-calibrated for TRIP_PLANNER_MODEL_NAME's current value -- different
 # models score with different generosity, so re-run the live test battery
-# before trusting this number again after a model switch.
+# before trusting this number again after a model switch. Also not
+# re-validated since the judge's own evaluation criteria changed to exclude
+# ordering/timing (route_scheduler now guarantees those deterministically) --
+# a judge scoring a narrower, easier-to-satisfy rubric may score more
+# generously than this threshold assumes.
 PASS_SCORE_THRESHOLD = 0.45
 
 
@@ -70,10 +74,17 @@ class TripItineraryJudge:
         3. Overall quality score from 0.0 (bad) to 1.0 (excellent).
 
         [WHAT NOT TO EVALUATE]
-        Do NOT flag opening-hours violations or arrivals at/after the trip's end
-        time -- those are already guaranteed by a separate deterministic step
-        after generation, so re-flagging them here wastes a regeneration attempt
-        on something this plan's generator cannot even fix.
+        Do NOT flag opening-hours violations, arrivals at/after the trip's end
+        time, geographic ordering/travel-distance sensibility (e.g. "this route
+        zig-zags"), or meal/visit timing within a day (e.g. "lunch is too late").
+        All of that is guaranteed by a separate deterministic scheduler that runs
+        after generation and owns ordering and timing entirely -- the generator
+        you're evaluating only chose WHICH places go on WHICH day (and, for
+        restaurants, lunch vs dinner). Re-flagging anything from that list wastes
+        a regeneration attempt on something this generator cannot fix; focus your
+        evaluation and feedback on place selection instead: category mix and
+        narrative variety, and whether the day-level choices reflect the user's
+        interests/must-go/budget level.
 
         [RATIONALE - IMPORTANT]
         Separately from your evaluation, write a short (1-2 sentence), Thai,
