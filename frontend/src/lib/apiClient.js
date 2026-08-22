@@ -7,6 +7,10 @@ async function request(path, options) {
   const res = await fetch(`${BASE_URL}${path}`, {
     ...options,
     headers: { 'Content-Type': 'application/json', ...options?.headers },
+    // Sends/accepts the httpOnly session cookies /api/auth sets -- needed
+    // for every call, not just auth ones, since it's also what makes /me
+    // and (eventually) any login-gated endpoint recognize the session.
+    credentials: 'include',
   })
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
@@ -44,3 +48,10 @@ export const fetchRewards = () => apiGet('/api/rewards')
 export const createReward = (payload) => apiPost('/api/rewards', payload)
 export const updateReward = (id, payload) => apiPut(`/api/rewards/${id}`, payload)
 export const deleteReward = (id) => apiDelete(`/api/rewards/${id}`)
+
+// Tourist auth -- session lives in httpOnly cookies the backend sets, never
+// in anything this client reads or stores itself. See auth.routes.js.
+export const login = (email, password) => apiPost('/api/auth/login', { email, password })
+export const signup = (name, email, password, phone) => apiPost('/api/auth/signup', { name, email, password, phone })
+export const logout = () => apiPost('/api/auth/logout')
+export const fetchMe = () => apiGet('/api/auth/me')

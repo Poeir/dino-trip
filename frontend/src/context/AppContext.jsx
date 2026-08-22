@@ -9,11 +9,30 @@ import {
   fetchKnowledgeBase, createKnowledgeBase, updateKnowledgeBase, deleteKnowledgeBase,
   fetchQrs, createQr, updateQr, deleteQr,
   fetchRewards, createReward, updateReward, deleteReward,
+  login as apiLogin, signup as apiSignup, logout as apiLogout, fetchMe,
 } from '../lib/apiClient.js'
 import { sendChatMessage, requestTripPlan } from '../lib/chatbotService.js'
 import { haversineKm } from '../utils/geo.js'
 
 const AppContext = createContext(null)
+
+// "HH:MM" -> minutes-since-midnight, for computing how long a trip-plan item
+// lasts (arrival_time/departure_time only arrive as display strings from the
+// API, not a duration field).
+const hhmmToMinutes = (hhmm) => {
+  if (!hhmm || typeof hhmm !== 'string' || !hhmm.includes(':')) return null
+  const [h, m] = hhmm.split(':').map(Number)
+  return Number.isFinite(h) && Number.isFinite(m) ? h * 60 + m : null
+}
+
+const formatDurationMinutes = (mins) => {
+  if (mins == null || mins <= 0) return null
+  const h = Math.floor(mins / 60)
+  const m = mins % 60
+  if (h === 0) return `${m} นาที`
+  if (m === 0) return `${h} ชม.`
+  return `${h} ชม. ${m} นาที`
+}
 
 const initialState = {
   searchQuery: '',
@@ -22,8 +41,9 @@ const initialState = {
   loggedIn: false,
   userName: '',
   userPoints: 140,
-  authForm: { name: '', email: '', password: '' },
+  authForm: { name: '', email: '', phone: '', password: '', confirmPassword: '', consent: false },
   authError: '',
+  authSubmitting: false,
   chatOpen: false,
   chatInput: '',
   chatTyping: false,
@@ -129,6 +149,16 @@ export function AppProvider({ children }) {
     }
   }, [])
 
+  // Hydrates loggedIn/userName from the backend's httpOnly session cookie
+  // on load, so a page refresh doesn't drop the session (GET /api/auth/me
+  // also transparently refreshes an expired access token server-side --
+  // see auth.routes.js).
+  useEffect(() => {
+    fetchMe()
+      .then(({ user }) => setState({ loggedIn: !!user, userName: user?.displayName || '' }))
+      .catch(() => {})
+  }, [])
+
   const toggleMobileMenu = () => setState((s) => ({ mobileMenuOpen: !s.mobileMenuOpen }))
   const closeMobileMenu = () => setState({ mobileMenuOpen: false })
   const closeWelcomeModal = () => setState({ welcomeModalOpen: false })
@@ -174,20 +204,44 @@ export function AppProvider({ children }) {
   const updateAuthField = (f, v) => setState((s) => ({ authForm: { ...s.authForm, [f]: v } }))
   const onAuthNameChange = (e) => updateAuthField('name', e.target.value)
   const onAuthEmailChange = (e) => updateAuthField('email', e.target.value)
+  const onAuthPhoneChange = (e) => updateAuthField('phone', e.target.value)
   const onAuthPasswordChange = (e) => updateAuthField('password', e.target.value)
-  const submitLogin = () => {
+  const onAuthConfirmPasswordChange = (e) => updateAuthField('confirmPassword', e.target.value)
+  const onAuthConsentChange = (e) => updateAuthField('consent', e.target.checked)
+  const submitLogin = async () => {
     const s = stateRef.current
     if (!s.authForm.email || !s.authForm.password) { setState({ authError: 'กรุณากรอกอีเมลและรหัสผ่าน' }); return }
-    setState({ loggedIn: true, userName: s.authForm.email.split('@')[0], authError: '' })
-    navigate('/')
+    setState({ authSubmitting: true, authError: '' })
+    try {
+      const { user } = await apiLogin(s.authForm.email, s.authForm.password)
+      setState({ authSubmitting: false, loggedIn: true, userName: user.displayName })
+      navigate('/')
+    } catch (err) {
+      setState({ authSubmitting: false, authError: err.message })
+    }
   }
-  const submitSignup = () => {
+  const submitSignup = async () => {
     const s = stateRef.current
-    if (!s.authForm.name || !s.authForm.email || !s.authForm.password) { setState({ authError: 'กรุณากรอกข้อมูลให้ครบถ้วน' }); return }
-    setState({ loggedIn: true, userName: s.authForm.name, authError: '' })
+    if (!s.authForm.name || !s.authForm.email || !s.authForm.phone || !s.authForm.password || !s.authForm.confirmPassword) {
+      setState({ authError: 'กรุณากรอกข้อมูลให้ครบถ้วน' }); return
+    }
+    if (!/^0\d{9}$/.test(s.authForm.phone)) { setState({ authError: 'กรุณากรอกเบอร์โทรศัพท์ให้ถูกต้อง (10 หลัก ขึ้นต้นด้วย 0)' }); return }
+    if (s.authForm.password !== s.authForm.confirmPassword) { setState({ authError: 'รหัสผ่านและยืนยันรหัสผ่านไม่ตรงกัน' }); return }
+    if (!s.authForm.consent) { setState({ authError: 'กรุณายินยอมนโยบายความเป็นส่วนตัวก่อนสมัครสมาชิก' }); return }
+    setState({ authSubmitting: true, authError: '' })
+    try {
+      const { user } = await apiSignup(s.authForm.name, s.authForm.email, s.authForm.password, s.authForm.phone)
+      setState({ authSubmitting: false, loggedIn: true, userName: user.displayName })
+      navigate('/')
+    } catch (err) {
+      setState({ authSubmitting: false, authError: err.message })
+    }
+  }
+  const logout = async () => {
+    await apiLogout().catch(() => {})
+    setState({ loggedIn: false, userName: '' })
     navigate('/')
   }
-  const logout = () => { setState({ loggedIn: false, userName: '' }); navigate('/') }
 
   const toggleChat = () => setState((s) => ({ chatOpen: !s.chatOpen }))
   const setChatInput = (v) => setState({ chatInput: v })
@@ -275,9 +329,14 @@ export function AppProvider({ children }) {
         items: day.schedule.map((slot) => ({
           placeId: slot.place.id,
           time: slot.arrival_time,
+          departureTime: slot.departure_time,
+          status: slot.status,
           liked: null,
           distanceFromPrev: slot.distance_km || null,
-          place: { id: slot.place.id, name: slot.place.name, category: slot.place.category, rating: slot.place.rating, address: slot.place.address, img: slot.place.img },
+          place: {
+            id: slot.place.id, name: slot.place.name, category: slot.place.category, rating: slot.place.rating, address: slot.place.address, img: slot.place.img,
+            location: (slot.place.lat != null && slot.place.lng != null) ? { lat: slot.place.lat, lng: slot.place.lng } : null,
+          },
         })),
       }
     })
@@ -476,7 +535,7 @@ export function AppProvider({ children }) {
     goHome, goPlaces, goEvents, goPublic, goAdminLogin, goTripForm, nextStep, prevStep, goToStep,
     goPoints, goLogin, goSignup, openPlace, openEvent, setSearchQuery, onSearchChange, setCategory,
     setEventSearchQuery, onEventSearchChange, toggleFavorite, togglePlaceActive,
-    onAuthNameChange, onAuthEmailChange, onAuthPasswordChange, submitLogin, submitSignup, logout,
+    onAuthNameChange, onAuthEmailChange, onAuthPhoneChange, onAuthPasswordChange, onAuthConfirmPasswordChange, onAuthConsentChange, submitLogin, submitSignup, logout,
     toggleChat, onChatInputChange, sendChat,
     onStartDateChange, onEndDateChange, onAccommodationChange, setTripDatePreset,
     onMustGoQueryChange, addMustGo, removeMustGo, onMustGoKeyDown,
@@ -570,8 +629,14 @@ export function AppProvider({ children }) {
       ...d,
       items: d.items.map((it) => {
         const place = it.place || s.places.find((p) => p.id === it.placeId) || { name: '-', rating: '-', address: '-' }
+        const isHotelReturn = it.status === 'End of Day (Return to Hotel)'
+        const durationMin = (!isHotelReturn && it.time && it.departureTime)
+          ? (hhmmToMinutes(it.departureTime) ?? 0) - (hhmmToMinutes(it.time) ?? 0)
+          : null
         return {
           ...it, place,
+          timeRangeLabel: (it.departureTime && it.departureTime !== it.time) ? `${it.time} - ${it.departureTime}` : it.time,
+          durationLabel: isHotelReturn ? 'ถึงที่พัก' : (formatDurationMinutes(durationMin) ? `อยู่ประมาณ ${formatDurationMinutes(durationMin)}` : null),
           onLike: () => setItemLike(d.dayNum, it.placeId, true),
           onDislike: () => setItemLike(d.dayNum, it.placeId, false),
           onSwap: () => swapItem(d.dayNum, it.placeId),
