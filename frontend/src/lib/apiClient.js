@@ -55,3 +55,10 @@ export const login = (email, password) => apiPost('/api/auth/login', { email, pa
 export const signup = (name, email, password, phone) => apiPost('/api/auth/signup', { name, email, password, phone })
 export const logout = () => apiPost('/api/auth/logout')
 export const fetchMe = () => apiGet('/api/auth/me')
+
+// Points: requires a logged-in tourist session (cookie), same as the auth
+// calls above. scanQr takes the qrId decoded from the QR's URL content --
+// the backend looks the points/place up itself, see qrs.routes.js.
+export const fetchPointsBalance = () => apiGet('/api/points/me')
+export const scanQr = (qrId) => apiPost(`/api/qrs/${qrId}/scan`, {})
+export const redeemReward = (rewardId) => apiPost('/api/points/redeem', { rewardId })

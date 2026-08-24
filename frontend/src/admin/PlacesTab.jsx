@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useApp } from '../context/AppContext.jsx'
 import ImageSlot from '../components/ImageSlot.jsx'
+import PlaceCard from '../components/PlaceCard.jsx'
 import Modal from '../components/Modal.jsx'
 import Field from '../components/Field.jsx'
 
@@ -98,25 +99,15 @@ export default function PlacesTab() {
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))', gap: 16 }}>
         {filteredPlacesView.map((p) => (
-          <div key={p.id} style={{ background: '#fff', border: '1px solid #E7E3D2', borderRadius: 14, overflow: 'hidden', opacity: p.isActive ? 1 : 0.55 }}>
-            <div style={{ position: 'relative' }}>
-              <ImageSlot src={p.img} shape="rect" style={{ width: '100%', height: 110 }} placeholder="ภาพสถานที่" />
-              {!p.isActive && (
-                <span style={{ position: 'absolute', top: 8, left: 8, background: '#3c463f', color: '#fff', fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 8 }}>ซ่อนอยู่</span>
-              )}
+          <PlaceCard key={p.id} place={p} dim={!p.isActive} badge={!p.isActive ? 'ซ่อนอยู่' : null}>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+              <button onClick={p.onEdit} style={{ flex: 1, background: '#E8F5E9', color: '#2E7D32', border: 'none', padding: 7, borderRadius: 10, fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>แก้ไข</button>
+              <button onClick={p.onDelete} style={{ flex: 1, background: '#fdecec', color: '#a33232', border: 'none', padding: 7, borderRadius: 10, fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>ลบ</button>
             </div>
-            <div style={{ padding: 14 }}>
-              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 3 }}>{p.name}</div>
-              <div style={{ fontSize: 12.5, color: '#6d7a72', marginBottom: 10 }}>{p.category} · ★ {p.rating}</div>
-              <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                <button onClick={p.onEdit} style={{ flex: 1, background: '#E8F5E9', color: '#2E7D32', border: 'none', padding: 7, borderRadius: 10, fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>แก้ไข</button>
-                <button onClick={p.onDelete} style={{ flex: 1, background: '#fdecec', color: '#a33232', border: 'none', padding: 7, borderRadius: 10, fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>ลบ</button>
-              </div>
-              <button onClick={p.onToggleActive} style={{ width: '100%', background: p.isActive ? '#fff' : '#FFF8E1', color: p.isActive ? '#6d7a72' : '#7A5205', border: '1px solid #DCD8C6', padding: 7, borderRadius: 10, fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>
-                {p.isActive ? 'ซ่อนจากหน้าเว็บ' : 'เผยแพร่อีกครั้ง'}
-              </button>
-            </div>
-          </div>
+            <button onClick={p.onToggleActive} style={{ width: '100%', background: p.isActive ? '#fff' : '#FFF8E1', color: p.isActive ? '#6d7a72' : '#7A5205', border: '1px solid #DCD8C6', padding: 7, borderRadius: 10, fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>
+              {p.isActive ? 'ซ่อนจากหน้าเว็บ' : 'เผยแพร่อีกครั้ง'}
+            </button>
+          </PlaceCard>
         ))}
       </div>
     </>

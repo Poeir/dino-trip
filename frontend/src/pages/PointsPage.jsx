@@ -1,5 +1,6 @@
 import { useApp } from '../context/AppContext.jsx'
 import { GiftIcon, PinIcon } from '../components/Icons.jsx'
+import QrScannerModal from '../components/QrScannerModal.jsx'
 
 export default function PointsPage() {
   const { state, actions, derived } = useApp()
@@ -18,10 +19,24 @@ export default function PointsPage() {
         </button>
       </div>
 
-      {derived.isScanning && (
+      <QrScannerModal open={derived.isScanning} onDetected={actions.handleQrDetected} onError={actions.handleScanCancelled} />
+
+      {derived.scanNeedsLogin && (
+        <div style={{ textAlign: 'center', padding: 24, background: '#FFF8E1', borderRadius: 14, marginBottom: 28 }}>
+          <div style={{ color: '#7A5205', fontSize: 14, fontWeight: 700, marginBottom: 12 }}>เข้าสู่ระบบก่อนสแกน QR เพื่อรับพอยท์</div>
+          <button onClick={actions.goLogin} style={{ background: '#FBC02D', color: '#1B5E20', border: 'none', padding: '8px 18px', borderRadius: 16, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>เข้าสู่ระบบ</button>
+        </div>
+      )}
+      {derived.isScanProcessing && (
         <div style={{ textAlign: 'center', padding: 28, border: '1px dashed #C8E6C9', borderRadius: 14, marginBottom: 28 }}>
           <div style={{ width: 40, height: 40, borderRadius: '50%', border: '4px solid #C8E6C9', borderTopColor: '#2E7D32', margin: '0 auto 14px', animation: 'dc-spin 0.8s linear infinite' }}></div>
-          <div style={{ color: '#6d7a72', fontSize: 14 }}>กำลังทำการสแกน QR Code...</div>
+          <div style={{ color: '#6d7a72', fontSize: 14 }}>กำลังตรวจสอบ QR Code...</div>
+        </div>
+      )}
+      {derived.isScanError && (
+        <div style={{ textAlign: 'center', padding: 24, background: '#fdecec', borderRadius: 14, marginBottom: 28 }}>
+          <div style={{ color: '#a33232', fontSize: 14, fontWeight: 700, marginBottom: 12 }}>{state.scanError || 'สแกนไม่สำเร็จ'}</div>
+          <button onClick={actions.resetScan} style={{ background: '#fff', border: '1px solid #a33232', color: '#a33232', padding: '8px 18px', borderRadius: 16, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>ปิด</button>
         </div>
       )}
       {derived.isScanSuccess && (

@@ -10,6 +10,7 @@ import {
   fetchQrs, createQr, updateQr, deleteQr,
   fetchRewards, createReward, updateReward, deleteReward,
   login as apiLogin, signup as apiSignup, logout as apiLogout, fetchMe,
+  fetchPointsBalance, scanQr, redeemReward as apiRedeemReward,
 } from '../lib/apiClient.js'
 import { sendChatMessage, requestTripPlan } from '../lib/chatbotService.js'
 import { haversineKm } from '../utils/geo.js'
@@ -39,8 +40,9 @@ const initialState = {
   eventSearchQuery: '',
   activeCategory: 'ทั้งหมด',
   loggedIn: false,
+  authChecked: false,
   userName: '',
-  userPoints: 140,
+  userPoints: 0,
   authForm: { name: '', email: '', phone: '', password: '', confirmPassword: '', consent: false },
   authError: '',
   authSubmitting: false,
@@ -60,6 +62,7 @@ const initialState = {
   tripPlanRationale: '',
   feedbackText: '',
   scanState: 'idle',
+  scanError: '',
   scanResultPoints: 0,
   scanResultPlace: '',
   favoriteIds: [],
@@ -155,8 +158,11 @@ export function AppProvider({ children }) {
   // see auth.routes.js).
   useEffect(() => {
     fetchMe()
-      .then(({ user }) => setState({ loggedIn: !!user, userName: user?.displayName || '' }))
-      .catch(() => {})
+      .then(({ user }) => {
+        setState({ loggedIn: !!user, userName: user?.displayName || '', authChecked: true })
+        if (user) fetchPointsBalance().then(({ balance }) => setState({ userPoints: balance })).catch(() => {})
+      })
+      .catch(() => setState({ authChecked: true }))
   }, [])
 
   const toggleMobileMenu = () => setState((s) => ({ mobileMenuOpen: !s.mobileMenuOpen }))
@@ -201,6 +207,17 @@ export function AppProvider({ children }) {
   const setEventSearchQuery = (v) => setState({ eventSearchQuery: v })
   const onEventSearchChange = (e) => setEventSearchQuery(e.target.value)
 
+  // Set by ScanLandingPage when someone scans a place's physical QR with
+  // their phone's regular camera (not our in-app scanner) while logged out
+  // -- we send them to /login first, then need to resume the claim they
+  // came here for instead of dropping them on the homepage.
+  const PENDING_SCAN_KEY = 'dino-pending-scan-qr-id'
+  const redirectAfterAuth = () => {
+    const qrId = sessionStorage.getItem(PENDING_SCAN_KEY)
+    if (qrId) { sessionStorage.removeItem(PENDING_SCAN_KEY); navigate(`/scan/${qrId}`) }
+    else navigate('/')
+  }
+
   const updateAuthField = (f, v) => setState((s) => ({ authForm: { ...s.authForm, [f]: v } }))
   const onAuthNameChange = (e) => updateAuthField('name', e.target.value)
   const onAuthEmailChange = (e) => updateAuthField('email', e.target.value)
@@ -215,7 +232,8 @@ export function AppProvider({ children }) {
     try {
       const { user } = await apiLogin(s.authForm.email, s.authForm.password)
       setState({ authSubmitting: false, loggedIn: true, userName: user.displayName })
-      navigate('/')
+      fetchPointsBalance().then(({ balance }) => setState({ userPoints: balance })).catch(() => {})
+      redirectAfterAuth()
     } catch (err) {
       setState({ authSubmitting: false, authError: err.message })
     }
@@ -232,7 +250,7 @@ export function AppProvider({ children }) {
     try {
       const { user } = await apiSignup(s.authForm.name, s.authForm.email, s.authForm.password, s.authForm.phone)
       setState({ authSubmitting: false, loggedIn: true, userName: user.displayName })
-      navigate('/')
+      redirectAfterAuth()
     } catch (err) {
       setState({ authSubmitting: false, authError: err.message })
     }
@@ -436,20 +454,54 @@ export function AppProvider({ children }) {
     setState({ tripPlan: { ...plan, days: newDays }, tripPlanRationale: '', feedbackText: '' })
   }
 
-  const startScan = () => {
-    setState({ scanState: 'scanning' })
-    setTimeout(() => {
-      const qrPlaces = stateRef.current.places.filter((p) => p.hasQR)
-      const place = qrPlaces[Math.floor(Math.random() * qrPlaces.length)]
-      setState((s) => ({ scanState: 'success', scanResultPoints: place.qrPoints, scanResultPlace: place.name, userPoints: s.userPoints + place.qrPoints }))
-    }, 1300)
+  // The QR's own content only ever carries an opaque id (see QrTab.jsx's
+  // qrValue) -- points/place come back from the backend after claimScan,
+  // never trusted from what was scanned.
+  const extractQrId = (decodedText) => {
+    try {
+      const path = new URL(decodedText).pathname
+      return path.match(/\/scan\/([^/]+)\/?$/)?.[1] || null
+    } catch {
+      return null
+    }
   }
-  const resetScan = () => setState({ scanState: 'idle' })
-  const redeemReward = (id) => {
+
+  // Shared by the in-app camera scan (QrScannerModal, via handleQrDetected)
+  // and ScanLandingPage (a physical QR opened in a plain browser/camera app).
+  const claimScan = async (qrId) => {
+    setState({ scanState: 'processing', scanError: '' })
+    try {
+      const { points, placeName, balance } = await scanQr(qrId)
+      setState({ scanState: 'success', scanResultPoints: points, scanResultPlace: placeName, userPoints: balance })
+    } catch (err) {
+      setState({ scanState: 'error', scanError: err.message })
+    }
+  }
+
+  const startScan = () => {
+    if (!stateRef.current.loggedIn) { setState({ scanState: 'needsLogin' }); return }
+    setState({ scanState: 'scanning', scanError: '' })
+  }
+  const handleQrDetected = (decodedText) => {
+    const qrId = extractQrId(decodedText)
+    if (!qrId) { setState({ scanState: 'error', scanError: 'QR Code นี้ไม่ใช่ QR ของ Dino ขอนแก่น' }); return }
+    claimScan(qrId)
+  }
+  // From QrScannerModal's onError: a real camera/permission failure passes a
+  // message, cancelling out (backdrop click, Escape, ×) passes null.
+  const handleScanCancelled = (message) => setState({ scanState: message ? 'error' : 'idle', scanError: message || '' })
+  const resetScan = () => setState({ scanState: 'idle', scanError: '' })
+  const redeemReward = async (id) => {
     const s = stateRef.current
     const reward = s.rewards.find((r) => r.id === id)
     if (!reward || s.userPoints < reward.cost) return
-    setState((s2) => ({ userPoints: s2.userPoints - reward.cost }))
+    try {
+      const { balance } = await apiRedeemReward(id)
+      setState({ userPoints: balance })
+      showToast(`แลก "${reward.name}" สำเร็จ`)
+    } catch (err) {
+      showToast('แลกของรางวัลไม่สำเร็จ: ' + err.message)
+    }
   }
 
   const adminLogin = () => { setState({ adminLoggedIn: true }); navigate('/admin') }
@@ -541,7 +593,7 @@ export function AppProvider({ children }) {
     onMustGoQueryChange, addMustGo, removeMustGo, onMustGoKeyDown,
     setPace, onDailyStartChange, onDailyEndChange,
     onFeedbackChange, toggleInterest, setBudget, setAreaScope, submitTripForm, setItemLike, swapItem, regeneratePlan,
-    startScan, resetScan, redeemReward,
+    startScan, handleQrDetected, handleScanCancelled, claimScan, resetScan, redeemReward,
     adminLogin, adminLogout, openCreateForm, openEditForm, updateFormField, cancelForm,
     saveForm, deleteItem, onNewPlace, onNewEvent, onNewKb, onNewQr, onNewReward,
     ...fieldHandlers,
@@ -695,7 +747,10 @@ export function AppProvider({ children }) {
     isQrFormOpen: s.formOpen && s.formType === 'qr',
     isRewardFormOpen: s.formOpen && s.formType === 'reward',
     isScanning: s.scanState === 'scanning',
+    isScanProcessing: s.scanState === 'processing',
     isScanSuccess: s.scanState === 'success',
+    isScanError: s.scanState === 'error',
+    scanNeedsLogin: s.scanState === 'needsLogin',
     notLoggedIn: !s.loggedIn,
     categoriesView, categoriesViewIcons, filteredPlaces, placesEmpty: filteredPlaces.length === 0, eventsView,
     qrPlacesList,

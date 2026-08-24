@@ -15,6 +15,7 @@ import EventDetailPage from './pages/EventDetailPage.jsx'
 import TripFormPage from './pages/TripFormPage.jsx'
 import TripResultPage from './pages/TripResultPage.jsx'
 import PointsPage from './pages/PointsPage.jsx'
+import ScanLandingPage from './pages/ScanLandingPage.jsx'
 import LoginPage from './pages/LoginPage.jsx'
 import SignupPage from './pages/SignupPage.jsx'
 import AdminLoginPage from './pages/AdminLoginPage.jsx'
@@ -54,6 +55,7 @@ function Shell() {
           <Route path="/trip" element={<TripFormPage />} />
           <Route path="/trip/result" element={<TripResultPage />} />
           <Route path="/points" element={<PointsPage />} />
+          <Route path="/scan/:qrId" element={<ScanLandingPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<SignupPage />} />
         </Route>

@@ -4,6 +4,7 @@ import { httpError } from '../middleware/errorHandler.js'
 import { createAuthClient } from '../lib/supabaseAuthClient.js'
 import { supabase } from '../lib/supabaseClient.js'
 import { setSessionCookies, clearSessionCookies } from '../lib/authCookies.js'
+import { resolveSessionUser } from '../lib/session.js'
 
 export const authRouter = Router()
 
@@ -62,21 +63,6 @@ authRouter.post('/logout', asyncHandler(async (req, res) => {
 }))
 
 authRouter.get('/me', asyncHandler(async (req, res) => {
-  const accessToken = req.cookies?.sb_access_token
-  if (!accessToken) return res.json({ user: null })
-
-  const client = createAuthClient()
-  const { data, error } = await client.auth.getUser(accessToken)
-  if (!error && data.user) return res.json({ user: toUserResponse(data.user) })
-
-  // Access token expired -- silently try the (much longer-lived) refresh
-  // token so a page reload after an hour doesn't log the user out.
-  const refreshToken = req.cookies?.sb_refresh_token
-  if (!refreshToken) return res.json({ user: null })
-
-  const refreshed = await client.auth.refreshSession({ refresh_token: refreshToken })
-  if (refreshed.error) { clearSessionCookies(res); return res.json({ user: null }) }
-
-  setSessionCookies(res, refreshed.data.session)
-  res.json({ user: toUserResponse(refreshed.data.user) })
+  const user = await resolveSessionUser(req, res)
+  res.json({ user: user ? toUserResponse(user) : null })
 }))
