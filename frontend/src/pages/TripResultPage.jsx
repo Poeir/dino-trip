@@ -1,8 +1,11 @@
+import { useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext.jsx'
 import ImageSlot from '../components/ImageSlot.jsx'
 import DayRouteMap from '../components/DayRouteMap.jsx'
-import { CalendarIcon, WalletIcon, RouteIcon, GiftIcon, PencilIcon, PinIcon } from '../components/Icons.jsx'
+import Modal from '../components/Modal.jsx'
+import PlaceDetailView from '../components/PlaceDetailView.jsx'
+import { CalendarIcon, RouteIcon, GiftIcon, PencilIcon, PinIcon } from '../components/Icons.jsx'
 
 const sparkles = [
   { left: '6%', top: '20%', size: 7, duration: '3.2s', delay: '0s' },
@@ -26,8 +29,13 @@ function StatCard({ icon, value, label, accent }) {
 
 export default function TripResultPage() {
   const { state, actions, derived } = useApp()
+  const [selectedPlaceId, setSelectedPlaceId] = useState(null)
   if (!state.tripPlan) return <Navigate to="/trip" replace />
   const plan = derived.tripPlan
+  const selectedPlace = selectedPlaceId ? state.places.find((p) => p.id === selectedPlaceId) : null
+  const selectedPlaceView = selectedPlace
+    ? { ...selectedPlace, isFavorite: state.favoriteIds.includes(selectedPlace.id), onToggleFavorite: () => actions.toggleFavorite(selectedPlace.id) }
+    : null
   return (
     <main style={{ maxWidth: 1200, margin: '0 auto', padding: '28px 24px 70px' }}>
       <div data-role="trip-result-grid" style={{ display: 'grid', gridTemplateColumns: '340px 1fr', gap: 28, alignItems: 'start' }}>
@@ -46,7 +54,6 @@ export default function TripResultPage() {
               <p style={{ color: '#E8F5E9', fontSize: 13, margin: '0 0 20px' }}>น้องไดโนจัดเส้นทางตามความสนใจของคุณเรียบร้อย พร้อมออกเดินทางได้เลย</p>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 <StatCard icon={<CalendarIcon size={15} color="#fff" box={false} />} value={plan.days.length} label="วันเดินทาง" />
-                <StatCard icon={<WalletIcon size={15} color="#fff" box={false} />} value={`฿${plan.totalBudget}`} label="งบประมาณ" />
                 <StatCard icon={<RouteIcon size={15} color="#fff" box={false} />} value={`${plan.totalDistance} กม.`} label="ระยะทางรวม" />
                 <StatCard icon={<GiftIcon size={15} color="#FBC02D" box={false} />} value={`+${plan.totalPoints}`} label="พอยท์ที่จะได้" accent="#FBC02D" />
               </div>
@@ -89,7 +96,7 @@ export default function TripResultPage() {
                 </div>
               </div>
 
-              <DayRouteMap items={day.items} />
+              <DayRouteMap items={day.items} onSelectPlace={setSelectedPlaceId} />
 
               <div style={{ position: 'relative', paddingLeft: 22 }}>
                 <div style={{ position: 'absolute', left: 21, top: 8, bottom: 30, width: 2, background: 'linear-gradient(180deg,#66BB6A,#C8E6C9)', transformOrigin: 'top', animation: 'dc-grow 0.6s ease both' }}></div>
@@ -100,7 +107,7 @@ export default function TripResultPage() {
                         <RouteIcon size={12} color="#8a938c" box={false} />เดินทางต่อ {item.distanceFromPrev} กม.
                       </div>
                     )}
-                    <div style={{ display: 'flex', gap: 16, alignItems: 'center', border: '1px solid #EFEBDB', borderRadius: 16, padding: 12, transition: 'transform 0.2s ease, box-shadow 0.2s ease' }}>
+                    <div onClick={() => setSelectedPlaceId(item.placeId)} style={{ display: 'flex', gap: 16, alignItems: 'center', border: '1px solid #EFEBDB', borderRadius: 16, padding: 12, transition: 'transform 0.2s ease, box-shadow 0.2s ease', cursor: 'pointer' }}>
                       <div style={{ position: 'absolute', left: -6, top: '50%', marginTop: -7, width: 14, height: 14, borderRadius: '50%', background: '#fff', border: '3px solid #2E7D32' }}></div>
                       <div style={{ width: 68, flexShrink: 0, textAlign: 'center' }}>
                         <div style={{ fontWeight: 800, fontSize: 13, color: '#2E7D32', lineHeight: 1.3 }}>{item.timeRangeLabel}</div>
@@ -113,15 +120,12 @@ export default function TripResultPage() {
                         <span style={{ fontSize: 10.5, fontWeight: 700, color: '#2E7D32', background: '#E8F5E9', padding: '2px 9px', borderRadius: 10 }}>{item.place.category}</span>
                         <div style={{ fontWeight: 700, fontSize: 15.5, color: '#1f2a24', margin: '5px 0 3px' }}>{item.place.name}</div>
                         <div style={{ fontSize: 12.5, color: '#6d7a72', marginBottom: 9, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>★ {item.place.rating} · {item.place.address}</div>
-                        <div style={{ display: 'flex', gap: 8 }}>
+                        <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', gap: 8 }}>
                           <button onClick={item.onLike} style={{ display: 'flex', alignItems: 'center', gap: 5, border: `1px solid ${item.likeBorder}`, background: item.likeBg, color: item.likeColor, borderRadius: 12, padding: '4px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
                             <span style={{ width: 0, height: 0, borderLeft: '5px solid transparent', borderRight: '5px solid transparent', borderBottom: `7px solid ${item.likeColor}` }}></span>ถูกใจ
                           </button>
                           <button onClick={item.onDislike} style={{ display: 'flex', alignItems: 'center', gap: 5, border: `1px solid ${item.dislikeBorder}`, background: item.dislikeBg, color: item.dislikeColor, borderRadius: 12, padding: '4px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
                             <span style={{ width: 0, height: 0, borderLeft: '5px solid transparent', borderRight: '5px solid transparent', borderTop: `7px solid ${item.dislikeColor}` }}></span>ไม่ถูกใจ
-                          </button>
-                          <button onClick={item.onSwap} style={{ display: 'flex', alignItems: 'center', gap: 5, border: '1px solid #DCD8C6', background: '#fff', color: '#6d7a72', borderRadius: 12, padding: '4px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
-                            <RouteIcon size={12} color="#6d7a72" box={false} />สลับที่นี่
                           </button>
                         </div>
                       </div>
@@ -134,6 +138,10 @@ export default function TripResultPage() {
         </div>
 
       </div>
+
+      <Modal open={!!selectedPlaceView} onClose={() => setSelectedPlaceId(null)} title={selectedPlaceView ? selectedPlaceView.name : ''} maxWidth={1100}>
+        {selectedPlaceView && <PlaceDetailView place={selectedPlaceView} imageHeight={320} />}
+      </Modal>
     </main>
   )
 }

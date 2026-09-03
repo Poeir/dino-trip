@@ -267,7 +267,6 @@ export function AppProvider({ children }) {
   const sendChat = async (overrideText) => {
     const text = (overrideText ?? stateRef.current.chatInput).trim()
     if (!text) return
-    const historyForApi = stateRef.current.chatMessages.map((m) => ({ role: m.from === 'user' ? 'user' : 'assistant', content: m.text }))
     // Push the user message plus an empty bot placeholder that fills in as
     // tokens stream in -- always the last message in the array while streaming.
     setState((s) => ({ chatMessages: [...s.chatMessages, { from: 'user', text }, { from: 'bot', text: '', places: [] }], chatInput: '', chatTyping: true }))
@@ -277,7 +276,7 @@ export function AppProvider({ children }) {
       return { chatMessages: msgs }
     })
     try {
-      const { places } = await sendChatMessage(text, historyForApi, {
+      const { places } = await sendChatMessage(text, {
         onToken: (token) => {
           setState({ chatTyping: false })
           appendToLastBotMessage((last) => ({ text: last.text + token }))
