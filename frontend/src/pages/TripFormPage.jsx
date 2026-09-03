@@ -57,7 +57,8 @@ export default function TripFormPage() {
                 </div>
               </div>
               <label style={{ fontSize: 13, fontWeight: 700, color: '#1B5E20', display: 'block', marginBottom: 6 }}>พักที่ไหน?</label>
-              <input value={f.accommodation} onChange={actions.onAccommodationChange} placeholder="เช่น โรงแรมพูลแมน ขอนแก่น" style={{ width: '100%', border: '1px solid #DCD8C6', borderRadius: 10, padding: 11, fontSize: 14, marginBottom: 18 }} />
+              <input value={f.accommodation} onChange={actions.onAccommodationChange} placeholder="เช่น โรงแรมพูลแมน ขอนแก่น" style={{ width: '100%', border: '1px solid #DCD8C6', borderRadius: 10, padding: 11, fontSize: 14 }} />
+              <p style={{ fontSize: 11.5, color: '#8a938c', margin: '5px 0 18px' }}>ถ้าไม่ระบุ ระบบจะใช้ใจกลางเมืองขอนแก่นแทน ซึ่งอาจทำให้แผนเดินทางคลาดเคลื่อนจากที่พักจริง</p>
               <label style={{ fontSize: 13, fontWeight: 700, color: '#1B5E20', display: 'block', marginBottom: 6 }}>มีสถานที่ที่อยากไปแน่ๆ มั้ย? (ถ้ามี)</label>
               {derived.mustGoChipsView.length > 0 && (
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>

@@ -7,7 +7,7 @@ import { loadGoogleMaps } from '../lib/googleMapsLoader.js'
 // the backend's GOOGLE_PLACES_API_KEY, which must never be exposed here.
 const API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY
 
-export default function DayRouteMap({ items }) {
+export default function DayRouteMap({ items, onSelectPlace }) {
   const containerRef = useRef(null)
   const [loadError, setLoadError] = useState(false)
 
@@ -44,7 +44,7 @@ export default function DayRouteMap({ items }) {
 
         points.forEach((p, i) => {
           const isHotel = p.status === 'End of Day (Return to Hotel)'
-          new maps.Marker({
+          const marker = new maps.Marker({
             position: p.place.location,
             map,
             title: p.place.name,
@@ -58,6 +58,7 @@ export default function DayRouteMap({ items }) {
               strokeWeight: 2.5,
             },
           })
+          if (onSelectPlace) marker.addListener('click', () => onSelectPlace(p.placeId))
         })
       })
       .catch(() => { if (!cancelled) setLoadError(true) })
