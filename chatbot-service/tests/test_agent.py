@@ -1,8 +1,8 @@
-"""Regression tests for RAGChatbotService -- specifically the tag-parsing and
-retrieval-query logic responsible for real bugs found through live manual
-testing this session: place cards leaking onto knowledge_base-only answers,
-NO_MATCH replies rendering as an empty chat bubble, MATCH/NO_MATCH flipping
-inconsistently, and follow-up questions losing conversational context.
+"""Regression tests for RAGChatbotService -- specifically the tag-parsing
+logic responsible for real bugs found through live manual testing this
+session: place cards leaking onto knowledge_base-only answers, NO_MATCH
+replies rendering as an empty chat bubble, and MATCH/NO_MATCH flipping
+inconsistently.
 
 The embedding model (loaded at import time by src.services.rag.retriever)
 still loads for real -- that's an accepted, already-normal cost in this dev
@@ -88,55 +88,6 @@ def make_service(response_text=None, stream_text=None, places=None, kb_entries=N
     return svc
 
 
-class TestBuildRetrievalQuery:
-    def test_no_history_returns_message_unchanged_without_llm_call(self):
-        svc = make_service()
-        result = svc._build_retrieval_query("แนะนำร้านกาแฟ", [])
-        assert result == "แนะนำร้านกาแฟ"
-        assert svc.client.chat.completions.calls == []  # no rewrite round-trip wasted
-
-    def test_with_history_uses_llm_rewrite(self):
-        svc = make_service(response_text="ร้าน X มีสาขาอื่นไหม")
-        history = [
-            {"role": "user", "content": "แนะนำร้าน X หน่อย"},
-            {"role": "assistant", "content": "ร้าน X อยู่ที่..."},
-        ]
-        result = svc._build_retrieval_query("มีสาขาอื่นมั้ย", history)
-        assert result == "ร้าน X มีสาขาอื่นไหม"
-
-    def test_rewrite_failure_falls_back_to_concat(self):
-        svc = make_service()
-
-        def boom(**kwargs):
-            raise RuntimeError("network error")
-
-        svc.client.chat.completions.create = boom
-        history = [{"role": "assistant", "content": "ร้าน X อยู่ที่..."}]
-        result = svc._build_retrieval_query("มีสาขาอื่นมั้ย", history)
-        assert result == "ร้าน X อยู่ที่...\nมีสาขาอื่นมั้ย"
-
-    def test_long_self_contained_message_skips_the_rewrite_call(self):
-        # A message this long is almost certainly already self-contained --
-        # paying for a rewrite round-trip would just be wasted latency/cost.
-        svc = make_service(response_text="should never be used")
-        history = [{"role": "assistant", "content": "ร้าน X อยู่ที่..."}]
-        long_message = "แนะนำร้านอาหารอีสานรสชาติดั้งเดิมแถวมหาวิทยาลัยขอนแก่นที่เปิดดึกหน่อยได้มั้ยครับ"
-        assert len(long_message) >= 30
-        result = svc._build_retrieval_query(long_message, history)
-        assert result == long_message
-        assert svc.client.chat.completions.calls == []
-
-    def test_rewrite_output_that_looks_like_an_answer_falls_back_to_concat(self):
-        # Regression guard: a rewrite that's dramatically longer than the
-        # input looks like the model answered the question instead of just
-        # rewriting it -- shouldn't be trusted as a search query.
-        fake_answer = "ร้าน X เป็นร้านอาหารอีสานที่มีเมนูหลากหลาย เปิดทุกวัน 10:00-22:00 ราคาเริ่มต้น 60 บาท ตั้งอยู่ใกล้มหาวิทยาลัยขอนแก่น มีที่จอดรถสะดวก"
-        svc = make_service(response_text=fake_answer)
-        history = [{"role": "assistant", "content": "ร้าน X อยู่ที่..."}]
-        result = svc._build_retrieval_query("มีสาขาอื่นมั้ย", history)
-        assert result == "ร้าน X อยู่ที่...\nมีสาขาอื่นมั้ย"
-
-
 class TestChatTagParsing:
     """Non-streaming chat() -- verifies places are only attached when the
     tag says places were actually used."""
@@ -180,8 +131,8 @@ class TestChatStreamTagParsing:
     token-buffering logic needed to detect a tag that arrives split across
     several small SSE chunks."""
 
-    def _collect(self, svc, message, history=None):
-        events = list(svc.chat_stream(message, history or []))
+    def _collect(self, svc, message):
+        events = list(svc.chat_stream(message))
         tokens = "".join(e["text"] for e in events if e["type"] == "token")
         done = next(e for e in events if e["type"] == "done")
         return tokens, done

@@ -24,13 +24,6 @@ NO_MATCH_TAG = "[NO_MATCH]"
 ALL_TAGS = (MATCH_PLACES_TAG, MATCH_KB_TAG, MATCH_BOTH_TAG, NO_MATCH_TAG)
 PLACE_CARD_TAGS = (MATCH_PLACES_TAG, MATCH_BOTH_TAG)
 
-# Skip the query-rewrite LLM round-trip for messages already long enough to
-# likely be self-contained -- Thai has no word-spacing, so this is a
-# character count, not a word count. Short referential follow-ups like
-# "มีสาขาอื่นมั้ย" (~13 chars) still get rewritten; longer already-complete
-# questions don't pay for a wasted extra LLM call.
-SELF_CONTAINED_LENGTH_THRESHOLD = 30
-
 
 class RAGChatbotService:
     def __init__(self):
@@ -38,88 +31,19 @@ class RAGChatbotService:
         self.client = OpenAI(api_key=API_KEY, base_url=BASE_URL)
         self.model_name = MODEL_NAME
 
-    def _rewrite_query_for_retrieval(self, user_message: str, history: list[dict]) -> str | None:
-        """Ask the LLM to fold conversation context into a standalone search
-        query, e.g. history=[...place X...], "มีสาขาอื่นมั้ย" -> "สาขาอื่นของ
-        [place X] มีมั้ย". More robust than blindly concatenating the last
-        turn (the previous approach) since it actually resolves what "it"/
-        "there" refers to instead of just hoping the raw text overlaps
-        enough for the embedding to still land close to the right rows.
-
-        Returns None if the output doesn't look trustworthy (caller falls
-        back to the simpler concat heuristic)."""
-        convo = "\n".join(f"{m['role']}: {m['content']}" for m in history[-4:])
-        rewrite_prompt = f"""คุณคือระบบเขียนคำค้นหาใหม่ (query rewriter) ให้ระบบค้นข้อมูลสถานที่ท่องเที่ยว/ร้านอาหาร/ความรู้ทั่วไปในขอนแก่น
-
-จากบทสนทนาด้านล่าง ให้เขียน [คำถามล่าสุด] ใหม่ให้เป็นประโยคค้นหาที่สมบูรณ์ในตัวเอง ไม่ต้องพึ่งบริบทก่อนหน้าอีก (เช่น แทนคำอย่าง "ที่นั่น"/"สาขาอื่น"/"ร้านนั้น" ด้วยชื่อจริงจากบทสนทนา) โดยคงความหมายเดิมไว้ครบ
-
-กฎ:
-- ตอบเป็นคำค้นหาที่เขียนใหม่เท่านั้น ห้ามมีคำอธิบายหรือข้อความอื่นใดๆ ห้ามใส่เครื่องหมายคำพูด
-- ถ้า [คำถามล่าสุด] สมบูรณ์ในตัวเองอยู่แล้ว ไม่ได้พึ่งบริบทก่อนหน้า ให้ตอบข้อความเดิมกลับมาเลย
-
-[บทสนทนา]
-{convo}
-
-[คำถามล่าสุด]
-{user_message}"""
-
-        response = self.client.chat.completions.create(
-            model=self.model_name,
-            messages=[{"role": "user", "content": rewrite_prompt}],
-            temperature=0.1,
-            max_tokens=120,
-        )
-        rewritten = response.choices[0].message.content.strip()
-        if not rewritten:
-            return None
-        # A real rewrite stays a short standalone query -- if it's
-        # dramatically longer than the input, the model likely answered
-        # the question instead of just rewriting it.
-        if len(rewritten) > max(len(user_message) * 4, 100):
-            logger.warning("query rewrite output looked like an answer, not a rewrite (%r), falling back", rewritten)
-            return None
-        return rewritten
-
-    def _build_retrieval_query(self, user_message: str, history: list[dict]) -> str:
-        """Follow-up questions ("มีสาขาอื่นมั้ย" / "are there other
-        branches?") often don't restate the subject, so embedding
-        user_message alone can retrieve nothing even though the DB has the
-        answer -- confirmed live: a second branch of a place existed, but
-        the bare follow-up retrieved zero rows and the bot wrongly claimed
-        there wasn't one. Skipped entirely on the (common) first turn of a
-        conversation, and on messages already long enough to likely be
-        self-contained -- nothing to resolve yet, and it would just be a
-        wasted LLM round-trip."""
-        if not history:
-            return user_message
-        concat_fallback = f"{history[-1]['content']}\n{user_message}"
-        if len(user_message) >= SELF_CONTAINED_LENGTH_THRESHOLD:
-            return user_message
-        try:
-            rewritten = self._rewrite_query_for_retrieval(user_message, history)
-            return rewritten or concat_fallback
-        except Exception:
-            logger.exception("query rewrite failed, falling back to raw concat")
-            return concat_fallback
-
-    def _prepare(self, user_message: str, history: list[dict]) -> tuple[list[dict], list[dict], dict]:
+    def _prepare(self, user_message: str) -> tuple[list[dict], list[dict], dict]:
         # Retrieve from both places and knowledge_base -- unlike the old
         # project, which only ever searched places.
         t0 = time.time()
-        retrieval_query = self._build_retrieval_query(user_message, history)
-        rewrite_ms = (time.time() - t0) * 1000
-
-        t0 = time.time()
-        places = self.retriever.search_and_expand(query=retrieval_query, limit=3)
-        kb_entries = self.retriever.search_knowledge_base(query=retrieval_query, limit=3)
+        places = self.retriever.search_and_expand(query=user_message, limit=3)
+        kb_entries = self.retriever.search_knowledge_base(query=user_message, limit=3)
         retrieve_ms = (time.time() - t0) * 1000
 
         logger.info(
-            "chat retrieval query=%r place_ids=%s kb_ids=%s rewrite_ms=%.0f retrieve_ms=%.0f",
-            retrieval_query,
+            "chat retrieval query=%r place_ids=%s kb_ids=%s retrieve_ms=%.0f",
+            user_message,
             [p["id"] for p in places],
             [k["id"] for k in kb_entries],
-            rewrite_ms,
             retrieve_ms,
         )
 
@@ -172,15 +96,15 @@ class RAGChatbotService:
         {context_str}
         """
 
-        messages = [{"role": "system", "content": system_prompt}]
-        messages.extend(history[-4:])
-        messages.append({"role": "user", "content": user_message})
-        return messages, source_places, {"rewrite_ms": rewrite_ms, "retrieve_ms": retrieve_ms}
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_message},
+        ]
+        return messages, source_places, {"retrieve_ms": retrieve_ms}
 
-    def chat(self, user_message: str, history: list[dict] | None = None) -> dict:
-        history = history or []
+    def chat(self, user_message: str) -> dict:
         t_total0 = time.time()
-        messages, source_places, timings = self._prepare(user_message, history)
+        messages, source_places, timings = self._prepare(user_message)
 
         t0 = time.time()
         response = self.client.chat.completions.create(
@@ -210,21 +134,20 @@ class RAGChatbotService:
             bot_reply = raw_reply
         total_ms = (time.time() - t_total0) * 1000
         logger.info(
-            "chat done tag=%s rewrite_ms=%.0f retrieve_ms=%.0f llm_ms=%.0f total_ms=%.0f",
-            matched_tag, timings["rewrite_ms"], timings["retrieve_ms"], llm_ms, total_ms,
+            "chat done tag=%s retrieve_ms=%.0f llm_ms=%.0f total_ms=%.0f",
+            matched_tag, timings["retrieve_ms"], llm_ms, total_ms,
         )
 
         return {"reply": bot_reply, "places": source_places}
 
-    def chat_stream(self, user_message: str, history: list[dict] | None = None):
+    def chat_stream(self, user_message: str):
         """Generator yielding {"type": "token", "text": ...} chunks as the LLM
         streams its answer, then a final {"type": "done", "reply", "places"}.
         `places` is only known once the leading [MATCH]/[NO_MATCH] tag has
         been read from the stream, so it's withheld until the last event
         rather than sent up front."""
-        history = history or []
         t_total0 = time.time()
-        messages, source_places, timings = self._prepare(user_message, history)
+        messages, source_places, timings = self._prepare(user_message)
 
         t0 = time.time()
         stream = self.client.chat.completions.create(
@@ -307,8 +230,8 @@ class RAGChatbotService:
         final_places = source_places if include_places else []
         total_ms = (time.time() - t_total0) * 1000
         logger.info(
-            "chat_stream done fallback=%s include_places=%s rewrite_ms=%.0f retrieve_ms=%.0f llm_ms=%.0f total_ms=%.0f",
-            is_fallback, include_places, timings["rewrite_ms"], timings["retrieve_ms"], llm_ms, total_ms,
+            "chat_stream done fallback=%s include_places=%s retrieve_ms=%.0f llm_ms=%.0f total_ms=%.0f",
+            is_fallback, include_places, timings["retrieve_ms"], llm_ms, total_ms,
         )
 
         yield {"type": "done", "reply": final_reply, "places": final_places}
