@@ -159,7 +159,7 @@ export function AppProvider({ children }) {
   useEffect(() => {
     fetchMe()
       .then(({ user }) => {
-        setState({ loggedIn: !!user, userName: user?.displayName || '', authChecked: true })
+        setState({ loggedIn: !!user, userName: user?.displayName || '', authChecked: true, adminLoggedIn: user?.role === 'admin' })
         if (user) fetchPointsBalance().then(({ balance }) => setState({ userPoints: balance })).catch(() => {})
       })
       .catch(() => setState({ authChecked: true }))
@@ -504,8 +504,28 @@ export function AppProvider({ children }) {
     }
   }
 
-  const adminLogin = () => { setState({ adminLoggedIn: true }); navigate('/admin') }
-  const adminLogout = () => { setState({ adminLoggedIn: false }); navigate('/') }
+  const adminLogin = async () => {
+    const s = stateRef.current
+    if (!s.authForm.email || !s.authForm.password) { setState({ authError: 'กรุณากรอกอีเมลและรหัสผ่าน' }); return }
+    setState({ authSubmitting: true, authError: '' })
+    try {
+      const { user } = await apiLogin(s.authForm.email, s.authForm.password)
+      if (user.role !== 'admin') {
+        await apiLogout().catch(() => {})
+        setState({ authSubmitting: false, authError: 'บัญชีนี้ไม่มีสิทธิ์ผู้ดูแลระบบ' })
+        return
+      }
+      setState({ authSubmitting: false, adminLoggedIn: true })
+      navigate('/admin')
+    } catch (err) {
+      setState({ authSubmitting: false, authError: err.message })
+    }
+  }
+  const adminLogout = () => {
+    apiLogout().catch(() => {})
+    setState({ adminLoggedIn: false })
+    navigate('/')
+  }
 
   const openCreateForm = (type) => {
     const defaults = {

@@ -8,12 +8,21 @@ import { resolveSessionUser } from '../lib/session.js'
 
 export const authRouter = Router()
 
-const toUserResponse = (user) => ({
+const toUserResponse = (user, role) => ({
   id: user.id,
   email: user.email,
   displayName: user.user_metadata?.display_name || user.email.split('@')[0],
   phone: user.user_metadata?.phone || null,
+  role: role || 'tourist',
 })
+
+// users.role isn't in the Supabase Auth user object (auth.users) -- it lives
+// on the app's own `users` profile row, so every response that includes a
+// user has to look it up separately via the service-role client.
+const fetchRole = async (userId) => {
+  const { data } = await supabase.from('users').select('role').eq('id', userId).single()
+  return data?.role
+}
 
 // Thai mobile numbers: 10 digits starting with 0 (e.g. 0812345678). This is
 // a profile field for staff to look accounts up by at the redemption
@@ -35,7 +44,7 @@ authRouter.post('/signup', asyncHandler(async (req, res) => {
   if (!data.session) throw httpError(400, 'กรุณายืนยันอีเมลก่อนเข้าสู่ระบบ')
 
   setSessionCookies(res, data.session)
-  res.status(201).json({ user: toUserResponse(data.user) })
+  res.status(201).json({ user: toUserResponse(data.user, await fetchRole(data.user.id)) })
 }))
 
 authRouter.post('/login', asyncHandler(async (req, res) => {
@@ -46,7 +55,7 @@ authRouter.post('/login', asyncHandler(async (req, res) => {
   if (error) throw httpError(401, 'อีเมลหรือรหัสผ่านไม่ถูกต้อง')
 
   setSessionCookies(res, data.session)
-  res.json({ user: toUserResponse(data.user) })
+  res.json({ user: toUserResponse(data.user, await fetchRole(data.user.id)) })
 }))
 
 authRouter.post('/logout', asyncHandler(async (req, res) => {
@@ -64,5 +73,5 @@ authRouter.post('/logout', asyncHandler(async (req, res) => {
 
 authRouter.get('/me', asyncHandler(async (req, res) => {
   const user = await resolveSessionUser(req, res)
-  res.json({ user: user ? toUserResponse(user) : null })
+  res.json({ user: user ? toUserResponse(user, await fetchRole(user.id)) : null })
 }))

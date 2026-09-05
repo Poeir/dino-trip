@@ -1,4 +1,5 @@
 import { crudRouter } from '../lib/crudRouter.js'
+import { requireAdmin } from '../middleware/requireAdmin.js'
 import { rewardPayload } from '../lib/mappers.js'
 
 // Rewards columns (id, name, cost) are already the shape the frontend
@@ -9,4 +10,5 @@ export const rewardsRouter = crudRouter({
   select: 'id, name, cost',
   order: { column: 'cost' },
   toRow: rewardPayload,
+  mutateAuth: [requireAdmin],
 })

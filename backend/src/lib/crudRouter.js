@@ -11,7 +11,10 @@ import { supabase } from './supabaseClient.js'
 // `sortRows`, if given, overrides `order`: it receives the full fetched row
 // array and returns it sorted, for rankings DB-side `.order()` can't express
 // (e.g. a score blending multiple columns).
-export function crudRouter({ table, select, order, sortRows, toRow, toResponse }) {
+// `mutateAuth`, if given, is an array of middleware applied only to
+// POST/PUT/DELETE -- GET stays open since public/tourist pages read the
+// same list endpoints admin tabs do.
+export function crudRouter({ table, select, order, sortRows, toRow, toResponse, mutateAuth = [] }) {
   const router = Router()
   const mapRow = toResponse || ((row) => row)
   const orderRules = order ? (Array.isArray(order) ? order : [order]) : []
@@ -29,21 +32,21 @@ export function crudRouter({ table, select, order, sortRows, toRow, toResponse }
     res.json(rows.map(mapRow))
   }))
 
-  router.post('/', asyncHandler(async (req, res) => {
+  router.post('/', mutateAuth, asyncHandler(async (req, res) => {
     const payload = toRow ? toRow(req.body) : req.body
     const { data, error } = await supabase.from(table).insert(payload).select(select).single()
     if (error) throw httpError(400, error.message)
     res.status(201).json(mapRow(data))
   }))
 
-  router.put('/:id', asyncHandler(async (req, res) => {
+  router.put('/:id', mutateAuth, asyncHandler(async (req, res) => {
     const payload = toRow ? toRow(req.body) : req.body
     const { data, error } = await supabase.from(table).update(payload).eq('id', req.params.id).select(select).single()
     if (error) throw httpError(400, error.message)
     res.json(mapRow(data))
   }))
 
-  router.delete('/:id', asyncHandler(async (req, res) => {
+  router.delete('/:id', mutateAuth, asyncHandler(async (req, res) => {
     const { error } = await supabase.from(table).delete().eq('id', req.params.id)
     if (error) throw httpError(400, error.message)
     res.status(204).end()

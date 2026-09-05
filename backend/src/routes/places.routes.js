@@ -1,4 +1,5 @@
 import { crudRouter } from '../lib/crudRouter.js'
+import { requireAdmin } from '../middleware/requireAdmin.js'
 import { rowToPlace, placePayload } from '../lib/mappers.js'
 import { sortPlacesByWeightedRating } from '../services/placeRanking.js'
 
@@ -12,4 +13,5 @@ export const placesRouter = crudRouter({
   sortRows: sortPlacesByWeightedRating,
   toRow: placePayload,
   toResponse: rowToPlace,
+  mutateAuth: [requireAdmin],
 })
