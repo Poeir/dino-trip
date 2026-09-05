@@ -1,6 +1,7 @@
 import express from 'express'
 import cors from 'cors'
 import cookieParser from 'cookie-parser'
+import morgan from 'morgan'
 import { placesRouter } from './routes/places.routes.js'
 import { eventsRouter } from './routes/events.routes.js'
 import { knowledgeBaseRouter } from './routes/knowledgeBase.routes.js'
@@ -16,6 +17,7 @@ export const app = express()
 // requests can't use) is required for the browser to accept/send the
 // httpOnly session cookies /api/auth sets.
 app.use(cors({ origin: process.env.FRONTEND_ORIGIN || 'http://localhost:5173', credentials: true }))
+app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'))
 app.use(express.json())
 app.use(cookieParser())
 
