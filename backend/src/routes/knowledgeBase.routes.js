@@ -1,4 +1,5 @@
 import { crudRouter } from '../lib/crudRouter.js'
+import { requireAdmin } from '../middleware/requireAdmin.js'
 import { rowToKb, kbPayload } from '../lib/mappers.js'
 
 const KB_COLUMNS = 'id, title, category, content, is_pinned, is_active'
@@ -9,4 +10,5 @@ export const knowledgeBaseRouter = crudRouter({
   order: { column: 'created_at' },
   toRow: kbPayload,
   toResponse: rowToKb,
+  mutateAuth: [requireAdmin],
 })

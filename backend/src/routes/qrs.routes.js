@@ -4,12 +4,14 @@ import { supabase } from '../lib/supabaseClient.js'
 import { asyncHandler } from '../middleware/asyncHandler.js'
 import { httpError } from '../middleware/errorHandler.js'
 import { requireAuth } from '../middleware/requireAuth.js'
+import { requireAdmin } from '../middleware/requireAdmin.js'
 
 export const qrsRouter = crudRouter({
   table: 'qrs',
   select: 'id, place_id, points',
   toRow: qrPayload,
   toResponse: rowToQr,
+  mutateAuth: [requireAdmin],
 })
 
 // Claims the points a QR awards for the logged-in tourist. The points and
