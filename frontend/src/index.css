@@ -148,6 +148,15 @@ input, textarea, select, button { font-family: inherit; }
 .dc-chat-bubble { transition: transform 0.2s ease, box-shadow 0.2s ease; }
 .dc-chat-bubble:hover { transform: translateY(-2px); box-shadow: 0 18px 36px rgba(0,0,0,0.22); }
 
+.dc-avatar-swatch { transition: transform 0.15s cubic-bezier(.34,1.56,.64,1); }
+.dc-avatar-swatch:hover { transform: scale(1.2); }
+.dc-avatar-swatch:active { transform: scale(0.92); }
+.dc-signup-cta { transition: transform 0.2s ease, box-shadow 0.2s ease; }
+.dc-signup-cta:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 10px 22px rgba(46,125,50,0.35); }
+.dc-signup-cta:active:not(:disabled) { transform: translateY(0); }
+.dc-signup-input { transition: border-color 0.15s ease, box-shadow 0.15s ease; }
+.dc-signup-input:focus { outline: none; border-color: #2E7D32 !important; box-shadow: 0 0 0 3px rgba(46,125,50,0.14); }
+
 @media (max-width: 880px) {
   [data-role="desktop-nav"] { display: none !important; }
   [data-role="hamburger-btn"] { display: flex !important; }
@@ -172,6 +181,8 @@ input, textarea, select, button { font-family: inherit; }
   [data-role="event-detail-grid"] { grid-template-columns: 1fr !important; }
   [data-role="trip-result-grid"] { grid-template-columns: 1fr !important; }
   [data-role="trip-result-summary"] { position: static !important; }
+  [data-role="signup-grid"], [data-role="login-grid"] { grid-template-columns: 1fr !important; }
+  [data-role="signup-grid"] > div:first-child, [data-role="login-grid"] > div:first-child { position: static !important; min-height: 0 !important; }
 }
 @media (max-width: 600px) {
   [data-role="admin-stats-grid"] { grid-template-columns: 1fr !important; }

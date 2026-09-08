@@ -2,14 +2,13 @@ import { Router } from 'express'
 import { asyncHandler } from '../middleware/asyncHandler.js'
 import { httpError } from '../middleware/errorHandler.js'
 import { requireAuth } from '../middleware/requireAuth.js'
-import { supabase } from '../lib/supabaseClient.js'
+import { db } from '../lib/db.js'
 
 export const pointsRouter = Router()
 
 pointsRouter.get('/me', requireAuth, asyncHandler(async (req, res) => {
-  const { data, error } = await supabase.from('users').select('points_balance').eq('id', req.user.id).single()
-  if (error) throw httpError(500, error.message)
-  res.json({ balance: data.points_balance })
+  const row = await db('users').select('points_balance').where('id', req.user.id).first()
+  res.json({ balance: row.points_balance })
 }))
 
 // Debits the reward's cost and credits redemption history atomically in
@@ -23,9 +22,12 @@ pointsRouter.post('/redeem', requireAuth, asyncHandler(async (req, res) => {
   const { rewardId } = req.body
   if (!rewardId) throw httpError(400, 'ต้องระบุของรางวัล')
 
-  const { data, error } = await supabase.rpc('redeem_reward', { p_user_id: req.user.id, p_reward_id: rewardId })
-  if (error) throw httpError(REDEEM_ERROR_STATUS[error.code] || 500, REDEEM_ERROR_MESSAGE[error.code] || error.message)
-
-  const [result] = data
+  let rows
+  try {
+    ({ rows } = await db.raw('select * from redeem_reward(?, ?)', [req.user.id, rewardId]))
+  } catch (err) {
+    throw httpError(REDEEM_ERROR_STATUS[err.code] || 500, REDEEM_ERROR_MESSAGE[err.code] || err.message)
+  }
+  const [result] = rows
   res.json({ balance: result.new_balance })
 }))

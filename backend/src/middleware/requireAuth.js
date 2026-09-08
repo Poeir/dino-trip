@@ -9,6 +9,6 @@ import { resolveSessionUser } from '../lib/session.js'
 export const requireAuth = asyncHandler(async (req, res, next) => {
   const user = await resolveSessionUser(req, res)
   if (!user) throw httpError(401, 'กรุณาเข้าสู่ระบบก่อน')
-  req.user = { id: user.id, email: user.email }
+  req.user = { id: user.id, email: user.email, role: user.role }
   next()
 })

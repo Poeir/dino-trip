@@ -18,7 +18,10 @@ import PointsPage from './pages/PointsPage.jsx'
 import ScanLandingPage from './pages/ScanLandingPage.jsx'
 import LoginPage from './pages/LoginPage.jsx'
 import SignupPage from './pages/SignupPage.jsx'
+import ForgotPasswordPage from './pages/ForgotPasswordPage.jsx'
 import AdminLoginPage from './pages/AdminLoginPage.jsx'
+import ConfirmEmailPage from './pages/ConfirmEmailPage.jsx'
+import ResetPasswordPage from './pages/ResetPasswordPage.jsx'
 import AdminDashboardPage from './pages/AdminDashboardPage.jsx'
 
 function PublicLayout() {
@@ -58,8 +61,11 @@ function Shell() {
           <Route path="/scan/:qrId" element={<ScanLandingPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<SignupPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         </Route>
         <Route path="/admin/login" element={<AdminLoginPage />} />
+        <Route path="/confirm" element={<ConfirmEmailPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/admin" element={<RequireAdmin><AdminDashboardPage /></RequireAdmin>} />
         <Route path="/admin/:tab" element={<RequireAdmin><AdminDashboardPage /></RequireAdmin>} />
         <Route path="*" element={<Navigate to="/" replace />} />

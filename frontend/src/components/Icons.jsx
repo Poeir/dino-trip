@@ -111,6 +111,70 @@ export function PhoneIcon({ size = 24, color = stroke, box = true } = {}) {
   )
 }
 
+export function UserIcon({ size = 24, color = stroke, box = true } = {}) {
+  return wrap(
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="8" r="3.7" stroke={color} strokeWidth={sw} />
+      <path d="M4.5 20c1-4 4-6 7.5-6s6.5 2 7.5 6" stroke={color} strokeWidth={sw} strokeLinecap="round" />
+    </svg>,
+    box
+  )
+}
+
+export function GenderIcon({ size = 24, color = stroke, box = true } = {}) {
+  return wrap(
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <circle cx="8.5" cy="14.5" r="4" stroke={color} strokeWidth={sw} />
+      <path d="M8.5 18.5v4M6.5 20.5h4" stroke={color} strokeWidth={sw} strokeLinecap="round" />
+      <circle cx="15" cy="7" r="3.3" stroke={color} strokeWidth={sw} />
+      <path d="M17.3 4.7 21 1M21 1h-3.2M21 1v3.2" stroke={color} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" />
+    </svg>,
+    box
+  )
+}
+
+export function BriefcaseIcon({ size = 24, color = stroke, box = true } = {}) {
+  return wrap(
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <rect x="3" y="8" width="18" height="11.5" rx="2" stroke={color} strokeWidth={sw} />
+      <path d="M8.5 8V6a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v2" stroke={color} strokeWidth={sw} strokeLinejoin="round" />
+      <path d="M3 13h18" stroke={color} strokeWidth={sw} />
+    </svg>,
+    box
+  )
+}
+
+export function MailIcon({ size = 24, color = stroke, box = true } = {}) {
+  return wrap(
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <rect x="3" y="5.5" width="18" height="13" rx="2.5" stroke={color} strokeWidth={sw} />
+      <path d="M4 7l8 6 8-6" stroke={color} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" />
+    </svg>,
+    box
+  )
+}
+
+export function LockIcon({ size = 24, color = stroke, box = true } = {}) {
+  return wrap(
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <rect x="4.5" y="11" width="15" height="10" rx="2.5" stroke={color} strokeWidth={sw} />
+      <path d="M7.5 11V8a4.5 4.5 0 0 1 9 0v3" stroke={color} strokeWidth={sw} strokeLinecap="round" />
+      <circle cx="12" cy="15.5" r="1.4" fill={color} />
+    </svg>,
+    box
+  )
+}
+
+export function ZoomIcon({ size = 24, color = stroke, box = true } = {}) {
+  return wrap(
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <circle cx="10.5" cy="10.5" r="6.5" stroke={color} strokeWidth={sw} />
+      <path d="M15.3 15.3 20 20M10.5 7.5v6M7.5 10.5h6" stroke={color} strokeWidth={sw} strokeLinecap="round" />
+    </svg>,
+    box
+  )
+}
+
 export function RouteIcon({ size = 24, color = stroke, box = true } = {}) {
   return wrap(
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none">

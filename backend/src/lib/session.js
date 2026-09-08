@@ -1,27 +1,26 @@
-import { createAuthClient } from './supabaseAuthClient.js'
-import { setSessionCookies, clearSessionCookies } from './authCookies.js'
+import crypto from 'crypto'
+import { db } from './db.js'
+import { clearSessionCookie } from './authCookies.js'
 
-// Resolves the Supabase user for the request's session cookies, silently
-// refreshing an expired access token via the (much longer-lived) refresh
-// token cookie when needed -- and reissuing both cookies on success, same
-// as auth.routes.js's /me used to do inline. Returns the raw Supabase user,
-// or null if there's no valid session; callers decide what that means
-// (/me responds { user: null }, requireAuth throws 401).
+const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000
+const hash = (raw) => crypto.createHash('sha256').update(raw).digest('hex')
+
+export async function createSession(userId) {
+  const rawToken = crypto.randomBytes(32).toString('hex')
+  await db('sessions').insert({ user_id: userId, token_hash: hash(rawToken), expires_at: new Date(Date.now() + SESSION_TTL_MS) })
+  return rawToken
+}
+
 export async function resolveSessionUser(req, res) {
-  const accessToken = req.cookies?.sb_access_token
-  const client = createAuthClient()
+  const rawToken = req.cookies?.session_token
+  if (!rawToken) return null
+  const user = await db('sessions').join('users', 'users.id', 'sessions.user_id')
+    .where('sessions.token_hash', hash(rawToken)).andWhere('sessions.expires_at', '>', new Date())
+    .select('users.*').first()
+  if (!user) { clearSessionCookie(res); return null }
+  return user
+}
 
-  if (accessToken) {
-    const { data, error } = await client.auth.getUser(accessToken)
-    if (!error && data.user) return data.user
-  }
-
-  const refreshToken = req.cookies?.sb_refresh_token
-  if (!refreshToken) return null
-
-  const refreshed = await client.auth.refreshSession({ refresh_token: refreshToken })
-  if (refreshed.error) { clearSessionCookies(res); return null }
-
-  setSessionCookies(res, refreshed.data.session)
-  return refreshed.data.user
+export async function destroySession(rawToken) {
+  if (rawToken) await db('sessions').where('token_hash', hash(rawToken)).delete()
 }

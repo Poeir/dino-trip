@@ -3,19 +3,52 @@ import { useNavigate } from 'react-router-dom'
 import {
   categories, categoryIcons, interestList, budgetList, budgetMeta, areaScopeList, areaScopeMeta
 } from '../data/seed.js'
+import thaiAddress from '../data/thaiAddress.json'
 import {
   fetchPlaces, createPlace, updatePlace, deletePlace,
   fetchEvents, createEvent, updateEvent, deleteEvent,
   fetchKnowledgeBase, createKnowledgeBase, updateKnowledgeBase, deleteKnowledgeBase,
   fetchQrs, createQr, updateQr, deleteQr,
   fetchRewards, createReward, updateReward, deleteReward,
-  login as apiLogin, signup as apiSignup, logout as apiLogout, fetchMe,
+  login as apiLogin, signup as apiSignup, confirmEmail as apiConfirmEmail,
+  forgotPassword as apiForgotPassword, resetPassword as apiResetPassword,
+  logout as apiLogout, fetchMe,
   fetchPointsBalance, scanQr, redeemReward as apiRedeemReward,
 } from '../lib/apiClient.js'
 import { sendChatMessage, requestTripPlan } from '../lib/chatbotService.js'
 import { haversineKm } from '../utils/geo.js'
 
 const AppContext = createContext(null)
+
+// Built-in avatar choices for the signup persona card -- no illustration
+// assets exist yet for a full character set, so these are simple emoji on a
+// brand-pastel swatch rather than custom art. Stored as "preset:<key>".
+const PERSONA_AVATARS = [
+  { key: 'dino', emoji: '🦕', bg: '#E8F5E9' },
+  { key: 'turtle', emoji: '🐢', bg: '#E0F2F1' },
+  { key: 'leaf', emoji: '🌿', bg: '#F1F8E9' },
+  { key: 'backpack', emoji: '🎒', bg: '#FFF3E0' },
+  { key: 'map', emoji: '🗺️', bg: '#E3F2FD' },
+  { key: 'mountain', emoji: '⛰️', bg: '#EFEBE9' },
+  { key: 'temple', emoji: '⛩️', bg: '#FCE4EC' },
+  { key: 'sun', emoji: '☀️', bg: '#FFFDE7' },
+]
+const MAX_AVATAR_FILE_BYTES = 2 * 1024 * 1024
+
+// Password strength checklist shown live under the field as the visitor
+// types (see derived.passwordRules) -- kept to widely-understood rules
+// (length + the three character classes) rather than also demanding a
+// symbol, since this guards a tourism rewards account, not a bank.
+const PASSWORD_RULES = [
+  { key: 'length', label: 'อย่างน้อย 8 ตัวอักษร', test: (p) => p.length >= 8 },
+  { key: 'upper', label: 'มีตัวพิมพ์ใหญ่ (A-Z)', test: (p) => /[A-Z]/.test(p) },
+  { key: 'lower', label: 'มีตัวพิมพ์เล็ก (a-z)', test: (p) => /[a-z]/.test(p) },
+  { key: 'number', label: 'มีตัวเลข (0-9)', test: (p) => /[0-9]/.test(p) },
+]
+const isPasswordValid = (password) => PASSWORD_RULES.every((r) => r.test(password))
+// Clamp helper for dragging the uploaded photo within its circle (see
+// setAvatarPosition below) -- object-position is a 0-100% pair.
+const clampPct = (n) => Math.max(0, Math.min(100, n))
 
 // "HH:MM" -> minutes-since-midnight, for computing how long a trip-plan item
 // lasts (arrival_time/departure_time only arrive as display strings from the
@@ -43,9 +76,22 @@ const initialState = {
   authChecked: false,
   userName: '',
   userPoints: 0,
-  authForm: { name: '', email: '', phone: '', password: '', confirmPassword: '', consent: false },
+  // avatarUrl/avatarFile hold a *local* blob preview + the File itself while
+  // filling in the form -- nothing is uploaded until submitSignup, so
+  // avatarUrl is never a real server URL here (see submitSignup).
+  authForm: { title: '', firstName: '', lastName: '', email: '', phone: '', password: '', confirmPassword: '', gender: '', birthdate: '', occupation: '', province: '', district: '', subdistrict: '', avatarUrl: '', avatarFile: null, avatarPosition: '50 50', avatarScale: 1, consent: false },
   authError: '',
+  avatarUploading: false,
+  avatarError: '',
+  avatarCropOpen: false,
+  avatarCropFile: null,
+  avatarCropObjectUrl: '',
+  avatarCropPosition: '50 50',
+  avatarCropScale: 1,
   authSubmitting: false,
+  authPendingConfirmation: false,
+  resetForm: { password: '', confirmPassword: '' },
+  forgotPasswordSent: false,
   chatOpen: false,
   chatInput: '',
   chatTyping: false,
@@ -187,8 +233,9 @@ export function AppProvider({ children }) {
   const prevStep = () => setState((s) => ({ tripStep: Math.max(0, s.tripStep - 1), tripFormError: '' }))
   const goToStep = (i) => { if (i < stateRef.current.tripStep) setState({ tripStep: i, tripFormError: '' }) }
   const goPoints = () => navigate('/points')
-  const goLogin = () => { navigate('/login'); setState({ authError: '' }) }
-  const goSignup = () => { navigate('/signup'); setState({ authError: '' }) }
+  const goLogin = () => { navigate('/login'); setState({ authError: '', authPendingConfirmation: false }) }
+  const goSignup = () => { navigate('/signup'); setState({ authError: '', authPendingConfirmation: false }) }
+  const goForgotPassword = () => { navigate('/forgot-password'); setState({ authError: '', forgotPasswordSent: false }) }
   const openPlace = (id) => navigate(`/places/${id}`)
   const openEvent = (id) => navigate(`/events/${id}`)
   const toggleFavorite = (id) => setState((s) => ({
@@ -219,12 +266,74 @@ export function AppProvider({ children }) {
   }
 
   const updateAuthField = (f, v) => setState((s) => ({ authForm: { ...s.authForm, [f]: v } }))
-  const onAuthNameChange = (e) => updateAuthField('name', e.target.value)
+  const onAuthTitleChange = (e) => updateAuthField('title', e.target.value)
+  const onAuthFirstNameChange = (e) => updateAuthField('firstName', e.target.value)
+  const onAuthLastNameChange = (e) => updateAuthField('lastName', e.target.value)
   const onAuthEmailChange = (e) => updateAuthField('email', e.target.value)
   const onAuthPhoneChange = (e) => updateAuthField('phone', e.target.value)
   const onAuthPasswordChange = (e) => updateAuthField('password', e.target.value)
   const onAuthConfirmPasswordChange = (e) => updateAuthField('confirmPassword', e.target.value)
+  const onAuthGenderChange = (e) => updateAuthField('gender', e.target.value)
+  const onAuthBirthdateChange = (e) => updateAuthField('birthdate', e.target.value)
+  const onAuthOccupationChange = (e) => updateAuthField('occupation', e.target.value)
+  // Cascading address selects: changing a higher level clears the levels
+  // below it since their option lists depend on it (see derived below).
+  const onAuthProvinceChange = (e) => setState((s) => ({ authForm: { ...s.authForm, province: e.target.value, district: '', subdistrict: '' } }))
+  const onAuthDistrictChange = (e) => setState((s) => ({ authForm: { ...s.authForm, district: e.target.value, subdistrict: '' } }))
+  const onAuthSubdistrictChange = (e) => updateAuthField('subdistrict', e.target.value)
+  const selectPersonaAvatarPreset = (key) => setState((s) => {
+    if (s.authForm.avatarFile) URL.revokeObjectURL(s.authForm.avatarUrl)
+    return { authForm: { ...s.authForm, avatarUrl: `preset:${key}`, avatarFile: null, avatarPosition: '50 50', avatarScale: 1 }, avatarError: '' }
+  })
+  const clearPersonaAvatar = () => setState((s) => {
+    if (s.authForm.avatarFile) URL.revokeObjectURL(s.authForm.avatarUrl)
+    return { authForm: { ...s.authForm, avatarUrl: '', avatarFile: null, avatarPosition: '50 50', avatarScale: 1 }, avatarError: '' }
+  })
+
+  // Picking a file only opens the crop popup with a local (never-uploaded)
+  // blob preview. Nothing reaches the server here -- the file itself is
+  // held in authForm.avatarFile and only actually uploaded from
+  // submitSignup, once the visitor clicks "สมัครสมาชิก".
+  const onAuthAvatarFileChange = (e) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    if (!file.type.startsWith('image/')) { setState({ avatarError: 'ไฟล์ต้องเป็นรูปภาพเท่านั้น' }); return }
+    if (file.size > MAX_AVATAR_FILE_BYTES) { setState({ avatarError: 'ไฟล์ต้องมีขนาดไม่เกิน 2MB' }); return }
+    setState({
+      avatarCropOpen: true, avatarCropFile: file, avatarCropObjectUrl: URL.createObjectURL(file),
+      avatarCropPosition: '50 50', avatarCropScale: 1, avatarError: '',
+    })
+  }
+  // Re-adjusting the pending photo also goes through the popup (one
+  // consistent "dragging happens in the popup" interaction) -- reuses the
+  // same File/blob URL already sitting in authForm, no new object URL.
+  const openAvatarReposition = () => {
+    const f = stateRef.current.authForm
+    if (!f.avatarFile) return
+    setState({ avatarCropOpen: true, avatarCropFile: f.avatarFile, avatarCropObjectUrl: f.avatarUrl, avatarCropPosition: f.avatarPosition, avatarCropScale: f.avatarScale, avatarError: '' })
+  }
+  const setAvatarCropPosition = (x, y) => setState({ avatarCropPosition: `${clampPct(x)} ${clampPct(y)}` })
+  const setAvatarCropScale = (scale) => setState({ avatarCropScale: Math.max(1, Math.min(3, scale)) })
+  const cancelAvatarCrop = () => setState((s) => {
+    // Only revoke if this session's blob URL isn't the one authForm already
+    // owns (i.e. a brand-new pick being discarded, not a reposition of the
+    // already-committed file) -- otherwise cancelling a reposition would
+    // kill the preview still shown on the card.
+    if (s.avatarCropFile && s.avatarCropFile !== s.authForm.avatarFile) URL.revokeObjectURL(s.avatarCropObjectUrl)
+    return { avatarCropOpen: false, avatarCropFile: null, avatarCropObjectUrl: '', avatarError: '' }
+  })
+  // Purely local: commits the file/position/scale into authForm. The actual
+  // upload happens later, in submitSignup, only once the whole form is
+  // submitted -- see the note on authForm.avatarUrl above.
+  const confirmAvatarCrop = () => setState((s) => ({
+    authForm: { ...s.authForm, avatarFile: s.avatarCropFile, avatarUrl: s.avatarCropObjectUrl, avatarPosition: s.avatarCropPosition, avatarScale: s.avatarCropScale },
+    avatarCropOpen: false, avatarCropFile: null, avatarCropObjectUrl: '',
+  }))
   const onAuthConsentChange = (e) => updateAuthField('consent', e.target.checked)
+  const updateResetField = (f, v) => setState((s) => ({ resetForm: { ...s.resetForm, [f]: v } }))
+  const onResetPasswordChange = (e) => updateResetField('password', e.target.value)
+  const onResetConfirmPasswordChange = (e) => updateResetField('confirmPassword', e.target.value)
   const submitLogin = async () => {
     const s = stateRef.current
     if (!s.authForm.email || !s.authForm.password) { setState({ authError: 'กรุณากรอกอีเมลและรหัสผ่าน' }); return }
@@ -240,16 +349,77 @@ export function AppProvider({ children }) {
   }
   const submitSignup = async () => {
     const s = stateRef.current
-    if (!s.authForm.name || !s.authForm.email || !s.authForm.phone || !s.authForm.password || !s.authForm.confirmPassword) {
+    const f = s.authForm
+    if (!f.title || !f.firstName || !f.lastName || !f.email || !f.phone || !f.password || !f.confirmPassword || !f.gender || !f.birthdate || !f.occupation || !f.province || !f.district || !f.subdistrict) {
       setState({ authError: 'กรุณากรอกข้อมูลให้ครบถ้วน' }); return
     }
-    if (!/^0\d{9}$/.test(s.authForm.phone)) { setState({ authError: 'กรุณากรอกเบอร์โทรศัพท์ให้ถูกต้อง (10 หลัก ขึ้นต้นด้วย 0)' }); return }
-    if (s.authForm.password !== s.authForm.confirmPassword) { setState({ authError: 'รหัสผ่านและยืนยันรหัสผ่านไม่ตรงกัน' }); return }
-    if (!s.authForm.consent) { setState({ authError: 'กรุณายินยอมนโยบายความเป็นส่วนตัวก่อนสมัครสมาชิก' }); return }
+    if (!/^0\d{9}$/.test(f.phone)) { setState({ authError: 'กรุณากรอกเบอร์โทรศัพท์ให้ถูกต้อง (10 หลัก ขึ้นต้นด้วย 0)' }); return }
+    if (new Date(f.birthdate) > new Date()) { setState({ authError: 'กรุณากรอกวันเกิดให้ถูกต้อง' }); return }
+    if (!isPasswordValid(f.password)) { setState({ authError: 'รหัสผ่านยังไม่ตรงตามเกณฑ์ที่กำหนด (ดูรายการด้านล่างช่องรหัสผ่าน)' }); return }
+    if (f.password !== f.confirmPassword) { setState({ authError: 'รหัสผ่านและยืนยันรหัสผ่านไม่ตรงกัน' }); return }
+    if (!f.consent) { setState({ authError: 'กรุณายินยอมนโยบายความเป็นส่วนตัวก่อนสมัครสมาชิก' }); return }
+    setState({ authSubmitting: true, authError: '' })
+
+    // The picked photo's bytes only actually upload now, at submit time,
+    // bundled into the same multipart request as the rest of the form --
+    // until this point it was just a local blob preview (see
+    // confirmAvatarCrop). No separate pre-signup upload step anymore.
+    const avatarUrl = f.avatarUrl?.startsWith('preset:') ? f.avatarUrl : null
+    try {
+      const result = await apiSignup({
+        title: f.title, firstName: f.firstName, lastName: f.lastName, email: f.email, password: f.password, phone: f.phone,
+        gender: f.gender, birthdate: f.birthdate, occupation: f.occupation,
+        province: f.province, district: f.district, subdistrict: f.subdistrict,
+        avatarUrl,
+        avatarPosition: f.avatarFile ? `${f.avatarPosition.split(' ')[0]}% ${f.avatarPosition.split(' ')[1]}%` : null,
+        avatarScale: f.avatarFile ? f.avatarScale : null,
+      }, f.avatarFile)
+      if (f.avatarFile) URL.revokeObjectURL(f.avatarUrl)
+      if (result.pendingConfirmation) {
+        setState({ authSubmitting: false, authPendingConfirmation: true })
+        return
+      }
+      setState({ authSubmitting: false, loggedIn: true, userName: result.user.displayName })
+      redirectAfterAuth()
+    } catch (err) {
+      setState({ authSubmitting: false, authError: err.message })
+    }
+  }
+  // Called by ConfirmEmailPage after it reads ?token= from the confirmation
+  // link's URL. Left to throw on failure so the page (not this action)
+  // decides how to render an expired/invalid link.
+  const completeEmailConfirmation = async (token) => {
+    const { user } = await apiConfirmEmail(token)
+    setState({ loggedIn: true, userName: user.displayName, authChecked: true })
+    fetchPointsBalance().then(({ balance }) => setState({ userPoints: balance })).catch(() => {})
+    redirectAfterAuth()
+  }
+  const submitForgotPassword = async () => {
+    const s = stateRef.current
+    if (!s.authForm.email) { setState({ authError: 'กรุณากรอกอีเมล' }); return }
     setState({ authSubmitting: true, authError: '' })
     try {
-      const { user } = await apiSignup(s.authForm.name, s.authForm.email, s.authForm.password, s.authForm.phone)
+      await apiForgotPassword(s.authForm.email)
+      setState({ authSubmitting: false, forgotPasswordSent: true })
+    } catch (err) {
+      setState({ authSubmitting: false, authError: err.message })
+    }
+  }
+  // Called by ResetPasswordPage's form on submit -- unlike
+  // completeEmailConfirmation this page has real form fields, so it follows
+  // submitLogin/submitSignup's convention (manage authSubmitting/authError
+  // itself, shown as an inline banner) rather than throwing, since the token
+  // is only consumed by this explicit action, not fired on mount.
+  const submitResetPassword = async (token) => {
+    const s = stateRef.current
+    const f = s.resetForm
+    if (!isPasswordValid(f.password)) { setState({ authError: 'รหัสผ่านยังไม่ตรงตามเกณฑ์ที่กำหนด (ดูรายการด้านล่างช่องรหัสผ่าน)' }); return }
+    if (f.password !== f.confirmPassword) { setState({ authError: 'รหัสผ่านและยืนยันรหัสผ่านไม่ตรงกัน' }); return }
+    setState({ authSubmitting: true, authError: '' })
+    try {
+      const { user } = await apiResetPassword(token, f.password)
       setState({ authSubmitting: false, loggedIn: true, userName: user.displayName })
+      fetchPointsBalance().then(({ balance }) => setState({ userPoints: balance })).catch(() => {})
       redirectAfterAuth()
     } catch (err) {
       setState({ authSubmitting: false, authError: err.message })
@@ -604,9 +774,14 @@ export function AppProvider({ children }) {
   const actions = {
     showToast, toggleMobileMenu, closeMobileMenu, closeWelcomeModal, welcomeGoTrip, welcomeGoPoints,
     goHome, goPlaces, goEvents, goPublic, goAdminLogin, goTripForm, nextStep, prevStep, goToStep,
-    goPoints, goLogin, goSignup, openPlace, openEvent, setSearchQuery, onSearchChange, setCategory,
+    goPoints, goLogin, goSignup, goForgotPassword, openPlace, openEvent, setSearchQuery, onSearchChange, setCategory,
     setEventSearchQuery, onEventSearchChange, toggleFavorite, togglePlaceActive,
-    onAuthNameChange, onAuthEmailChange, onAuthPhoneChange, onAuthPasswordChange, onAuthConfirmPasswordChange, onAuthConsentChange, submitLogin, submitSignup, logout,
+    onAuthTitleChange, onAuthFirstNameChange, onAuthLastNameChange, onAuthEmailChange, onAuthPhoneChange, onAuthPasswordChange, onAuthConfirmPasswordChange,
+    onAuthGenderChange, onAuthBirthdateChange, onAuthOccupationChange, onAuthProvinceChange, onAuthDistrictChange, onAuthSubdistrictChange,
+    selectPersonaAvatarPreset, clearPersonaAvatar, onAuthAvatarFileChange, openAvatarReposition,
+    setAvatarCropPosition, setAvatarCropScale, cancelAvatarCrop, confirmAvatarCrop,
+    onResetPasswordChange, onResetConfirmPasswordChange,
+    onAuthConsentChange, submitLogin, submitSignup, completeEmailConfirmation, submitForgotPassword, submitResetPassword, logout,
     toggleChat, onChatInputChange, sendChat,
     onStartDateChange, onEndDateChange, onAccommodationChange, setTripDatePreset,
     onMustGoQueryChange, addMustGo, removeMustGo, onMustGoKeyDown,
@@ -620,6 +795,47 @@ export function AppProvider({ children }) {
 
   // ---- Derived / computed view values (mirrors renderVals()) ----
   const s = state
+  const titleOptions = [
+    { value: 'mr', label: 'นาย' },
+    { value: 'mrs', label: 'นาง' },
+    { value: 'miss', label: 'นางสาว' },
+  ]
+  const genderOptions = [
+    { value: 'male', label: 'ชาย' },
+    { value: 'female', label: 'หญิง' },
+    { value: 'unspecified', label: 'ไม่ระบุ' },
+  ]
+  const occupationOptions = [
+    { value: 'student', label: 'นักเรียน/นักศึกษา' },
+    { value: 'government', label: 'ข้าราชการ/รัฐวิสาหกิจ' },
+    { value: 'private_employee', label: 'พนักงานบริษัทเอกชน' },
+    { value: 'business_owner', label: 'ธุรกิจส่วนตัว/ค้าขาย' },
+    { value: 'farmer', label: 'เกษตรกร' },
+    { value: 'freelance', label: 'รับจ้างทั่วไป/ฟรีแลนซ์' },
+    { value: 'homemaker', label: 'แม่บ้าน/พ่อบ้าน' },
+    { value: 'retired', label: 'เกษียณอายุ' },
+    { value: 'unemployed', label: 'ว่างงาน' },
+    { value: 'other', label: 'อื่นๆ' },
+  ]
+  // Computed client-side just to show the user their age as they type their
+  // birthdate -- the backend stores birthdate itself, not a derived age,
+  // since "age" would otherwise silently go stale.
+  const computeAge = (birthdate) => {
+    if (!birthdate) return null
+    const dob = new Date(birthdate)
+    if (Number.isNaN(dob.getTime()) || dob > new Date()) return null
+    const today = new Date()
+    let age = today.getFullYear() - dob.getFullYear()
+    const beforeBirthdayThisYear = (today.getMonth() < dob.getMonth()) || (today.getMonth() === dob.getMonth() && today.getDate() < dob.getDate())
+    if (beforeBirthdayThisYear) age--
+    return age >= 0 ? age : null
+  }
+  const authBirthdateAge = computeAge(s.authForm.birthdate)
+  const provinceOptions = thaiAddress.map((p) => p.name)
+  const selectedProvinceData = thaiAddress.find((p) => p.name === s.authForm.province)
+  const districtOptions = selectedProvinceData ? selectedProvinceData.districts.map((d) => d.name) : []
+  const selectedDistrictData = selectedProvinceData?.districts.find((d) => d.name === s.authForm.district)
+  const subdistrictOptions = selectedDistrictData ? selectedDistrictData.subdistricts : []
   const categoriesView = categories.map((c) => ({
     label: c, onClick: () => setCategory(c), icon: categoryIcons[c],
     bg: c === s.activeCategory ? 'linear-gradient(135deg,#66BB6A,#388E3C)' : '#fff', color: c === s.activeCategory ? '#fff' : '#1f2a24',
@@ -771,6 +987,12 @@ export function AppProvider({ children }) {
     isScanError: s.scanState === 'error',
     scanNeedsLogin: s.scanState === 'needsLogin',
     notLoggedIn: !s.loggedIn,
+    titleOptions, genderOptions, occupationOptions, authBirthdateAge, provinceOptions, districtOptions, subdistrictOptions,
+    personaAvatarOptions: PERSONA_AVATARS,
+    passwordRules: PASSWORD_RULES.map((r) => ({ key: r.key, label: r.label, met: r.test(s.authForm.password) })),
+    passwordsMatch: s.authForm.confirmPassword.length > 0 && s.authForm.password === s.authForm.confirmPassword,
+    resetPasswordRules: PASSWORD_RULES.map((r) => ({ key: r.key, label: r.label, met: r.test(s.resetForm.password) })),
+    resetPasswordsMatch: s.resetForm.confirmPassword.length > 0 && s.resetForm.password === s.resetForm.confirmPassword,
     categoriesView, categoriesViewIcons, filteredPlaces, placesEmpty: filteredPlaces.length === 0, eventsView,
     qrPlacesList,
     chatMessagesView: s.chatMessages.map((m) => ({ ...m, align: m.from === 'user' ? 'flex-end' : 'flex-start', bg: m.from === 'user' ? '#2E7D32' : '#f0efe7', color: m.from === 'user' ? '#fff' : '#1f2a24' })),

@@ -52,7 +52,25 @@ export const deleteReward = (id) => apiDelete(`/api/rewards/${id}`)
 // Tourist auth -- session lives in httpOnly cookies the backend sets, never
 // in anything this client reads or stores itself. See auth.routes.js.
 export const login = (email, password) => apiPost('/api/auth/login', { email, password })
-export const signup = (name, email, password, phone) => apiPost('/api/auth/signup', { name, email, password, phone })
+// multipart/form-data -- the picked avatar file (if any) rides in the same
+// request as the rest of the form, since there's no account row to attach
+// an uploaded image to until this request creates one. Bypasses request()'s
+// JSON Content-Type: the browser must set the multipart boundary itself
+// from the FormData body.
+export const signup = async (fields, avatarFile) => {
+  const form = new FormData()
+  Object.entries(fields).forEach(([key, value]) => { if (value != null) form.append(key, value) })
+  if (avatarFile) form.append('avatarFile', avatarFile)
+  const res = await fetch(`${BASE_URL}/api/auth/signup`, { method: 'POST', body: form, credentials: 'include' })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(body.error?.message || `API request failed: /api/auth/signup (${res.status})`)
+  }
+  return res.json()
+}
+export const confirmEmail = (token) => apiPost('/api/auth/confirm', { token })
+export const forgotPassword = (email) => apiPost('/api/auth/forgot-password', { email })
+export const resetPassword = (token, password) => apiPost('/api/auth/reset-password', { token, password })
 export const logout = () => apiPost('/api/auth/logout')
 export const fetchMe = () => apiGet('/api/auth/me')
 

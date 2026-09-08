@@ -1,6 +1,6 @@
 import { crudRouter } from '../lib/crudRouter.js'
 import { rowToQr, qrPayload } from '../lib/mappers.js'
-import { supabase } from '../lib/supabaseClient.js'
+import { db } from '../lib/db.js'
 import { asyncHandler } from '../middleware/asyncHandler.js'
 import { httpError } from '../middleware/errorHandler.js'
 import { requireAuth } from '../middleware/requireAuth.js'
@@ -24,9 +24,12 @@ const SCAN_ERROR_STATUS = { QR404: 404, QR409: 409 }
 const SCAN_ERROR_MESSAGE = { QR404: 'ไม่พบ QR นี้', QR409: 'คุณเคยสแกน QR นี้ไปแล้ว' }
 
 qrsRouter.post('/:id/scan', requireAuth, asyncHandler(async (req, res) => {
-  const { data, error } = await supabase.rpc('claim_qr_scan', { p_user_id: req.user.id, p_qr_id: req.params.id })
-  if (error) throw httpError(SCAN_ERROR_STATUS[error.code] || 500, SCAN_ERROR_MESSAGE[error.code] || error.message)
-
-  const [result] = data
+  let rows
+  try {
+    ({ rows } = await db.raw('select * from claim_qr_scan(?, ?)', [req.user.id, req.params.id]))
+  } catch (err) {
+    throw httpError(SCAN_ERROR_STATUS[err.code] || 500, SCAN_ERROR_MESSAGE[err.code] || err.message)
+  }
+  const [result] = rows
   res.json({ points: result.points_awarded, placeName: result.place_name, balance: result.new_balance })
 }))
