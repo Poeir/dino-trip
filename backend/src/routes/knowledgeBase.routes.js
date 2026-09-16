@@ -11,4 +11,6 @@ export const knowledgeBaseRouter = crudRouter({
   toRow: kbPayload,
   toResponse: rowToKb,
   mutateAuth: [requireAdmin],
+  // title/category/content feed the RAG embedding text (see places.routes.js).
+  invalidateColumns: ['embedding'],
 })

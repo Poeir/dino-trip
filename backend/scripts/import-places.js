@@ -10,10 +10,10 @@ import { readFileSync, existsSync, readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { createClient } from '@supabase/supabase-js'
+import { uploadImageBuffer } from '../src/lib/cloudinary.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const PHOTOS_DIR = join(__dirname, '..', 'data', 'photos')
-const PHOTO_BUCKET = 'place-photos'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -25,31 +25,21 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
-async function ensurePhotoBucket() {
-  const { error } = await supabase.storage.createBucket(PHOTO_BUCKET, { public: true })
-  if (error && !/already exists/i.test(error.message)) {
-    console.error('Could not create/verify Storage bucket:', error.message)
-  }
-}
-
 // Uploads the photos fetch-places.js already downloaded for this place (if
-// any) to our own Storage bucket, so `images` points at URLs we control
-// instead of Google's (expiring, API-key-bearing) photo endpoint.
+// any) to Cloudinary, so `images` points at URLs we control instead of
+// Google's (expiring, API-key-bearing) photo endpoint.
 async function uploadPhotos(placeId) {
   const dir = join(PHOTOS_DIR, placeId)
   if (!existsSync(dir)) return []
   const files = readdirSync(dir).filter((f) => f.endsWith('.jpg')).sort()
   const urls = []
   for (const file of files) {
-    const storagePath = `${placeId}/${file}`
-    const { error } = await supabase.storage
-      .from(PHOTO_BUCKET)
-      .upload(storagePath, readFileSync(join(dir, file)), { contentType: 'image/jpeg', upsert: true })
-    if (error) {
-      console.error(`  Photo upload failed for ${placeId}/${file}:`, error.message)
-      continue
+    try {
+      const result = await uploadImageBuffer(readFileSync(join(dir, file)), `dino/places/${placeId}`)
+      urls.push(result.secure_url)
+    } catch (err) {
+      console.error(`  Photo upload failed for ${placeId}/${file}:`, err.message)
     }
-    urls.push(supabase.storage.from(PHOTO_BUCKET).getPublicUrl(storagePath).data.publicUrl)
   }
   return urls
 }
@@ -385,7 +375,6 @@ async function toRow(p) {
 }
 
 async function main() {
-  await ensurePhotoBucket()
   const jsonPath = join(__dirname, '..', 'data', 'places.json')
   const raw = JSON.parse(readFileSync(jsonPath, 'utf-8'))
   const rows = await Promise.all(raw.map(toRow))

@@ -1,4 +1,93 @@
+import { useEffect, useRef, useState } from 'react'
 import { useApp } from '../context/AppContext.jsx'
+import { triggerReindex, fetchReindexStatus } from '../lib/apiClient.js'
+
+const POLL_MS = 2500
+
+// Polls chatbot-service (via the Node proxy) for the reindex job's state.
+// See backend/src/routes/reindex.routes.js and
+// chatbot-service/src/services/rag/embedder.py for what's on the other end.
+function useReindexStatus(onSettled) {
+  const [status, setStatus] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const pollRef = useRef(null)
+  const prevStateRef = useRef(null)
+
+  const stopPolling = () => {
+    if (pollRef.current) clearInterval(pollRef.current)
+    pollRef.current = null
+  }
+
+  const poll = async () => {
+    let next
+    try {
+      next = await fetchReindexStatus()
+    } catch {
+      stopPolling()
+      setBusy(false)
+      return
+    }
+    if (prevStateRef.current === 'running' && next.state !== 'running') onSettled(next)
+    prevStateRef.current = next.state
+    setStatus(next)
+    if (next.state !== 'running') {
+      stopPolling()
+      setBusy(false)
+    }
+  }
+
+  useEffect(() => { poll(); return stopPolling }, [])
+
+  const run = async () => {
+    setBusy(true)
+    try {
+      await triggerReindex()
+    } catch {
+      // Could be "already running" (fine, the poll below will show it) or a
+      // real failure -- either way the next poll() surfaces the true state.
+    }
+    if (!pollRef.current) pollRef.current = setInterval(poll, POLL_MS)
+    poll()
+  }
+
+  return { status, busy: busy || status?.state === 'running', run }
+}
+
+const formatTime = (iso) => iso ? new Date(iso).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : null
+
+function ReindexCard() {
+  const { actions } = useApp()
+  const onSettled = (s) => {
+    if (s.state === 'done') actions.showToast(`อัปเดตดัชนีค้นหาแล้ว ${s.embeddedCount} รายการ`)
+    else if (s.state === 'error') actions.showToast('อัปเดตดัชนีค้นหาไม่สำเร็จ: ' + s.error)
+  }
+  const { status, busy, run } = useReindexStatus(onSettled)
+  const pendingCount = (status?.pending?.places || 0) + (status?.pending?.knowledgeBase || 0) + (status?.pending?.events || 0)
+
+  return (
+    <div style={{ background: '#fff', border: '1px solid #E7E3D2', borderRadius: 16, padding: 20, marginTop: 16, animation: 'dc-fade-up 0.35s ease 0.3s both' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+        <div>
+          <div style={{ fontWeight: 800, fontSize: 15, color: '#1B5E20', marginBottom: 4 }}>ดัชนีค้นหาแชทบอท (Embedding)</div>
+          <div style={{ fontSize: 12.5, color: '#6d7a72' }}>
+            {status === null ? 'กำลังตรวจสอบสถานะ...' : pendingCount > 0
+              ? `มี ${pendingCount} รายการที่เพิ่ม/แก้ไขแล้วยังไม่อัปเดตดัชนี`
+              : 'ดัชนีค้นหาเป็นปัจจุบันแล้ว'}
+            {status?.finishedAt && status.state !== 'running' && ` · รันล่าสุด ${formatTime(status.finishedAt)}`}
+          </div>
+        </div>
+        <button
+          onClick={run}
+          disabled={busy || status === null}
+          style={{ background: busy || status === null ? '#A5D6A7' : 'linear-gradient(135deg,#66BB6A,#388E3C)', color: '#fff', border: 'none', padding: '10px 18px', borderRadius: 18, fontWeight: 700, fontSize: 13, cursor: busy || status === null ? 'default' : 'pointer', whiteSpace: 'nowrap' }}
+        >
+          {status?.state === 'running' ? 'กำลังอัปเดต...' : '🔄 อัปเดตดัชนีค้นหา'}
+        </button>
+      </div>
+      {status?.state === 'error' && <div style={{ color: '#a33232', fontSize: 12, marginTop: 10 }}>เกิดข้อผิดพลาด: {status.error}</div>}
+    </div>
+  )
+}
 
 export default function DashboardTab() {
   const { state } = useApp()
@@ -59,6 +148,7 @@ export default function DashboardTab() {
           <div style={{ fontSize: 13, color: '#6d7a72' }}>จำนวนของรางวัล</div>
         </div>
       </div>
+      <ReindexCard />
     </>
   )
 }

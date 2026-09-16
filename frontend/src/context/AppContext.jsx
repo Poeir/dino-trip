@@ -699,7 +699,7 @@ export function AppProvider({ children }) {
   const openCreateForm = (type) => {
     const defaults = {
       place: { name: '', category: 'คาเฟ่', rating: '4.5', reviews: '0', price: '', address: '', hours: '', phone: '', desc: '', amenities: '', tags: '', hasQR: false, qrPoints: '0', img: '', isActive: true },
-      event: { name: '', category: '', dateRange: '', venueName: '', admission: '', organizer: '', suitableFor: '', desc: '', status: 'upcoming', img: '' },
+      event: { name: '', category: '', dateRange: '', venueName: '', admission: '', organizer: '', suitableFor: '', desc: '', status: 'upcoming', img: '', eventStartDate: '', eventEndDate: '', placeId: '' },
       kb: { title: '', category: 'transport', content: '', isPinned: false, isActive: true },
       qr: { placeId: '', points: '10' },
       reward: { name: '', cost: '50' }
@@ -743,7 +743,21 @@ export function AppProvider({ children }) {
     const labels = { place: 'บันทึกสถานที่แล้ว', event: 'บันทึกอีเวนท์แล้ว', kb: 'บันทึกฐานความรู้แล้ว', qr: 'สร้าง QR แล้ว', reward: 'บันทึกของรางวัลแล้ว' }
     cancelForm()
     showToast(labels[formType] || 'บันทึกแล้ว')
+    return item
   }
+
+  // Merges a single already-saved place into state without a full refetch --
+  // upsert, not just replace: PlacesTab.jsx's save+upload flow calls this
+  // with a brand-new place too (not in s.places yet), not just the response
+  // from uploading/removing an existing one's photo.
+  const applyPlaceUpdate = (item) => setState((s) => ({
+    places: s.places.some((p) => p.id === item.id) ? s.places.map((p) => p.id === item.id ? item : p) : [...s.places, item],
+  }))
+
+  // Same as applyPlaceUpdate, for EventsTab.jsx's own save+image-upload flow.
+  const applyEventUpdate = (item) => setState((s) => ({
+    events: s.events.some((e) => e.id === item.id) ? s.events.map((e) => e.id === item.id ? item : e) : [...s.events, item],
+  }))
 
   const deleteItem = async (type, id) => {
     if (!window.confirm('ยืนยันการลบข้อมูลนี้หรือไม่?')) return
@@ -788,7 +802,7 @@ export function AppProvider({ children }) {
     setPace, onDailyStartChange, onDailyEndChange,
     onFeedbackChange, toggleInterest, setBudget, setAreaScope, submitTripForm, setItemLike, swapItem, regeneratePlan,
     startScan, handleQrDetected, handleScanCancelled, claimScan, resetScan, redeemReward,
-    adminLogin, adminLogout, openCreateForm, openEditForm, updateFormField, cancelForm,
+    adminLogin, adminLogout, openCreateForm, openEditForm, updateFormField, cancelForm, applyPlaceUpdate, applyEventUpdate,
     saveForm, deleteItem, onNewPlace, onNewEvent, onNewKb, onNewQr, onNewReward,
     ...fieldHandlers,
   }

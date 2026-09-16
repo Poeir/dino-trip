@@ -33,6 +33,30 @@ export const fetchEvents = () => apiGet('/api/events')
 export const createEvent = (payload) => apiPost('/api/events', payload)
 export const updateEvent = (id, payload) => apiPut(`/api/events/${id}`, payload)
 export const deleteEvent = (id) => apiDelete(`/api/events/${id}`)
+// Admin-only: LLM-extracts event form fields from a pasted Facebook post.
+// Goes through the backend (not chatbot-service directly) so requireAdmin
+// actually gates it -- see backend/src/routes/events.routes.js.
+export const extractEventFromText = (text) => apiPost('/api/events/extract', { text })
+
+// Up to 5 photos per event (see MAX_PHOTOS_PER_EVENT in
+// backend/src/routes/events.routes.js, matching places' own gallery cap).
+export const fetchEventPhotos = (id) => apiGet(`/api/events/${id}/photos`)
+
+// multipart/form-data, same reasoning as uploadPlacePhoto further down --
+// bypasses request()'s forced JSON Content-Type. Returns the full updated
+// event (mirrors createEvent/updateEvent's shape) so the caller can merge it
+// straight into state without a separate refetch.
+export const uploadEventPhoto = async (id, file) => {
+  const form = new FormData()
+  form.append('photoFile', file)
+  const res = await fetch(`${BASE_URL}/api/events/${id}/photos`, { method: 'POST', body: form, credentials: 'include' })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(body.error?.message || `API request failed: /api/events/${id}/photos (${res.status})`)
+  }
+  return res.json()
+}
+export const deleteEventPhoto = (id, photoId) => apiDelete(`/api/events/${id}/photos/${photoId}`)
 
 export const fetchKnowledgeBase = () => apiGet('/api/knowledge-base')
 export const createKnowledgeBase = (payload) => apiPost('/api/knowledge-base', payload)
@@ -80,3 +104,29 @@ export const fetchMe = () => apiGet('/api/auth/me')
 export const fetchPointsBalance = () => apiGet('/api/points/me')
 export const scanQr = (qrId) => apiPost(`/api/qrs/${qrId}/scan`, {})
 export const redeemReward = (rewardId) => apiPost('/api/points/redeem', { rewardId })
+
+// Admin: manually (re)builds RAG embeddings for places/knowledge_base rows
+// created or edited since the last run -- see backend/src/routes/reindex.routes.js.
+export const triggerReindex = () => apiPost('/api/reindex', {})
+export const fetchReindexStatus = () => apiGet('/api/reindex/status')
+
+// Up to 5 photos per place (see MAX_PHOTOS_PER_PLACE in
+// backend/src/routes/places.routes.js, matching fetch-places.js's own
+// Google-photo gallery size).
+export const fetchPlacePhotos = (id) => apiGet(`/api/places/${id}/photos`)
+
+// multipart/form-data, same reasoning as signup()'s avatarFile above --
+// bypasses request()'s forced JSON Content-Type. Returns the full updated
+// place (mirrors createPlace/updatePlace's shape) so the caller can merge it
+// straight into state without a separate refetch.
+export const uploadPlacePhoto = async (id, file) => {
+  const form = new FormData()
+  form.append('photoFile', file)
+  const res = await fetch(`${BASE_URL}/api/places/${id}/photos`, { method: 'POST', body: form, credentials: 'include' })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(body.error?.message || `API request failed: /api/places/${id}/photos (${res.status})`)
+  }
+  return res.json()
+}
+export const deletePlacePhoto = (id, photoId) => apiDelete(`/api/places/${id}/photos/${photoId}`)

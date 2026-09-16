@@ -10,6 +10,7 @@ import { rewardsRouter } from './routes/rewards.routes.js'
 import { authRouter } from './routes/auth.routes.js'
 import { pointsRouter } from './routes/points.routes.js'
 import { usersRouter } from './routes/users.routes.js'
+import { reindexRouter } from './routes/reindex.routes.js'
 import { notFoundHandler, errorHandler } from './middleware/errorHandler.js'
 
 export const app = express()
@@ -32,6 +33,7 @@ app.use('/api/qrs', qrsRouter)
 app.use('/api/rewards', rewardsRouter)
 app.use('/api/points', pointsRouter)
 app.use('/api/users', usersRouter)
+app.use('/api/reindex', reindexRouter)
 
 app.use(notFoundHandler)
 app.use(errorHandler)

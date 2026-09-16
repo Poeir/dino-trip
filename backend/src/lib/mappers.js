@@ -25,8 +25,15 @@ export function rowToPlace(row) {
     qrPoints: row.qr_points,
     reviewsList: row.reviews || [],
     location: row.lat != null && row.lng != null ? { lat: row.lat, lng: row.lng } : null,
-    img: row.img,
-    images: row.images && row.images.length ? row.images : (row.img ? [row.img] : []),
+    // An admin-uploaded gallery (row.uploadedPhotoUrls, attached by
+    // places.routes.js's attachUploadedPhotos()) wins outright over whatever
+    // was in `img`/`images` (a Google-imported gallery from import-places.js,
+    // or nothing for an admin-added place) rather than merging the two --
+    // once an admin has curated their own photos, those are the gallery.
+    // Both are absolute Cloudinary URLs (src/lib/cloudinary.js) -- nothing
+    // to resolve against the API's own origin.
+    img: (row.uploadedPhotoUrls?.[0]) || row.img,
+    images: (row.uploadedPhotoUrls?.length ? row.uploadedPhotoUrls : null) || (row.images && row.images.length ? row.images : (row.img ? [row.img] : [])),
     businessStatus: row.business_status,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -37,7 +44,21 @@ export function rowToEvent(row) {
   return {
     id: row.id, name: row.name, category: row.category, dateRange: row.date_range, venueName: row.venue_name,
     admission: row.admission, organizer: row.organizer, suitableFor: row.suitable_for || [], desc: row.description,
-    status: row.status, img: row.img,
+    status: row.status,
+    // row.uploadedPhotoUrls is attached by events.routes.js's
+    // attachEventPhotos() -- falls back to the legacy single `img` column
+    // (from before the gallery existed) for any event that still only has
+    // that. `img` (first photo) is what list/card views and
+    // EventDetailView.jsx already read; `images` is the full gallery for
+    // whenever a public gallery view wants it (mirrors rowToPlace above).
+    img: row.uploadedPhotoUrls?.[0] || row.img,
+    images: row.uploadedPhotoUrls?.length ? row.uploadedPhotoUrls : (row.img ? [row.img] : []),
+    eventStartDate: row.event_start_date, eventEndDate: row.event_end_date,
+    // Optional link to an existing places row (see eventPayload below).
+    placeId: row.place_id,
+    // The vector itself never needs to leave the server -- admins only need
+    // to know whether the RAG reindex has picked this row up yet.
+    isEmbedded: row.embedding != null,
   }
 }
 
@@ -69,7 +90,9 @@ export function eventPayload(body) {
   return {
     name: body.name, category: body.category, date_range: body.dateRange, venue_name: body.venueName,
     admission: body.admission, organizer: body.organizer, suitable_for: splitList(body.suitableFor),
-    description: body.desc, status: body.status, img: body.img,
+    description: body.desc, status: body.status,
+    event_start_date: body.eventStartDate || null, event_end_date: body.eventEndDate || null,
+    place_id: body.placeId || null,
   }
 }
 

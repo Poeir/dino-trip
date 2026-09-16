@@ -12,7 +12,7 @@ import { sendVerificationEmail, sendPasswordResetEmail } from '../lib/mailer.js'
 
 export const authRouter = Router()
 
-const avatarUpload = createImageUploadMiddleware(2 * 1024 * 1024)
+const avatarUpload = createImageUploadMiddleware('avatarFile', 2 * 1024 * 1024)
 
 const AVATAR_POSITION_RE = /^\d{1,3}% \d{1,3}%$/
 
