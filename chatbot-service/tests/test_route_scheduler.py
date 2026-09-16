@@ -345,6 +345,64 @@ class TestMaterializeDaySchedule:
         assert slot.is_anchor is True
         assert slot.meal_role == "lunch"
 
+    def test_no_gap_filler_pool_falls_back_to_free_time_block(self):
+        # Baseline (no pool given): a long wait before a "dinner"-tagged
+        # spot still gets the old placeholder block, unchanged behavior.
+        dinner = make_place(id="dinner", name="DinnerPlace", category="ร้านอาหาร", lat=16.44, lng=102.84, hours_periods=None)
+        schedule, _, _ = rs.materialize_day_schedule(
+            [dinner], set(), {"dinner": "dinner"}, HOTEL, self.DAY, time(14, 0), time(21, 0), "standard",
+        )
+        assert any(s.status == "Free Time" for s in schedule)
+
+    def test_gap_filler_pool_inserts_real_place_instead_of_free_time(self):
+        # A ~3.5h wait before dinner (14:00 -> 17:30 MEAL_DINNER_WINDOW)
+        # with a nearby open cafe in the pool should visit the cafe rather
+        # than leave/shrink a "free time" placeholder for no reason.
+        dinner = make_place(id="dinner", name="DinnerPlace", category="ร้านอาหาร", lat=16.44, lng=102.84, hours_periods=None)
+        cafe = make_place(id="cafe1", name="CozyCafe", category="คาเฟ่", lat=16.441, lng=102.841, hours_periods=None)
+        pool = [cafe]
+        schedule, _, _ = rs.materialize_day_schedule(
+            [dinner], set(), {"dinner": "dinner"}, HOTEL, self.DAY, time(14, 0), time(21, 0), "standard",
+            gap_filler_pool=pool,
+        )
+        assert any(s.place.id == "cafe1" for s in schedule)
+        assert pool == []  # consumed, so it can't be double-booked elsewhere
+
+    def test_gap_filler_chains_multiple_stops_to_close_a_long_gap(self):
+        # With enough nearby candidates, a long gap should be closed by
+        # chaining several real stops rather than stopping after one and
+        # leaving the rest as "free time".
+        dinner = make_place(id="dinner", name="DinnerPlace", category="ร้านอาหาร", lat=16.44, lng=102.84, hours_periods=None)
+        cafe = make_place(id="cafe1", name="CozyCafe", category="คาเฟ่", lat=16.441, lng=102.841, hours_periods=None)
+        park = make_place(id="park1", name="RiverPark", category="สวนสาธารณะ", lat=16.442, lng=102.842, hours_periods=None)
+        museum = make_place(id="mus1", name="LocalMuseum", category="พิพิธภัณฑ์", lat=16.443, lng=102.843, hours_periods=None)
+        pool = [cafe, park, museum]
+        schedule, _, _ = rs.materialize_day_schedule(
+            [dinner], set(), {"dinner": "dinner"}, HOTEL, self.DAY, time(14, 0), time(21, 0), "standard",
+            gap_filler_pool=pool,
+        )
+        visited_ids = {s.place.id for s in schedule}
+        assert {"cafe1", "park1", "mus1"}.issubset(visited_ids)
+        assert not any(s.status == "Free Time" for s in schedule)
+        assert pool == []
+
+    def test_gap_filler_never_evicts_or_duplicates_pool_items_across_days(self):
+        # Same shared-pool convention as backfill_underfilled_*: an item
+        # consumed for one day's gap must not still be sitting in the pool
+        # for a second call (e.g. day 2) to pick up too.
+        dinner = make_place(id="dinner", name="DinnerPlace", category="ร้านอาหาร", lat=16.44, lng=102.84, hours_periods=None)
+        cafe = make_place(id="cafe1", name="CozyCafe", category="คาเฟ่", lat=16.441, lng=102.841, hours_periods=None)
+        pool = [cafe]
+        rs.materialize_day_schedule(
+            [dinner], set(), {"dinner": "dinner"}, HOTEL, self.DAY, time(14, 0), time(21, 0), "standard",
+            gap_filler_pool=pool,
+        )
+        schedule_day2, _, _ = rs.materialize_day_schedule(
+            [dinner], set(), {"dinner": "dinner"}, HOTEL, self.DAY, time(14, 0), time(21, 0), "standard",
+            gap_filler_pool=pool,
+        )
+        assert not any(s.place.id == "cafe1" for s in schedule_day2)
+
 
 class TestReassignInfeasibleDays:
     START = date(2026, 8, 3)  # Monday

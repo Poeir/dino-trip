@@ -379,7 +379,10 @@ def order_day_stops(
                 if best_key is None or key < best_key:
                     best_key, best_place, best_pos = key, place, pos
         if best_place is None:
-            logger.info("trip planner: could not fit %d remaining place(s) into the day, dropping", len(remaining))
+            logger.info(
+                "trip planner: could not fit %d remaining place(s) into the day, dropping: %s",
+                len(remaining), ", ".join(p.name for p in remaining),
+            )
             break
         route = route[:best_pos] + [best_place] + route[best_pos:]
         remaining.remove(best_place)
@@ -634,15 +637,111 @@ def reassign_infeasible_days(
     return result
 
 
+def _gap_minutes(place: Place, arrival_at_door: datetime, meal_window: Optional[Tuple[int, int]], open_info: dict) -> int:
+    """How long we'd have to wait at `place`'s door before anything useful
+    can start there: real opening hours ("Waiting"), an explicit lunch/
+    dinner meal_role's target window, or (fallback) an evening-only spot
+    reached before 17:00. Whichever constraint requires waiting longer
+    wins -- see materialize_day_schedule's inline comment for why these
+    can't be independent elif branches. Shared between the main walk and
+    its post-gap-filler recheck so the two can't drift apart."""
+    wait_candidates = []
+    if open_info["status"] == "Waiting":
+        wait_candidates.append(open_info["wait_min"])
+    if meal_window and arrival_at_door.hour * 60 + arrival_at_door.minute < meal_window[0]:
+        target_dt = arrival_at_door.replace(hour=meal_window[0] // 60, minute=meal_window[0] % 60, second=0, microsecond=0)
+        wait_candidates.append(int((target_dt - arrival_at_door).total_seconds() / 60))
+    if wait_candidates:
+        return max(wait_candidates)
+    if is_evening_place(place) and arrival_at_door.hour < 17:
+        target_dt = arrival_at_door.replace(hour=17, minute=0, second=0)
+        return int((target_dt - arrival_at_door).total_seconds() / 60)
+    return 0
+
+
+def _stop_visit_cost(place: Place, dist_km: float) -> float:
+    fuel_cost = dist_km * 4.0  # 4 THB/km
+    if place.price_level is not None:
+        place_cost = PRICE_MAP.get(place.price_level, 150)
+    elif place.category in ("ร้านอาหาร", "คาเฟ่"):
+        place_cost = 250
+    elif place.category == "ตลาด":
+        place_cost = 300
+    elif place.category in ("วัด", "สวนสาธารณะ", "พิพิธภัณฑ์"):
+        place_cost = 0
+    else:
+        place_cost = 100
+    return fuel_cost + place_cost
+
+
+# Slack allowed, in minutes, when deciding whether a gap-filler candidate
+# "fits" a gap -- the detour there-and-back-to-the-route is allowed to run
+# up to this much longer than the gap itself before being rejected, so a
+# genuinely nearby real place isn't thrown out over a near-miss.
+GAP_FILLER_SLACK_MINUTES = 20
+
+
+def _find_gap_filler(
+    pool: List[Place], current_loc: Place, next_place: Place,
+    current_dt: datetime, gap_minutes: int, pace: str,
+) -> Optional[dict]:
+    """Best real place from `pool` (trip candidates not used anywhere else)
+    to visit instead of leaving a dead "free time" stretch before
+    `next_place` -- must be open when reached, and fit inside the gap
+    (there + visit + back onto the route) with GAP_FILLER_SLACK_MINUTES to
+    spare. Picks the smallest total detour distance among everything that
+    fits, not the closest match to the gap length -- a nearby quick stop
+    beats a farther one that happens to eat more of the gap. Returns a
+    stop dict shaped like _simulate_day_walk's (so its TimeSlot fields can
+    be built the same way), or None if nothing in the pool fits."""
+    best = None
+    best_detour = None
+    for cand in pool:
+        dist = calculate_distance(current_loc, cand)
+        travel_min = travel_minutes(dist)
+        arrival = current_dt + timedelta(minutes=travel_min)
+        open_info = check_is_open(cand, arrival)
+        if open_info["status"] in ("Closed", "Closed Today"):
+            continue
+        wait = open_info["wait_min"] if open_info["status"] == "Waiting" else 0
+        start_activity = arrival + timedelta(minutes=wait)
+        visit_min = get_visit_duration(cand, pace)
+        departure = start_activity + timedelta(minutes=visit_min)
+        back_dist = calculate_distance(cand, next_place)
+        back_travel = travel_minutes(back_dist)
+        total_min = (departure - current_dt).total_seconds() / 60 + back_travel
+        if total_min > gap_minutes + GAP_FILLER_SLACK_MINUTES:
+            continue
+        detour = dist + back_dist
+        if best_detour is None or detour < best_detour:
+            best_detour = detour
+            best = {
+                "place": cand, "dist": dist, "travel_min": travel_min,
+                "arrival_at_door": arrival, "wait_min": wait,
+                "start_activity_dt": start_activity, "departure_dt": departure,
+                "open_info": open_info,
+            }
+    return best
+
+
 def materialize_day_schedule(
     route: List[Place], anchor_ids: set, meal_roles: Dict[str, str], hotel: Place,
     day_date: date, start_time_of_day: time, end_time_of_day: time, pace: str,
+    gap_filler_pool: Optional[List[Place]] = None,
 ) -> Tuple[List[TimeSlot], float, int]:
     """Walk the already-ordered `route` and build the final TimeSlot list:
-    real arrival/departure/wait times, "free time" filler blocks for gaps
-    > 45min, per-stop fuel + place cost, and a return-to-hotel leg at the
-    end of every day (including the last -- a trip's final day still ends
-    back at the accommodation, same as every other day)."""
+    real arrival/departure/wait times, per-stop fuel + place cost, and a
+    return-to-hotel leg at the end of every day (including the last -- a
+    trip's final day still ends back at the accommodation, same as every
+    other day).
+
+    Any gap > 45min before a stop is ready (closed, or waiting on its
+    lunch/dinner/evening window) is filled with a real, nearby, currently-
+    open place from `gap_filler_pool` when one fits (mutated in place, same
+    "shared pool consumed as we go" convention as backfill_underfilled_*)
+    -- an actual detour reads as a normal part of the day, unlike a "free
+    time" placeholder materializing out of nowhere. Only when nothing in
+    the pool fits does this fall back to that placeholder block."""
     schedule: List[TimeSlot] = []
     current_loc = hotel
     current_dt = datetime.combine(day_date, start_time_of_day)
@@ -667,58 +766,86 @@ def materialize_day_schedule(
             logger.info("trip planner: dropping %s, %s at %s", place.name, open_info["status"], arrival_at_door)
             continue
 
-        gap_minutes = 0
         role = meal_roles.get(place.id)
         meal_window = preferred_time_window(place, role) if place.category == "ร้านอาหาร" and role else None
-
         # Two independent constraints can each push the start time later:
         # the place's own real opening hours (open_info "Waiting") and a
-        # "lunch"/"dinner" meal_role's target window. These used to be
-        # elif branches -- only one ever applied -- which let a restaurant
-        # that happens to open earlier than its meal_role's window get
-        # seated right when it opens, with the meal_role tag now
-        # meaningless (a "dinner"-tagged place open since 10:00 getting
-        # seated at 10:19 because the 19-minute "Waiting" for it to open
-        # took priority over the still-unmet dinner window entirely).
-        # Whichever constraint requires waiting longer wins.
-        wait_candidates = []
-        if open_info["status"] == "Waiting":
-            wait_candidates.append(open_info["wait_min"])
-        if meal_window and arrival_at_door.hour * 60 + arrival_at_door.minute < meal_window[0]:
-            # A restaurant explicitly tagged "lunch"/"dinner" that would
-            # otherwise land well before its mealtime (e.g. a "dinner" spot
-            # arrived at straight after lunch) waits for its window instead
-            # of just eating whenever the route happens to pass by --
-            # otherwise the ordering-phase cost penalty (see
-            # preferred_time_window/_route_cost) only shapes WHICH slot a
-            # meal lands in, not WHEN, so "dinner" could still land at
-            # 16:00 if nothing else filled the afternoon.
-            target_dt = arrival_at_door.replace(hour=meal_window[0] // 60, minute=meal_window[0] % 60, second=0, microsecond=0)
-            wait_candidates.append(int((target_dt - arrival_at_door).total_seconds() / 60))
-        if wait_candidates:
-            gap_minutes = max(wait_candidates)
-        elif is_evening_place(place) and arrival_at_door.hour < 17:
-            target_dt = arrival_at_door.replace(hour=17, minute=0, second=0)
-            gap_minutes = int((target_dt - arrival_at_door).total_seconds() / 60)
+        # "lunch"/"dinner" meal_role's target window. _gap_minutes takes
+        # whichever requires waiting longer -- these can't be independent
+        # elif branches, or a restaurant that happens to open earlier than
+        # its meal_role's window would get seated right when it opens, with
+        # the meal_role tag now meaningless (a "dinner"-tagged place open
+        # since 10:00 getting seated at 10:19 because the 19-minute
+        # "Waiting" for it to open took priority over the still-unmet
+        # dinner window entirely).
+        gap_minutes = _gap_minutes(place, arrival_at_door, meal_window, open_info)
 
         wait_min = 0
         if gap_minutes > 45:
-            dummy_loc = Place(
-                id="free_time_dummy", name="☕ พักผ่อนตามอัธยาศัย / แวะเดินเล่นชิลๆ",
-                category=None, rating=0.0,
-                lat=current_loc.latitude if current_loc else place.latitude,
-                lng=current_loc.longitude if current_loc else place.longitude,
-            )
-            free_departure = current_dt + timedelta(minutes=gap_minutes)
-            schedule.append(TimeSlot(
-                place=dummy_loc, arrival_time=current_dt.strftime("%H:%M"),
-                departure_time=free_departure.strftime("%H:%M"),
-                travel_time_min=0, distance_km=0.0, status="Free Time", wait_time_min=0,
-            ))
-            current_dt = free_departure
-            arrival_at_door = current_dt + timedelta(minutes=travel_min)
-            open_info = check_is_open(place, arrival_at_door)
-            wait_min = open_info["wait_min"] if open_info["status"] == "Waiting" else 0
+            place_dropped = False
+            # Chain as many real gap-filler stops as fit -- a single quick
+            # cafe rarely absorbs a 3+ hour wait for dinner on its own, and
+            # bailing out to the placeholder after just one attempt would
+            # still leave most of a long gap looking unaccounted for.
+            # Naturally bounded: each iteration removes its pick from
+            # gap_filler_pool, so this can't loop more than the pool's size.
+            while gap_minutes > 45 and gap_filler_pool:
+                filler = _find_gap_filler(gap_filler_pool, current_loc, place, current_dt, gap_minutes, pace)
+                if not filler:
+                    break
+                f_place = filler["place"]
+                schedule.append(TimeSlot(
+                    place=f_place, arrival_time=filler["arrival_at_door"].strftime("%H:%M"),
+                    departure_time=filler["departure_dt"].strftime("%H:%M"),
+                    travel_time_min=filler["travel_min"], distance_km=round(filler["dist"], 2),
+                    status=filler["open_info"]["status"] if filler["wait_min"] == 0 else "Waiting",
+                    wait_time_min=filler["wait_min"],
+                ))
+                day_cost += _stop_visit_cost(f_place, filler["dist"])
+                day_travel += filler["travel_min"]
+                gap_filler_pool.remove(f_place)
+                current_loc = f_place
+                current_dt = filler["departure_dt"]
+
+                # Re-derive everything for `place` from the new
+                # current_dt/current_loc -- each filler absorbs some or
+                # all of what remains of the original wait.
+                dist = calculate_distance(current_loc, place)
+                travel_min = travel_minutes(dist)
+                arrival_at_door = current_dt + timedelta(minutes=travel_min)
+                open_info = check_is_open(place, arrival_at_door)
+                if open_info["status"] in ("Closed", "Closed Today"):
+                    logger.info("trip planner: dropping %s, %s at %s", place.name, open_info["status"], arrival_at_door)
+                    place_dropped = True
+                    break
+                gap_minutes = _gap_minutes(place, arrival_at_door, meal_window, open_info)
+
+            if place_dropped:
+                continue
+
+            if gap_minutes > 45:
+                # Nothing in the pool fit (or there was no pool) -- fall
+                # back to a placeholder block rather than leave the gap
+                # entirely unaccounted for.
+                dummy_loc = Place(
+                    id=f"free_time_dummy_{current_dt.strftime('%Y%m%dT%H%M')}",
+                    name="☕ พักผ่อนตามอัธยาศัย / แวะเดินเล่นชิลๆ",
+                    category=None, rating=0.0,
+                    lat=current_loc.latitude if current_loc else place.latitude,
+                    lng=current_loc.longitude if current_loc else place.longitude,
+                )
+                free_departure = current_dt + timedelta(minutes=gap_minutes)
+                schedule.append(TimeSlot(
+                    place=dummy_loc, arrival_time=current_dt.strftime("%H:%M"),
+                    departure_time=free_departure.strftime("%H:%M"),
+                    travel_time_min=0, distance_km=0.0, status="Free Time", wait_time_min=0,
+                ))
+                current_dt = free_departure
+                arrival_at_door = current_dt + timedelta(minutes=travel_min)
+                open_info = check_is_open(place, arrival_at_door)
+                wait_min = open_info["wait_min"] if open_info["status"] == "Waiting" else 0
+            else:
+                wait_min = gap_minutes
         else:
             wait_min = gap_minutes
 
@@ -734,19 +861,7 @@ def materialize_day_schedule(
             meal_role=meal_roles.get(place.id),
         ))
 
-        fuel_cost = dist * 4.0  # 4 THB/km
-        if place.price_level is not None:
-            place_cost = PRICE_MAP.get(place.price_level, 150)
-        elif place.category in ("ร้านอาหาร", "คาเฟ่"):
-            place_cost = 250
-        elif place.category == "ตลาด":
-            place_cost = 300
-        elif place.category in ("วัด", "สวนสาธารณะ", "พิพิธภัณฑ์"):
-            place_cost = 0
-        else:
-            place_cost = 100
-
-        day_cost += fuel_cost + place_cost
+        day_cost += _stop_visit_cost(place, dist)
         day_travel += travel_min
         current_loc = place
         current_dt = departure_dt
@@ -782,6 +897,7 @@ def build_day_itinerary(
     anchor_ids = {p.id for p in route if find_anchor_window(p, day_date)}
     schedule, day_cost, day_travel = materialize_day_schedule(
         route, anchor_ids, meal_roles, hotel, day_date, start_time_of_day, end_time_of_day, pace,
+        gap_filler_pool=backfill_pool,
     )
     return DailyItinerary(
         day=day_num, date=day_date.strftime("%Y-%m-%d"), schedule=schedule,

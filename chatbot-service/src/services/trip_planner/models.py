@@ -114,3 +114,10 @@ class JudgeVerdict(BaseModel):
     issues: List[str] = []
     feedback: str = ""        # re-injected verbatim into the next generation prompt (model-facing)
     rationale: str = ""       # short Thai, user-facing explanation of the plan's logic (human-facing)
+    # True only when evaluate() never got a real verdict from the judge LLM
+    # (call/parse exception) and fell back to an unconditional pass. `passed`
+    # stays True either way (see judge.py's fail-open rationale), but this
+    # flag lets a caller -- or an experiment collecting score/pass-rate data
+    # -- tell "the judge said yes" apart from "the judge never actually ran".
+    # Conflating the two silently corrupts any pass-rate/score metric.
+    judge_call_failed: bool = False

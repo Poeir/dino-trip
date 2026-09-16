@@ -133,10 +133,12 @@ class TripItineraryJudge:
             # Fail OPEN: a judge failure is cheap by design (one logged
             # warning, nothing else) -- unlike generation, it gets no
             # technical retry, and it must never itself block a request.
+            # judge_call_failed=True marks this as an unconditional pass, not
+            # a real evaluation -- see the field's docstring in models.py.
             logger.warning("trip planner judge call/parse failed, failing open: %s", e)
             return JudgeVerdict(
                 passed=True, score=0.0, pacing_ok=True, intent_match_ok=True,
-                issues=[], feedback="", rationale="",
+                issues=[], feedback="", rationale="", judge_call_failed=True,
             )
 
         score = float(data.get("score", 0.0))

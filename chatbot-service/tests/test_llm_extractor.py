@@ -213,6 +213,74 @@ class TestBuildItineraryFromLLMDays:
         assert "Place1" in names
 
 
+class TestRestaurantCapAndRoles:
+    """_enforce_restaurant_cap_and_roles: caps ร้านอาหาร at
+    MAX_RESTAURANTS_PER_DAY per day (relocating excess to another day with
+    room, dropping only if nowhere fits) and backfills lunch/dinner roles
+    for any day left with exactly 2 restaurants and an incomplete pairing,
+    regardless of whether the LLM ever set meal_role itself."""
+
+    def test_third_restaurant_in_a_single_day_trip_is_dropped(self):
+        r1 = make_place(id="r1", name="R1", category="ร้านอาหาร", lat=16.44, lng=102.84, hours_periods=None)
+        r2 = make_place(id="r2", name="R2", category="ร้านอาหาร", lat=16.44, lng=102.84, hours_periods=None)
+        r3 = make_place(id="r3", name="R3", category="ร้านอาหาร", lat=16.44, lng=102.84, hours_periods=None)
+        planner = LLMTripPlanner(candidates=[r1, r2, r3], start_point=HOTEL)
+        force_passing_judge(planner)
+        planner._call_llm_for_itinerary = lambda prompt: {"itinerary": [
+            {"day": 1, "places": [{"place_id": "r1"}, {"place_id": "r2"}, {"place_id": "r3"}]},
+        ]}
+
+        user_input = TripInput(
+            trip_duration_days=1, start_date="2026-08-03", accommodation_name="Hotel",
+            start_time="09:00", end_time="20:00",
+        )
+        result, _ = planner.solve_route_with_llm(user_input, "", "")
+        restaurant_ids = {s.place.id for s in result[0].schedule if s.place.category == "ร้านอาหาร"}
+        assert len(restaurant_ids) == 2
+        roles = {s.meal_role for s in result[0].schedule if s.place.id in restaurant_ids}
+        assert roles == {"lunch", "dinner"}
+
+    def test_third_restaurant_relocated_to_an_emptier_day_instead_of_dropped(self):
+        r1 = make_place(id="r1", name="R1", category="ร้านอาหาร", lat=16.44, lng=102.84, hours_periods=None)
+        r2 = make_place(id="r2", name="R2", category="ร้านอาหาร", lat=16.44, lng=102.84, hours_periods=None)
+        r3 = make_place(id="r3", name="R3", category="ร้านอาหาร", lat=16.44, lng=102.84, hours_periods=None)
+        planner = LLMTripPlanner(candidates=[r1, r2, r3], start_point=HOTEL)
+        force_passing_judge(planner)
+        planner._call_llm_for_itinerary = lambda prompt: {"itinerary": [
+            {"day": 1, "places": [{"place_id": "r1"}, {"place_id": "r2"}, {"place_id": "r3"}]},
+            {"day": 2, "places": []},
+        ]}
+
+        user_input = TripInput(
+            trip_duration_days=2, start_date="2026-08-03", accommodation_name="Hotel",
+            start_time="09:00", end_time="20:00",
+        )
+        result, _ = planner.solve_route_with_llm(user_input, "", "")
+        day1_ids = {s.place.id for s in result[0].schedule}
+        day2_ids = {s.place.id for s in result[1].schedule}
+        assert "r3" not in day1_ids
+        assert "r3" in day2_ids  # relocated, not dropped -- day 2 had room
+
+    def test_two_restaurants_without_llm_assigned_roles_still_get_lunch_and_dinner(self):
+        r1 = make_place(id="r1", name="R1", category="ร้านอาหาร", lat=16.44, lng=102.84, hours_periods=None)
+        r2 = make_place(id="r2", name="R2", category="ร้านอาหาร", lat=16.44, lng=102.84, hours_periods=None)
+        planner = LLMTripPlanner(candidates=[r1, r2], start_point=HOTEL)
+        force_passing_judge(planner)
+        # LLM didn't set meal_role at all -- STRICT RULE 6 isn't always
+        # obeyed, this is the deterministic backstop for that gap too.
+        planner._call_llm_for_itinerary = lambda prompt: {"itinerary": [
+            {"day": 1, "places": [{"place_id": "r1"}, {"place_id": "r2"}]},
+        ]}
+
+        user_input = TripInput(
+            trip_duration_days=1, start_date="2026-08-03", accommodation_name="Hotel",
+            start_time="09:00", end_time="20:00",
+        )
+        result, _ = planner.solve_route_with_llm(user_input, "", "")
+        roles = {s.place.id: s.meal_role for s in result[0].schedule if s.place.id in ("r1", "r2")}
+        assert roles == {"r1": "lunch", "r2": "dinner"}
+
+
 class TestSolveRouteWithLLMJudgeRegeneration:
     def _planner_with_one_place(self):
         place = make_place(id="p1", name="Place1", category="คาเฟ่", lat=16.44, lng=102.84, hours_periods=None)
@@ -274,6 +342,29 @@ class TestSolveRouteWithLLMJudgeRegeneration:
         assert len(calls) == MAX_JUDGE_ATTEMPTS
         assert result[0].schedule  # still a valid itinerary
         assert rationale == "best effort so far"
+
+    def test_judge_call_failed_still_accepted_immediately_but_logged_distinctly(self, caplog):
+        # judge_call_failed=True is judge.py's fail-open path (see judge.py's
+        # evaluate()) -- it must still short-circuit the loop (no point
+        # regenerating when the judge itself is broken, not the itinerary),
+        # but should be visibly distinguishable from a genuine pass in logs,
+        # since a metrics/experiment pipeline reading these logs would
+        # otherwise silently count an unevaluated itinerary as "passed".
+        planner = self._planner_with_one_place()
+        calls = []
+        original = planner._call_llm_for_itinerary
+        planner._call_llm_for_itinerary = lambda prompt: (calls.append(prompt), original(prompt))[1]
+        planner.judge.evaluate = lambda user_input, itinerary: JudgeVerdict(
+            passed=True, score=0.0, pacing_ok=True, intent_match_ok=True,
+            rationale="", judge_call_failed=True,
+        )
+
+        import logging
+        with caplog.at_level(logging.WARNING):
+            result, rationale = planner.solve_route_with_llm(self._user_input(), "", "")
+
+        assert len(calls) == 1
+        assert any("fail-open" in r.message.lower() for r in caplog.records)
 
     def test_technical_generation_failure_propagates_and_judge_never_called(self):
         place = make_place(id="p1", name="Place1", category="คาเฟ่", lat=16.44, lng=102.84, hours_periods=None)
