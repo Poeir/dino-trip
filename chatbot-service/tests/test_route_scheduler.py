@@ -170,6 +170,26 @@ class TestCheckIsOpen:
         result = rs.check_is_open(p, datetime(2026, 7, 27, 8, 0))  # Monday 08:00
         assert result == {"is_open": False, "wait_min": 60, "status": "Waiting"}  # waits for 09:00, not 14:00
 
+    @pytest.mark.parametrize("status", ["CLOSED_TEMPORARILY", "CLOSED_PERMANENTLY"])
+    def test_business_closed_overrides_normal_hours(self, status):
+        # Scraped weekly hours say it's open right now -- business_status
+        # says otherwise and must win.
+        p = make_place(hours_periods=self._periods_every_day(), business_status=status)
+        result = rs.check_is_open(p, datetime(2026, 7, 27, 12, 0))  # Monday noon, well within hours
+        assert result == {"is_open": False, "wait_min": 0, "status": "Closed Today"}
+
+    def test_business_closed_with_no_hours_data_is_still_closed(self):
+        # Without the business_status check, this would fall into the "no
+        # hours_periods -> assume open" branch.
+        p = make_place(hours_periods=None, business_status="CLOSED_PERMANENTLY")
+        result = rs.check_is_open(p, datetime(2026, 7, 27, 12, 0))
+        assert result == {"is_open": False, "wait_min": 0, "status": "Closed Today"}
+
+    def test_operational_business_status_does_not_affect_normal_hours(self):
+        p = make_place(hours_periods=self._periods_every_day(), business_status="OPERATIONAL")
+        result = rs.check_is_open(p, datetime(2026, 7, 27, 12, 0))
+        assert result["status"] == "Open"
+
 
 class TestFindAnchorWindow:
     MONDAY = date(2026, 7, 27)
@@ -201,6 +221,13 @@ class TestFindAnchorWindow:
         p = make_place(hours_periods=[
             {"open": {"day": 1, "hour": 20, "minute": 0}, "close": {"day": 2, "hour": 1, "minute": 0}},
         ])
+        assert rs.find_anchor_window(p, self.MONDAY) is None
+
+    def test_business_closed_is_never_an_anchor_even_with_a_narrow_window(self):
+        p = make_place(
+            hours_periods=[{"open": {"day": 1, "hour": 6, "minute": 0}, "close": {"day": 1, "hour": 9, "minute": 0}}],
+            business_status="CLOSED_PERMANENTLY",
+        )
         assert rs.find_anchor_window(p, self.MONDAY) is None
 
 
@@ -299,6 +326,74 @@ class TestOrderDayStops:
         ]
         route = rs.order_day_stops(stops, HOTEL, self.DAY, time(9, 0), time(11, 0), "standard")
         assert isinstance(route, list)
+
+    def test_must_go_place_gets_priority_over_cheaper_optional_place(self):
+        # A 1-hour window only has room for one 45-min-visit flexible stop
+        # once travel is included. "Optional" sits right next to the hotel
+        # (near-zero travel cost) and would win a plain cheapest-insertion
+        # race every time -- "MustGo" is a few km out but still
+        # individually feasible in the window, and is the one the user
+        # actually asked for via must_go_ids.
+        optional = make_place(id="optional", name="Optional", category="คาเฟ่", lat=16.4401, lng=102.8401, hours_periods=None)
+        must_go = make_place(id="mustgo", name="MustGo", category="คาเฟ่", lat=16.455, lng=102.855, hours_periods=None)
+        route = rs.order_day_stops(
+            [optional, must_go], HOTEL, self.DAY, time(9, 0), time(10, 0), "standard",
+            must_go_ids={"mustgo"},
+        )
+        assert [p.id for p in route] == ["mustgo"]
+
+    def test_without_must_go_ids_the_cheaper_place_wins_instead(self):
+        # Same fixture as above but no must_go_ids -- confirms the outcome
+        # flip is really the priority tier, not something else about the
+        # window/fixture.
+        optional = make_place(id="optional", name="Optional", category="คาเฟ่", lat=16.4401, lng=102.8401, hours_periods=None)
+        must_go = make_place(id="mustgo", name="MustGo", category="คาเฟ่", lat=16.455, lng=102.855, hours_periods=None)
+        route = rs.order_day_stops(
+            [optional, must_go], HOTEL, self.DAY, time(9, 0), time(10, 0), "standard",
+        )
+        assert [p.id for p in route] == ["optional"]
+
+    def test_must_go_anchor_survives_a_conflicting_optional_anchor(self):
+        # Both are real anchors (narrow same-day windows): "optional" opens
+        # 06:00-07:00 right next to the hotel, "mustgo" opens 06:15-06:45
+        # ~9km away. Visiting optional first (120-min "ตลาด" visit) then
+        # traveling to mustgo arrives at 8:18 -- long after mustgo's 06:45
+        # close, so the two anchors genuinely conflict; only one can be
+        # scheduled. must_go_ids must decide that conflict in mustgo's
+        # favor, not "whichever opens earlier in the day" (the old
+        # single-pass anchor sort's tie-break, which knew nothing about
+        # must_go_ids at all).
+        optional = make_place(
+            id="optional", name="OptionalMarket", category="ตลาด", lat=16.441, lng=102.841,
+            hours_periods=[{"open": {"day": 1, "hour": 6, "minute": 0}, "close": {"day": 1, "hour": 7, "minute": 0}}],
+        )
+        must_go = make_place(
+            id="mustgo", name="MustGoMarket", category="ตลาด", lat=16.50, lng=102.90,
+            hours_periods=[{"open": {"day": 1, "hour": 6, "minute": 15}, "close": {"day": 1, "hour": 6, "minute": 45}}],
+        )
+        route = rs.order_day_stops(
+            [optional, must_go], HOTEL, self.DAY, time(6, 0), time(20, 0), "standard",
+            must_go_ids={"mustgo"},
+        )
+        assert [p.id for p in route] == ["mustgo"]
+
+    def test_without_must_go_ids_the_earlier_anchor_wins_the_conflict_instead(self):
+        # Same fixture as above but no must_go_ids -- confirms the flip is
+        # really the priority tier and not something else about the
+        # coordinates/windows: without it, the anchor that simply opens
+        # earlier (optional, 06:00) wins and bumps the other one out.
+        optional = make_place(
+            id="optional", name="OptionalMarket", category="ตลาด", lat=16.441, lng=102.841,
+            hours_periods=[{"open": {"day": 1, "hour": 6, "minute": 0}, "close": {"day": 1, "hour": 7, "minute": 0}}],
+        )
+        must_go = make_place(
+            id="mustgo", name="MustGoMarket", category="ตลาด", lat=16.50, lng=102.90,
+            hours_periods=[{"open": {"day": 1, "hour": 6, "minute": 15}, "close": {"day": 1, "hour": 6, "minute": 45}}],
+        )
+        route = rs.order_day_stops(
+            [optional, must_go], HOTEL, self.DAY, time(6, 0), time(20, 0), "standard",
+        )
+        assert [p.id for p in route] == ["optional"]
 
 
 class TestMaterializeDaySchedule:
@@ -438,6 +533,16 @@ class TestReassignInfeasibleDays:
         ])
         result = rs.reassign_infeasible_days({1: [p]}, self.START, 1)
         assert [pl.id for pl in result[1]] == ["p1"]
+
+    def test_drops_business_closed_place_even_with_no_hours_data(self):
+        # Regression: the old "if not place.hours_periods: continue" guard
+        # used to skip this place entirely (hours_periods=None), so a
+        # permanently-closed place with no scraped hours would never get
+        # dropped here.
+        p = make_place(id="p1", name="DefunctPlace", hours_periods=None, business_status="CLOSED_PERMANENTLY")
+        result = rs.reassign_infeasible_days({1: [p], 2: []}, self.START, 2)
+        assert result[1] == []
+        assert result[2] == []
 
 
 def make_filler(place_id, category="คาเฟ่"):

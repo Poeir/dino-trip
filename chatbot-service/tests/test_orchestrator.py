@@ -65,7 +65,7 @@ class TestAreaScopeFilter:
             make_place_row("p3", "Unclassified", district=None),
         ])
         user_input = make_user_input(area_scope="เมือง")
-        _, candidates, _ = service.build_candidate_list(user_input)
+        _, candidates, _, _ = service.build_candidate_list(user_input)
         names = [p.name for p in candidates]
         assert "InCity" in names
         assert "Outlying" not in names
@@ -78,7 +78,7 @@ class TestAreaScopeFilter:
             make_place_row("p3", "Unclassified", district=None),
         ])
         user_input = make_user_input(area_scope="ทั่วขอนแก่น")
-        _, candidates, _ = service.build_candidate_list(user_input)
+        _, candidates, _, _ = service.build_candidate_list(user_input)
         names = [p.name for p in candidates]
         assert {"InCity", "Outlying", "Unclassified"} <= set(names)
 
@@ -88,10 +88,25 @@ class TestAreaScopeFilter:
         service.retriever = FakeRetriever([])
 
         user_input = make_user_input(area_scope="เมือง", must_go=["MustGoOutlying"])
-        _, candidates, missing = service.build_candidate_list(user_input)
+        _, candidates, missing, must_go_ids = service.build_candidate_list(user_input)
         names = [p.name for p in candidates]
         assert "MustGoOutlying" in names
         assert missing == []
+        assert must_go_ids == {"m1"}
+
+    def test_must_go_ids_excludes_interest_candidates(self, service, monkeypatch):
+        # must_go_ids identifies only the places the user explicitly asked
+        # for -- route_scheduler/llm_extractor use it to give those
+        # priority over everything else, so an interest-sourced candidate
+        # (found via RAG, not requested by name) must never end up in it.
+        must_go_row = make_place_row("m1", "MustGoPlace", district="เมืองขอนแก่น")
+        monkeypatch.setattr(orchestrator_module, "find_place_by_name", lambda name_query: must_go_row)
+        service.retriever = FakeRetriever([make_place_row("p1", "InterestPlace", district="เมืองขอนแก่น")])
+
+        user_input = make_user_input(must_go=["MustGoPlace"])
+        _, candidates, _, must_go_ids = service.build_candidate_list(user_input)
+        assert must_go_ids == {"m1"}
+        assert "p1" not in must_go_ids
 
     @pytest.mark.parametrize("district_value", [
         "อำเภอเมืองขอนแก่น", "เมือง", "อ.เมือง", "อ.เมืองขอนแก่น", "อำเภอเมือง", "Muang",
@@ -104,7 +119,7 @@ class TestAreaScopeFilter:
         # matched zero of the 500 real rows tagged "อำเภอเมืองขอนแก่น".
         service.retriever = FakeRetriever([make_place_row("p1", "InCity", district=district_value)])
         user_input = make_user_input(area_scope="เมือง")
-        _, candidates, _ = service.build_candidate_list(user_input)
+        _, candidates, _, _ = service.build_candidate_list(user_input)
         assert "InCity" in [p.name for p in candidates]
 
     @pytest.mark.parametrize("district_value", [
@@ -113,7 +128,7 @@ class TestAreaScopeFilter:
     def test_real_world_outlying_district_variants_are_all_excluded(self, service, district_value):
         service.retriever = FakeRetriever([make_place_row("p1", "Outlying", district=district_value)])
         user_input = make_user_input(area_scope="เมือง")
-        _, candidates, _ = service.build_candidate_list(user_input)
+        _, candidates, _, _ = service.build_candidate_list(user_input)
         assert "Outlying" not in [p.name for p in candidates]
 
 
@@ -134,7 +149,7 @@ class TestMultiInterestRoundRobin:
             "ไดโนเสาร์": dino_places,
         })
         user_input = make_user_input(interests=["วัฒนธรรม/ศาสนา", "ไดโนเสาร์"])
-        _, candidates, _ = service.build_candidate_list(user_input)
+        _, candidates, _, _ = service.build_candidate_list(user_input)
         names = [p.name for p in candidates]
         assert "Dino1" in names
 
@@ -155,7 +170,7 @@ class TestMultiInterestRoundRobin:
             "สถานที่ท่องเที่ยวยอดนิยม ขอนแก่น": [make_place_row("g1", "Generic1", district="เมืองขอนแก่น")],
         })
         user_input = make_user_input(interests=[])
-        _, candidates, _ = service.build_candidate_list(user_input)
+        _, candidates, _, _ = service.build_candidate_list(user_input)
         assert "Generic1" in [p.name for p in candidates]
         # Trailing call is the unconditional meal reserve (see
         # build_candidate_list) -- fires regardless of interests since

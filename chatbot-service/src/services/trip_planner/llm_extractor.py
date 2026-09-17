@@ -2,7 +2,7 @@ import json
 import logging
 import time
 from datetime import datetime, timedelta
-from typing import Dict, List, Set, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 from openai import OpenAI
 
@@ -29,13 +29,27 @@ MAX_RESTAURANTS_PER_DAY = 2
 
 
 class LLMTripPlanner:
-    def __init__(self, candidates: List[Place], start_point: Place = None):
+    def __init__(self, candidates: List[Place], start_point: Place = None, must_go_ids: Optional[Set[str]] = None):
         self.candidates = candidates
         self.start_point = start_point
+        # ids from user_input.must_go that were actually found in the DB
+        # (see orchestrator.build_candidate_list) -- everything downstream
+        # that could otherwise drop a place for being merely cost-
+        # inconvenient (order_day_stops' insertion, the restaurant cap)
+        # gives these first priority instead of treating them like any
+        # other optional candidate. A real infeasibility (closed every day
+        # of the trip, etc.) can still drop one -- see last_dropped_must_go.
+        self.must_go_ids = must_go_ids or set()
         self.location_map = {loc.id: loc for loc in candidates}
         self.default_model = TRIP_PLANNER_MODEL_NAME
         self.client = OpenAI(api_key=API_KEY, base_url=BASE_URL)
         self.judge = TripItineraryJudge()
+        # Populated by _build_itinerary_from_llm_days on every call (most
+        # recently by whichever judge round's result solve_route_with_llm
+        # ultimately returned) -- must-go places that never made it into
+        # the final schedule despite the priority above, for the caller to
+        # surface to the user instead of failing silently.
+        self.last_dropped_must_go: List[Place] = []
 
     def generate_prompt(self, user_input: TripInput, pace_instruction: str, budget_instruction: str, feedback_block: str = "") -> str:
         # No lat/lng here, deliberately -- geographic ordering is entirely
@@ -214,6 +228,12 @@ class LLMTripPlanner:
             restaurants = [p for p in places if p.category == "ร้านอาหาร"]
             if len(restaurants) <= MAX_RESTAURANTS_PER_DAY:
                 continue
+            # Must-go restaurants are kept within the cap first -- trimming
+            # (relocate-or-drop) falls on optional picks before ever
+            # touching one the user explicitly asked for. Stable sort, so
+            # within each priority tier the original LLM-given order still
+            # decides who's first (unchanged when there's no must-go mix).
+            restaurants = sorted(restaurants, key=lambda p: p.id not in self.must_go_ids)
             for place in restaurants[MAX_RESTAURANTS_PER_DAY:]:
                 day_assignments[day_num].remove(place)
                 relocated = False
@@ -225,7 +245,12 @@ class LLMTripPlanner:
                         continue
                     other_date = trip_start_date + timedelta(days=other_day - 1)
                     noon = datetime(other_date.year, other_date.month, other_date.day, 12, 0)
-                    if place.hours_periods and route_scheduler.check_is_open(place, noon)["status"] == "Closed Today":
+                    # Always call check_is_open -- a temporarily/permanently
+                    # closed restaurant (business_status) must still be
+                    # rejected here even with hours_periods=None, which the
+                    # old "place.hours_periods and ..." guard used to skip
+                    # entirely (see check_is_open's business_status check).
+                    if route_scheduler.check_is_open(place, noon)["status"] == "Closed Today":
                         continue
                     other_places.append(place)
                     relocated = True
@@ -323,7 +348,14 @@ class LLMTripPlanner:
 
         Also returns a drop-feedback string (empty if nothing was dropped)
         for solve_route_with_llm to feed into the next regenerate round --
-        see _build_drop_feedback."""
+        see _build_drop_feedback. Sets self.last_dropped_must_go as a side
+        effect (not part of the return tuple, to avoid rippling a signature
+        change through every existing caller/test of this and
+        solve_route_with_llm) -- a final schedule-vs-must_go_ids diff,
+        which catches every way a must-go place can still fail to appear
+        (LLM never picked it, order_day_stops couldn't fit it, restaurant
+        cap, or a real opening-hours conflict at materialize time), not
+        just the ones this function explicitly tracks in dropped_by_day."""
         trip_start_date = datetime.strptime(user_input.start_date, "%Y-%m-%d").date()
         start_time_of_day = datetime.strptime(user_input.start_time, "%H:%M").time()
         end_time_of_day = datetime.strptime(user_input.end_time, "%H:%M").time()
@@ -352,6 +384,29 @@ class LLMTripPlanner:
                     meal_roles[loc_id] = role
             day_assignments[day_num] = places_for_day
 
+        # The "Must Go" list in generate_prompt() is only a hint -- STRICT
+        # RULE 1 doesn't force the LLM to actually include every must-go id
+        # in its output, and it sometimes just doesn't. Inject anything
+        # missing here, onto whichever day currently has the fewest picks,
+        # before reassign_infeasible_days/ordering run -- so it gets the
+        # same day-of-week feasibility check as an LLM-picked place, and so
+        # order_day_stops' must-go priority tier (below) gets a chance to
+        # actually fit it in rather than the place never being considered
+        # at all.
+        for must_go_id in self.must_go_ids:
+            if must_go_id in used_ids or must_go_id not in self.location_map:
+                continue
+            target_day = min(
+                range(1, user_input.trip_duration_days + 1),
+                key=lambda d: len(day_assignments.get(d, [])),
+            )
+            day_assignments.setdefault(target_day, []).append(self.location_map[must_go_id])
+            used_ids.add(must_go_id)
+            logger.info(
+                "trip planner: LLM did not pick must-go place %s -- injecting into day %d",
+                self.location_map[must_go_id].name, target_day,
+            )
+
         day_assignments = route_scheduler.reassign_infeasible_days(
             day_assignments, trip_start_date, user_input.trip_duration_days,
         )
@@ -361,9 +416,10 @@ class LLMTripPlanner:
         )
         dropped_by_day: Dict[int, List[Tuple[Place, str]]] = {}
         for day_num, place in restaurant_cap_drops:
-            dropped_by_day.setdefault(day_num, []).append(
-                (place, f"day already had {MAX_RESTAURANTS_PER_DAY} \"ร้านอาหาร\" scheduled")
-            )
+            reason = f"day already had {MAX_RESTAURANTS_PER_DAY} \"ร้านอาหาร\" scheduled"
+            if place.id in self.must_go_ids:
+                reason = "MUST-GO PLACE -- " + reason
+            dropped_by_day.setdefault(day_num, []).append((place, reason))
 
         # A day with zero "ร้านอาหาร" picks is not a reasonable itinerary
         # regardless of stated interests -- top each such day up with one
@@ -423,14 +479,16 @@ class LLMTripPlanner:
             ordered = route_scheduler.order_day_stops(
                 day_places, self.start_point, day_date,
                 start_time_of_day, end_time_of_day, user_input.trip_pace, meal_roles,
+                must_go_ids=self.must_go_ids,
             )
             routes[day_num] = ordered
             ordered_ids = {p.id for p in ordered}
             missing = [p for p in day_places if p.id not in ordered_ids]
             for p in missing:
-                dropped_by_day.setdefault(day_num, []).append(
-                    (p, "too far from / opening-hours conflict with the rest of that day's picks")
-                )
+                reason = "too far from / opening-hours conflict with the rest of that day's picks"
+                if p.id in self.must_go_ids:
+                    reason = "MUST-GO PLACE -- " + reason
+                dropped_by_day.setdefault(day_num, []).append((p, reason))
 
         routes = route_scheduler.backfill_underfilled_trip(
             routes, day_dates, meal_roles, self.start_point,
@@ -452,4 +510,10 @@ class LLMTripPlanner:
                 day=day_num, date=day_date.strftime("%Y-%m-%d"), schedule=schedule,
                 day_cost_estimate=day_cost, day_travel_time_total=day_travel,
             ))
+
+        scheduled_ids = {slot.place.id for day in final_itinerary for slot in day.schedule}
+        self.last_dropped_must_go = [
+            self.location_map[mid] for mid in self.must_go_ids
+            if mid not in scheduled_ids and mid in self.location_map
+        ]
         return final_itinerary, drop_feedback

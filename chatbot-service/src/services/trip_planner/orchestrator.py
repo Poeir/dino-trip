@@ -186,7 +186,7 @@ class TripBuilderService:
                 existing_ids.add(place_id)
                 existing_restaurant_count += 1
 
-        return accommodation, must_go_list + interest_list, missing_must_go
+        return accommodation, must_go_list + interest_list, missing_must_go, {p.id for p in must_go_list}
 
     def get_dynamic_instructions(self, user_input: TripInput):
         pace_instruction = {

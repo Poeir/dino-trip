@@ -18,6 +18,13 @@ class Place(BaseModel):
     district: Optional[str] = None  # Google administrative_area_level_2, e.g. "เมืองขอนแก่น" (see import-places.js's mapDistrict())
     hours: Optional[str] = None
     hours_periods: Optional[List[Dict[str, Any]]] = None
+    # Google's operating status: OPERATIONAL / CLOSED_TEMPORARILY /
+    # CLOSED_PERMANENTLY (see backend's 20260728000006_add_business_status.sql
+    # migration) -- route_scheduler.check_is_open()/find_anchor_window()
+    # treat CLOSED_TEMPORARILY/CLOSED_PERMANENTLY as closed regardless of
+    # hours_periods, since a place that's shut down doesn't become open again
+    # just because its scraped weekly hours still say otherwise.
+    business_status: Optional[str] = None
     phone: Optional[str] = None
     website: Optional[str] = None
     maps_url: Optional[str] = None

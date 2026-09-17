@@ -29,6 +29,17 @@ BUFFET_KEYWORDS = ["หมูกระทะ", "ปิ้งย่าง", "บ�
 EVENING_KEYWORDS = ["หมูกระทะ", "ปิ้งย่าง", "บุฟเฟต์", "สุกี้", "ตี๋น้อย", "บาร์", "ตลาดกลางคืน"]
 PRICE_MAP = {0: 0, 1: 150, 2: 400, 3: 800, 4: 1500}
 
+# Google's operating-status values that mean "closed regardless of what the
+# scraped weekly hours say" -- a business that's shut down doesn't reopen
+# just because hours_periods (scraped once, not re-verified) still lists a
+# normal week. OPERATIONAL and None/unknown both fall through to the normal
+# hours_periods-based check.
+CLOSED_BUSINESS_STATUSES = {"CLOSED_TEMPORARILY", "CLOSED_PERMANENTLY"}
+
+
+def _is_business_closed(loc: Place) -> bool:
+    return loc.business_status in CLOSED_BUSINESS_STATUSES
+
 # A place counts as a scheduling "anchor" (its time slot gets fixed before
 # anything else is arranged around it) only if its real opening window that
 # day is this narrow or narrower -- a place open 09:00-21:00 isn't a
@@ -118,6 +129,16 @@ def check_is_open(loc: Place, arrival_dt: datetime) -> dict:
     real, separate gap this does not attempt to cover -- it would require
     looking at the previous day's periods too, not just today's.
     """
+    if _is_business_closed(loc):
+        # "Closed Today" (not "Closed") is deliberate -- it's what
+        # reassign_infeasible_days/_enforce_restaurant_cap_and_roles check
+        # to decide "is this place closed on this candidate day", and a
+        # temporarily/permanently closed place is closed on every day, not
+        # just today. Every other day's check_is_open() call for it will
+        # also return "Closed Today", so it correctly falls through to
+        # "closed every day of the trip, drop it" with no extra code.
+        return {"is_open": False, "wait_min": 0, "status": "Closed Today"}
+
     if not loc.hours_periods:
         return {"is_open": True, "wait_min": 0, "status": "Open (No Data)"}
 
@@ -158,8 +179,10 @@ def find_anchor_window(loc: Place, day_date: date) -> Optional[Tuple[int, int]]:
     (<= ANCHOR_MAX_WINDOW_MINUTES) to be a real constraint, e.g. a morning
     market open 06:00-09:00. Returns (open_min, close_min) in
     minutes-since-midnight, or None if the place isn't an anchor (no hours
-    data, multiple periods that day, or a wide/all-day window)."""
-    if not loc.hours_periods:
+    data, multiple periods that day, a wide/all-day window, or the place is
+    closed for business regardless of its scraped hours -- see
+    _is_business_closed)."""
+    if _is_business_closed(loc) or not loc.hours_periods:
         return None
     google_day = (day_date.weekday() + 1) % 7
     periods = _periods_for_weekday(loc, google_day)
@@ -282,10 +305,124 @@ def _route_cost(
     return total
 
 
+def _cheapest_insert_remaining(
+    route: List[Place], remaining: List[Place], hotel: Place, day_date: date,
+    start_dt: datetime, end_dt_bound: datetime, pace: str, meal_roles: Dict[str, str],
+    min_insert_pos: int, orig_index: Dict[str, int], label: str = "",
+) -> List[Place]:
+    """Repeatedly insert the (place, position) pair from `remaining` with
+    the lowest cost into `route`, until every place in `remaining` is
+    either placed or provably unfittable. See order_day_stops' docstring
+    for the feasibility/tie-break rules -- this is that loop, factored out
+    so order_day_stops can run it twice: once over must-go places only,
+    once over everything else. Running must-go places to exhaustion first
+    means a cheaper-but-optional stop can never consume the day's last bit
+    of feasible daylight ahead of a place the user explicitly required."""
+    remaining = list(remaining)
+    while remaining:
+        baseline_ids = {s["place"].id for s in _simulate_day_walk(route, hotel, day_date, start_dt, end_dt_bound, pace)}
+        best_key = None
+        best_place = None
+        best_pos = None
+        for place in remaining:
+            natural_pos = sum(1 for r in route if orig_index.get(r.id, 0) < orig_index.get(place.id, 0))
+            for pos in range(min_insert_pos, len(route) + 1):
+                candidate = route[:pos] + [place] + route[pos:]
+                survive_ids = {s["place"].id for s in _simulate_day_walk(candidate, hotel, day_date, start_dt, end_dt_bound, pace)}
+                if place.id not in survive_ids or not baseline_ids.issubset(survive_ids):
+                    continue  # infeasible, or would evict an already-committed stop
+                cost = _route_cost(candidate, hotel, day_date, start_dt, end_dt_bound, pace, meal_roles)
+                key = (round(cost, 6), abs(pos - natural_pos), orig_index.get(place.id, 0))
+                if best_key is None or key < best_key:
+                    best_key, best_place, best_pos = key, place, pos
+        if best_place is None:
+            logger.info(
+                "trip planner: could not fit %d remaining %splace(s) into the day, dropping: %s",
+                len(remaining), label, ", ".join(p.name for p in remaining),
+            )
+            break
+        route = route[:best_pos] + [best_place] + route[best_pos:]
+        remaining.remove(best_place)
+    return route
+
+
+def _anchor_chain_feasible(chain: List[Tuple[Place, Tuple[int, int]]], pace: str) -> bool:
+    """Walk an anchor chain in order and confirm every anchor after the
+    first can actually be reached from the previous one's departure before
+    its own close_min -- pure validation, doesn't build a route or mutate
+    anything. Shared by both passes of _build_anchor_skeleton so a
+    candidate insertion can be checked before it's committed."""
+    prev_place: Optional[Place] = None
+    prev_departure_min: Optional[int] = None
+    for place, (open_min, close_min) in chain:
+        if prev_place is not None:
+            dist = calculate_distance(prev_place, place)
+            earliest_arrival_min = prev_departure_min + travel_minutes(dist)
+            if earliest_arrival_min >= close_min:
+                return False
+            arrival_min = max(open_min, earliest_arrival_min)
+        else:
+            arrival_min = open_min
+        prev_departure_min = arrival_min + get_visit_duration(place, pace)
+        prev_place = place
+    return True
+
+
+def _build_anchor_skeleton(
+    anchors: List[Tuple[Place, Tuple[int, int]]], pace: str, must_go_ids: set,
+) -> Tuple[List[Place], List[Place]]:
+    """Build the anchor skeleton in two must-go-first passes, mirroring
+    _cheapest_insert_remaining's priority-tier policy on the flexible side.
+    The old single global sort-by-open_min pass let whichever anchor simply
+    came earlier in the day win a timing conflict, even when the loser was
+    a must-go place and the winner was only optional -- the must-go
+    priority tier added for order_day_stops' flexible-insertion phase never
+    covered anchors at all.
+
+    1. Chain every must-go anchor first, open_min order, demoting a
+       must-go anchor only when it conflicts with an EARLIER must-go
+       anchor already committed -- optional anchors aren't in the picture
+       yet, so they can never bump a must-go one out here.
+    2. Insert every optional anchor into whatever gaps that must-go
+       skeleton leaves, at its natural open_min-sorted position, keeping
+       it only if the WHOLE resulting chain -- including every must-go
+       anchor already locked in -- stays feasible. An optional anchor that
+       would push any must-go anchor's arrival past its close_min is
+       demoted instead of inserted.
+
+    Returns (route, demoted_places); demoted anchors (must-go or optional)
+    are handed back for the caller to fold into the flexible pool, same as
+    the single-pass version's demotion path."""
+    must_go_anchors = [a for a in anchors if a[0].id in must_go_ids]
+    optional_anchors = [a for a in anchors if a[0].id not in must_go_ids]
+
+    skeleton: List[Tuple[Place, Tuple[int, int]]] = []
+    demoted: List[Place] = []
+
+    for anchor in must_go_anchors:
+        candidate = skeleton + [anchor]
+        if _anchor_chain_feasible(candidate, pace):
+            skeleton = candidate
+        else:
+            demoted.append(anchor[0])
+
+    for anchor in optional_anchors:
+        pos = 0
+        while pos < len(skeleton) and skeleton[pos][1][0] < anchor[1][0]:
+            pos += 1
+        candidate = skeleton[:pos] + [anchor] + skeleton[pos:]
+        if _anchor_chain_feasible(candidate, pace):
+            skeleton = candidate
+        else:
+            demoted.append(anchor[0])
+
+    return [p for p, _ in skeleton], demoted
+
+
 def order_day_stops(
     day_places: List[Place], hotel: Place, day_date: date,
     start_time_of_day: time, end_time_of_day: time, pace: str,
-    meal_roles: Optional[Dict[str, str]] = None,
+    meal_roles: Optional[Dict[str, str]] = None, must_go_ids: Optional[set] = None,
 ) -> List[Place]:
     """Order one day's places using real geography and real opening hours:
     fixed-time anchors (narrow real opening windows) are placed first as a
@@ -295,12 +432,27 @@ def order_day_stops(
     (single-stop relocation -- not 2-opt, since 2-opt's segment reversal
     would flip anchors out of their required forward time order).
 
+    Places whose id is in `must_go_ids` get priority in BOTH phases. In the
+    anchor phase (see _build_anchor_skeleton), a must-go anchor can never be
+    bumped out of the skeleton by an optional anchor it happens to conflict
+    with -- only another, earlier-committed must-go anchor can do that. In
+    the flexible-insertion phase, must-go places are inserted cheapest-first
+    in their own pass BEFORE any other flexible stop is even considered --
+    otherwise several cheap optional stops can consume the day's remaining
+    feasible daylight ahead of a farther-but-required place, which then
+    reports as "dropped" even though there was room for it before the
+    optional stops crowded it out. Neither is an absolute guarantee (a
+    must-go place with a real opening-hours conflict, or two must-go
+    anchors that themselves conflict, are still infeasible no matter when
+    considered), just first claim on whatever room the day actually has.
+
     Never raises on an infeasible input -- anchors that can't be reached in
     time get demoted back to flexible stops, and flexible stops that can't
     fit anywhere get dropped (final drop/keep decision belongs to
     materialize_day_schedule's real simulation, this function only decides
     order)."""
     meal_roles = meal_roles or {}
+    must_go_ids = must_go_ids or set()
     start_dt = datetime.combine(day_date, start_time_of_day)
     end_dt_bound = datetime.combine(day_date, end_time_of_day)
 
@@ -314,24 +466,8 @@ def order_day_stops(
             flexible.append(p)
     anchors.sort(key=lambda pair: pair[1][0])
 
-    route: List[Place] = []
-    prev_place: Optional[Place] = None
-    prev_departure_min: Optional[int] = None
-    for place, (open_min, close_min) in anchors:
-        if prev_place is not None:
-            dist = calculate_distance(prev_place, place)
-            earliest_arrival_min = prev_departure_min + travel_minutes(dist)
-            if earliest_arrival_min >= close_min:
-                # Can't make it from the previous anchor in time -- demote
-                # instead of producing an impossible schedule.
-                flexible.append(place)
-                continue
-            arrival_min = max(open_min, earliest_arrival_min)
-        else:
-            arrival_min = open_min
-        route.append(place)
-        prev_departure_min = arrival_min + get_visit_duration(place, pace)
-        prev_place = place
+    route, demoted_anchors = _build_anchor_skeleton(anchors, pace, must_go_ids)
+    flexible.extend(demoted_anchors)
 
     # Once the skeleton is built, nothing may be inserted ahead of its first
     # stop when that first stop is a real anchor -- a flexible detour is
@@ -360,32 +496,17 @@ def order_day_stops(
     # order, then by that given order itself -- so when geography/timing
     # truly don't distinguish two arrangements, the result stays the
     # day-assignment order instead of shuffling arbitrarily.
-    remaining = list(flexible)
     orig_index = {p.id: i for i, p in enumerate(day_places)}
-    while remaining:
-        baseline_ids = {s["place"].id for s in _simulate_day_walk(route, hotel, day_date, start_dt, end_dt_bound, pace)}
-        best_key = None
-        best_place = None
-        best_pos = None
-        for place in remaining:
-            natural_pos = sum(1 for r in route if orig_index.get(r.id, 0) < orig_index.get(place.id, 0))
-            for pos in range(min_insert_pos, len(route) + 1):
-                candidate = route[:pos] + [place] + route[pos:]
-                survive_ids = {s["place"].id for s in _simulate_day_walk(candidate, hotel, day_date, start_dt, end_dt_bound, pace)}
-                if place.id not in survive_ids or not baseline_ids.issubset(survive_ids):
-                    continue  # infeasible, or would evict an already-committed stop
-                cost = _route_cost(candidate, hotel, day_date, start_dt, end_dt_bound, pace, meal_roles)
-                key = (round(cost, 6), abs(pos - natural_pos), orig_index.get(place.id, 0))
-                if best_key is None or key < best_key:
-                    best_key, best_place, best_pos = key, place, pos
-        if best_place is None:
-            logger.info(
-                "trip planner: could not fit %d remaining place(s) into the day, dropping: %s",
-                len(remaining), ", ".join(p.name for p in remaining),
-            )
-            break
-        route = route[:best_pos] + [best_place] + route[best_pos:]
-        remaining.remove(best_place)
+    priority = [p for p in flexible if p.id in must_go_ids]
+    rest = [p for p in flexible if p.id not in must_go_ids]
+    route = _cheapest_insert_remaining(
+        route, priority, hotel, day_date, start_dt, end_dt_bound, pace, meal_roles,
+        min_insert_pos, orig_index, label="MUST-GO ",
+    )
+    route = _cheapest_insert_remaining(
+        route, rest, hotel, day_date, start_dt, end_dt_bound, pace, meal_roles,
+        min_insert_pos, orig_index,
+    )
 
     anchor_ids = {p.id for p, _ in anchors if p in route}
     return _or_opt_polish(route, anchor_ids, hotel, day_date, start_dt, end_dt_bound, pace, meal_roles)
@@ -615,7 +736,12 @@ def reassign_infeasible_days(
         day_date = trip_start_date + timedelta(days=day_num - 1)
         noon = datetime.combine(day_date, time(12, 0))
         for place in list(places):
-            if not place.hours_periods:
+            # A place with no hours_periods AND not closed for business has
+            # nothing to check here (check_is_open would just say "Open (No
+            # Data)" every day) -- but a business-closed place must still go
+            # through the check below even with hours_periods=None, or it
+            # would never get dropped.
+            if not place.hours_periods and not _is_business_closed(place):
                 continue
             if check_is_open(place, noon)["status"] != "Closed Today":
                 continue
@@ -887,9 +1013,13 @@ def build_day_itinerary(
     start_time_of_day: time, end_time_of_day: time, pace: str,
     meal_roles: Optional[Dict[str, str]] = None,
     backfill_pool: Optional[List[Place]] = None,
+    must_go_ids: Optional[set] = None,
 ) -> DailyItinerary:
     meal_roles = meal_roles or {}
-    route = order_day_stops(day_places, hotel, day_date, start_time_of_day, end_time_of_day, pace, meal_roles)
+    route = order_day_stops(
+        day_places, hotel, day_date, start_time_of_day, end_time_of_day, pace, meal_roles,
+        must_go_ids=must_go_ids,
+    )
     if backfill_pool:
         route = backfill_underfilled_day(
             route, meal_roles, hotel, day_date, start_time_of_day, end_time_of_day, pace, backfill_pool,
