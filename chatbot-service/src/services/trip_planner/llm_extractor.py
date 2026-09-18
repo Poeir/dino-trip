@@ -27,6 +27,18 @@ MAX_JUDGE_ATTEMPTS = 2
 # either. See _enforce_restaurant_cap_and_roles.
 MAX_RESTAURANTS_PER_DAY = 2
 
+# Nothing previously capped "คาเฟ่" per day at all -- confirmed live on a
+# real itinerary where the LLM (and, since travel_minutes underestimated
+# short in-town hops, the scheduler happily agreed) stacked cafes
+# back-to-back in one afternoon. Same relocate-or-drop enforcement as
+# restaurants, via _enforce_category_cap -- but that only constrains the
+# LLM's own picks. Sourced from route_scheduler.CATEGORY_DAILY_CAP (not
+# redefined here) since backfill_underfilled_day/_trip and
+# materialize_day_schedule's gap-filler there enforce the same number
+# independently, on places this cap never saw (see CATEGORY_DAILY_CAP's
+# docstring) -- one number, not two that can drift apart.
+MAX_CAFES_PER_DAY = route_scheduler.CATEGORY_DAILY_CAP["คาเฟ่"]
+
 
 class LLMTripPlanner:
     def __init__(self, candidates: List[Place], start_point: Place = None, must_go_ids: Optional[Set[str]] = None):
@@ -108,6 +120,7 @@ class LLMTripPlanner:
         5. Each place_id may appear AT MOST ONCE across the entire itinerary -- never assign the same place to two days, or twice on the same day.
         6. If a day includes two "ร้านอาหาร" (restaurant) places, set "meal_role" to "lunch" on one and "dinner" on the other so each gets scheduled at the right time of day. Omit "meal_role" entirely otherwise (single restaurant that day, or non-restaurant places).
         7. Prefer grouping places from the same or nearby District together within a single day. Spreading far-apart Districts across one day risks the scheduler being unable to fit every pick in time -- when the candidate list offers a same-day alternative in a closer District, prefer it.
+        8. Do not put more than {MAX_CAFES_PER_DAY} "คาเฟ่" (cafe) places on the same day. Stacking several cafes back-to-back reads as repetitive, not a real itinerary -- prefer at most one cafe per day alongside attractions/restaurants, two only if the day is otherwise light.
 
         [EXAMPLE JSON OUTPUT FORMAT]
         {{
@@ -195,8 +208,66 @@ class LLMTripPlanner:
             parts = ", ".join(f"{p.name} ({p.district or 'unknown district'}) -- {reason}" for p, reason in dropped_by_day[day_num])
             lines.append(f"- Day {day_num}: {parts}")
         lines.append("Prefer clustering each day's picks by District (see rule 7), and keep at most "
-                      f"{MAX_RESTAURANTS_PER_DAY} \"ร้านอาหาร\" per day (see rule 6), so fewer picks are dropped like this.")
+                      f"{MAX_RESTAURANTS_PER_DAY} \"ร้านอาหาร\" (see rule 6) and {MAX_CAFES_PER_DAY} \"คาเฟ่\" "
+                      "(see rule 8) per day, so fewer picks are dropped like this.")
         return "\n".join(lines)
+
+    def _enforce_category_cap(
+        self, day_assignments: Dict[int, List[Place]], category: str, max_per_day: int,
+        used_ids: Set[str], trip_start_date, trip_duration_days: int,
+    ) -> List[Tuple[int, Place]]:
+        """Trims each day's count of `category` down to `max_per_day`,
+        relocating the excess to another day with room (that isn't closed
+        that day, per check_is_open) before ever dropping one -- shared
+        relocate-or-drop policy behind both _enforce_restaurant_cap_and_roles
+        (MAX_RESTAURANTS_PER_DAY) and the คาเฟ่ cap (MAX_CAFES_PER_DAY),
+        generalized to whichever single category the caller is enforcing.
+
+        Must-go picks of `category` are kept within the cap first --
+        trimming falls on optional picks before ever touching one the user
+        explicitly asked for. Stable sort, so within each priority tier the
+        original LLM-given order still decides who's first."""
+        dropped: List[Tuple[int, Place]] = []
+
+        for day_num in range(1, trip_duration_days + 1):
+            places = day_assignments.get(day_num, [])
+            matches = [p for p in places if p.category == category]
+            if len(matches) <= max_per_day:
+                continue
+            matches = sorted(matches, key=lambda p: p.id not in self.must_go_ids)
+            for place in matches[max_per_day:]:
+                day_assignments[day_num].remove(place)
+                relocated = False
+                for other_day in range(1, trip_duration_days + 1):
+                    if other_day == day_num:
+                        continue
+                    other_places = day_assignments.setdefault(other_day, [])
+                    if sum(1 for p in other_places if p.category == category) >= max_per_day:
+                        continue
+                    other_date = trip_start_date + timedelta(days=other_day - 1)
+                    noon = datetime(other_date.year, other_date.month, other_date.day, 12, 0)
+                    # Always call check_is_open -- a temporarily/permanently
+                    # closed place (business_status) must still be rejected
+                    # here even with hours_periods=None, which an
+                    # "place.hours_periods and ..." guard would skip
+                    # entirely (see check_is_open's business_status check).
+                    if route_scheduler.check_is_open(place, noon)["status"] == "Closed Today":
+                        continue
+                    other_places.append(place)
+                    relocated = True
+                    logger.info(
+                        "trip planner: relocated %s from day %d to day %d (%s cap)",
+                        place.name, day_num, other_day, category,
+                    )
+                    break
+                if not relocated:
+                    used_ids.discard(place.id)
+                    dropped.append((day_num, place))
+                    logger.info(
+                        "trip planner: dropping %s, every day already has %d %s scheduled",
+                        place.name, max_per_day, category,
+                    )
+        return dropped
 
     def _enforce_restaurant_cap_and_roles(
         self, day_assignments: Dict[int, List[Place]], meal_roles: Dict[str, str],
@@ -213,59 +284,16 @@ class LLMTripPlanner:
            role-less pair even when the day-of-week fix itself was correct
            -- meal_roles is never recomputed after that move.
 
-        Trims each day to MAX_RESTAURANTS_PER_DAY (relocating excess to
-        another day with room that isn't closed that day, per
-        check_is_open -- dropping only when nowhere fits), then re-derives
-        lunch/dinner roles for every day left with exactly 2 restaurants and
-        an incomplete {lunch, dinner} pairing, regardless of how that pair
-        came to be. Returns the (day_num, place) pairs that had nowhere to
-        go, for the caller to fold into the same drop-feedback loop as
-        order_day_stops-level drops (see _build_drop_feedback)."""
-        dropped: List[Tuple[int, Place]] = []
-
-        for day_num in range(1, trip_duration_days + 1):
-            places = day_assignments.get(day_num, [])
-            restaurants = [p for p in places if p.category == "ร้านอาหาร"]
-            if len(restaurants) <= MAX_RESTAURANTS_PER_DAY:
-                continue
-            # Must-go restaurants are kept within the cap first -- trimming
-            # (relocate-or-drop) falls on optional picks before ever
-            # touching one the user explicitly asked for. Stable sort, so
-            # within each priority tier the original LLM-given order still
-            # decides who's first (unchanged when there's no must-go mix).
-            restaurants = sorted(restaurants, key=lambda p: p.id not in self.must_go_ids)
-            for place in restaurants[MAX_RESTAURANTS_PER_DAY:]:
-                day_assignments[day_num].remove(place)
-                relocated = False
-                for other_day in range(1, trip_duration_days + 1):
-                    if other_day == day_num:
-                        continue
-                    other_places = day_assignments.setdefault(other_day, [])
-                    if sum(1 for p in other_places if p.category == "ร้านอาหาร") >= MAX_RESTAURANTS_PER_DAY:
-                        continue
-                    other_date = trip_start_date + timedelta(days=other_day - 1)
-                    noon = datetime(other_date.year, other_date.month, other_date.day, 12, 0)
-                    # Always call check_is_open -- a temporarily/permanently
-                    # closed restaurant (business_status) must still be
-                    # rejected here even with hours_periods=None, which the
-                    # old "place.hours_periods and ..." guard used to skip
-                    # entirely (see check_is_open's business_status check).
-                    if route_scheduler.check_is_open(place, noon)["status"] == "Closed Today":
-                        continue
-                    other_places.append(place)
-                    relocated = True
-                    logger.info(
-                        "trip planner: relocated %s from day %d to day %d (restaurant cap)",
-                        place.name, day_num, other_day,
-                    )
-                    break
-                if not relocated:
-                    used_ids.discard(place.id)
-                    dropped.append((day_num, place))
-                    logger.info(
-                        "trip planner: dropping %s, every day already has %d restaurant(s) scheduled",
-                        place.name, MAX_RESTAURANTS_PER_DAY,
-                    )
+        Trims each day to MAX_RESTAURANTS_PER_DAY via _enforce_category_cap,
+        then re-derives lunch/dinner roles for every day left with exactly 2
+        restaurants and an incomplete {lunch, dinner} pairing, regardless of
+        how that pair came to be. Returns the (day_num, place) pairs that had
+        nowhere to go, for the caller to fold into the same drop-feedback
+        loop as order_day_stops-level drops (see _build_drop_feedback)."""
+        dropped = self._enforce_category_cap(
+            day_assignments, "ร้านอาหาร", MAX_RESTAURANTS_PER_DAY,
+            used_ids, trip_start_date, trip_duration_days,
+        )
 
         # Re-derive roles for every day that ends up with exactly 2
         # restaurants and an incomplete {lunch, dinner} pairing -- covers
@@ -414,9 +442,18 @@ class LLMTripPlanner:
         restaurant_cap_drops = self._enforce_restaurant_cap_and_roles(
             day_assignments, meal_roles, used_ids, trip_start_date, user_input.trip_duration_days,
         )
+        cafe_cap_drops = self._enforce_category_cap(
+            day_assignments, "คาเฟ่", MAX_CAFES_PER_DAY,
+            used_ids, trip_start_date, user_input.trip_duration_days,
+        )
         dropped_by_day: Dict[int, List[Tuple[Place, str]]] = {}
         for day_num, place in restaurant_cap_drops:
             reason = f"day already had {MAX_RESTAURANTS_PER_DAY} \"ร้านอาหาร\" scheduled"
+            if place.id in self.must_go_ids:
+                reason = "MUST-GO PLACE -- " + reason
+            dropped_by_day.setdefault(day_num, []).append((place, reason))
+        for day_num, place in cafe_cap_drops:
+            reason = f"day already had {MAX_CAFES_PER_DAY} \"คาเฟ่\" scheduled"
             if place.id in self.must_go_ids:
                 reason = "MUST-GO PLACE -- " + reason
             dropped_by_day.setdefault(day_num, []).append((place, reason))

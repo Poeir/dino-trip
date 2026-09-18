@@ -70,7 +70,47 @@ TIME_PENALTY_PER_MIN = 1.0 / 15.0
 # prefers a cheaper-but-drops-a-stop route over a pricier-but-complete one.
 DROPPED_STOP_PENALTY = 1000.0
 
-ASSUMED_SPEED_KMH = 30.0
+# Per-day cap on categories that can still be added AFTER llm_extractor's own
+# LLM-facing cap (MAX_CAFES_PER_DAY there) has already run -- that cap only
+# constrains the LLM's initial picks. backfill_underfilled_day/_trip and
+# materialize_day_schedule's gap-filler below all pull from the same shared
+# candidate pool independently of it and of each other, so without a check
+# here they can (and did, confirmed live) push a day to 3-4 "คาเฟ่" back to
+# back even when the LLM-side pick was capped at 2. Restaurants don't need an
+# entry here: they're excluded from both pools entirely (see
+# llm_extractor.py's backfill_pool construction), never just capped.
+CATEGORY_DAILY_CAP = {"คาเฟ่": 2}
+
+
+def _category_count(places: List[Place], category: str) -> int:
+    return sum(1 for p in places if p.category == category)
+
+
+def _category_cap_ok(existing: List[Place], candidate: Place) -> bool:
+    """Would adding `candidate` to a day that already has `existing` places
+    breach CATEGORY_DAILY_CAP for its category? True (no cap, or still under
+    it) means the candidate may be added."""
+    cap = CATEGORY_DAILY_CAP.get(candidate.category)
+    if cap is None:
+        return True
+    return _category_count(existing, candidate.category) < cap
+
+# A single flat speed doesn't fit both cases we route: short in-city hops
+# (traffic lights, one-way streets, no highway run-up) and long intercity
+# legs (mostly highway once out of town). Using one number either makes
+# in-town hops read as near-teleportation or makes a highway leg to another
+# district eat far more of the day than it really would -- confirmed live
+# on a real itinerary where a ~0.6km cafe-to-cafe hop came out to 1 minute
+# and an 81km trip to Chumphae came out to 2h37m of travel alone.
+URBAN_SPEED_KMH = 25.0
+INTERCITY_SPEED_KMH = 60.0
+INTERCITY_THRESHOLD_KM = 15.0
+# Floor under travel_minutes regardless of speed tier -- parking, walking
+# from the car to the door, and traffic lights take a few minutes even
+# when two places are map-adjacent; pure distance/speed arithmetic can't
+# capture that and was producing 1-minute "transitions" between places a
+# block apart.
+MIN_TRAVEL_MINUTES = 5
 
 
 def calculate_distance(loc1: Place, loc2: Place) -> float:
@@ -83,7 +123,12 @@ def calculate_distance(loc1: Place, loc2: Place) -> float:
 
 
 def travel_minutes(dist_km: float) -> int:
-    return int((dist_km / ASSUMED_SPEED_KMH) * 60)
+    if dist_km <= 0:
+        # Genuinely the same location (e.g. a place fixture reused as the
+        # hotel in tests) -- no transition to floor.
+        return 0
+    speed_kmh = INTERCITY_SPEED_KMH if dist_km > INTERCITY_THRESHOLD_KM else URBAN_SPEED_KMH
+    return max(MIN_TRAVEL_MINUTES, round((dist_km / speed_kmh) * 60))
 
 
 def get_visit_duration(loc: Place, pace: str) -> int:
@@ -105,9 +150,26 @@ def is_evening_place(loc: Place) -> bool:
     return any(kw in name_lower for kw in EVENING_KEYWORDS)
 
 
+def _is_always_open(loc: Place) -> bool:
+    """Google's Places API represents "open 24 hours, every day of the
+    week" as a SINGLE period -- {"open": {"day": 0, "hour": 0, "minute": 0}}
+    with no "close" key at all -- where day 0 is a fixed sentinel, not "only
+    open on Sundays" (see Places API docs on regularOpeningHours.periods).
+    Filtering periods by the arrival's actual weekday, as
+    _periods_for_weekday does for every real per-day schedule, only matches
+    this sentinel on an actual Sunday -- confirmed live: a real 24/7 park
+    got reported "closed every day of the trip" and dropped as a must-go
+    place because none of the trip's calendar days happened to be a
+    Sunday."""
+    periods = loc.hours_periods
+    return bool(periods) and len(periods) == 1 and "close" not in periods[0]
+
+
 def _periods_for_weekday(loc: Place, google_day: int) -> List[dict]:
     if not loc.hours_periods:
         return []
+    if _is_always_open(loc):
+        return loc.hours_periods
     return [p for p in loc.hours_periods if p["open"]["day"] == google_day]
 
 
@@ -594,6 +656,8 @@ def _find_best_backfill_insertion(
     best_place = None
     best_pos = None
     for place in backfill_pool:
+        if not _category_cap_ok(route, place):
+            continue  # this day already has CATEGORY_DAILY_CAP of place.category
         for pos in range(len(route) + 1):
             candidate = route[:pos] + [place] + route[pos:]
             survive_ids = {s["place"].id for s in _simulate_day_walk(candidate, hotel, day_date, start_dt, end_dt_bound, pace)}
@@ -810,19 +874,25 @@ GAP_FILLER_SLACK_MINUTES = 20
 def _find_gap_filler(
     pool: List[Place], current_loc: Place, next_place: Place,
     current_dt: datetime, gap_minutes: int, pace: str,
+    day_places_so_far: List[Place],
 ) -> Optional[dict]:
     """Best real place from `pool` (trip candidates not used anywhere else)
     to visit instead of leaving a dead "free time" stretch before
-    `next_place` -- must be open when reached, and fit inside the gap
-    (there + visit + back onto the route) with GAP_FILLER_SLACK_MINUTES to
-    spare. Picks the smallest total detour distance among everything that
-    fits, not the closest match to the gap length -- a nearby quick stop
-    beats a farther one that happens to eat more of the gap. Returns a
-    stop dict shaped like _simulate_day_walk's (so its TimeSlot fields can
-    be built the same way), or None if nothing in the pool fits."""
+    `next_place` -- must be open when reached, fit inside the gap (there +
+    visit + back onto the route) with GAP_FILLER_SLACK_MINUTES to spare, and
+    not push `day_places_so_far` past CATEGORY_DAILY_CAP for its category
+    (the day's already-committed route plus any gap-fillers already
+    inserted earlier today -- see materialize_day_schedule). Picks the
+    smallest total detour distance among everything that fits, not the
+    closest match to the gap length -- a nearby quick stop beats a farther
+    one that happens to eat more of the gap. Returns a stop dict shaped
+    like _simulate_day_walk's (so its TimeSlot fields can be built the same
+    way), or None if nothing in the pool fits."""
     best = None
     best_detour = None
     for cand in pool:
+        if not _category_cap_ok(day_places_so_far, cand):
+            continue
         dist = calculate_distance(current_loc, cand)
         travel_min = travel_minutes(dist)
         arrival = current_dt + timedelta(minutes=travel_min)
@@ -874,6 +944,11 @@ def materialize_day_schedule(
     end_dt_bound = datetime.combine(day_date, end_time_of_day)
     day_cost = 0.0
     day_travel = 0
+    # Full composition of the day for CATEGORY_DAILY_CAP purposes: `route`
+    # is fixed for the whole day, so seeding with it (rather than building
+    # it up as the walk progresses) lets a gap-filler early in the day
+    # correctly see categories that only appear in a later route stop.
+    day_places_so_far = list(route)
 
     for place in route:
         if current_dt >= end_dt_bound:
@@ -916,7 +991,7 @@ def materialize_day_schedule(
             # Naturally bounded: each iteration removes its pick from
             # gap_filler_pool, so this can't loop more than the pool's size.
             while gap_minutes > 45 and gap_filler_pool:
-                filler = _find_gap_filler(gap_filler_pool, current_loc, place, current_dt, gap_minutes, pace)
+                filler = _find_gap_filler(gap_filler_pool, current_loc, place, current_dt, gap_minutes, pace, day_places_so_far)
                 if not filler:
                     break
                 f_place = filler["place"]
@@ -930,6 +1005,7 @@ def materialize_day_schedule(
                 day_cost += _stop_visit_cost(f_place, filler["dist"])
                 day_travel += filler["travel_min"]
                 gap_filler_pool.remove(f_place)
+                day_places_so_far.append(f_place)
                 current_loc = f_place
                 current_dt = filler["departure_dt"]
 

@@ -100,6 +100,20 @@ class TripBuilderService:
         total_slots = places_per_day * user_input.trip_duration_days
         remaining_slots = total_slots - len(must_go_list)
 
+        # Extra selection surplus beyond what the day slots strictly need.
+        # Without it, self.candidates ends up sized almost exactly to
+        # total_slots, so once the LLM assigns most of them to days,
+        # llm_extractor.py's backfill_pool (built from whatever candidates
+        # the LLM *didn't* pick) has nothing spare left -- confirmed live: a
+        # relaxed-pace day with a 3h26m gap fell back to a "☕ free time"
+        # placeholder in materialize_day_schedule instead of a real nearby
+        # place, purely because the candidate pool had already been used up.
+        # 50% surplus keeps the LLM's day-assignment choices the same size
+        # (it still only picks what a day needs) while leaving real
+        # candidates on the table for route_scheduler's deterministic
+        # backfill/gap-filler layers to draw from.
+        candidate_pool_target = math.ceil(remaining_slots * 1.5)
+
         existing_ids = {p.id for p in must_go_list}
         allowed_prices = BUDGET_PRICE_RANGES.get(user_input.budget_level, [0, 1, 2])
 
@@ -119,7 +133,7 @@ class TripBuilderService:
                 # before any single interest's larger result count crowds out
                 # the rest.
                 per_interest_results = [
-                    self.retriever.search_and_expand(query=interest, limit=remaining_slots * 5)
+                    self.retriever.search_and_expand(query=interest, limit=candidate_pool_target * 5)
                     for interest in user_input.interests
                 ]
                 rag_results = [
@@ -127,7 +141,7 @@ class TripBuilderService:
                 ]
             else:
                 rag_results = self.retriever.search_and_expand(
-                    query="สถานที่ท่องเที่ยวยอดนิยม ขอนแก่น", limit=remaining_slots * 5
+                    query="สถานที่ท่องเที่ยวยอดนิยม ขอนแก่น", limit=candidate_pool_target * 5
                 )
 
             for row in rag_results:
@@ -151,7 +165,7 @@ class TripBuilderService:
                     continue
                 interest_list.append(place)
                 existing_ids.add(place_id)
-                if len(interest_list) >= remaining_slots:
+                if len(interest_list) >= candidate_pool_target:
                     break
 
         # Unconditional floor, on top of remaining_slots -- interest-only

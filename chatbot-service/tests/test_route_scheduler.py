@@ -190,6 +190,30 @@ class TestCheckIsOpen:
         result = rs.check_is_open(p, datetime(2026, 7, 27, 12, 0))
         assert result["status"] == "Open"
 
+    def test_24_7_sentinel_is_open_every_weekday(self):
+        # Regression: Google represents "open 24 hours, every day" as ONE
+        # period {"open": {"day": 0, "hour": 0, "minute": 0}} with no
+        # "close" key -- day 0 is a fixed sentinel here, not "Sundays
+        # only". Filtering by the arrival's actual weekday (as a normal,
+        # real per-day schedule needs) used to make this match only on an
+        # actual Sunday, reporting "Closed Today" every other day -- a real
+        # 24/7 park got dropped from a trip with no Sunday in it this way.
+        p = make_place(hours_periods=[{"open": {"day": 0, "hour": 0, "minute": 0}}])
+        for day_offset in range(7):  # Monday..Sunday
+            arrival = datetime(2026, 7, 27, 3, 0) + timedelta(days=day_offset)
+            result = rs.check_is_open(p, arrival)
+            assert result == {"is_open": True, "wait_min": 0, "status": "Open"}, day_offset
+
+    def test_normal_sunday_only_hours_are_not_mistaken_for_24_7(self):
+        # A place genuinely open Sunday 09:00-18:00 only (has a "close"
+        # key) must still be correctly "Closed Today" on other weekdays --
+        # the 24/7-sentinel fix must not swallow this real case.
+        p = make_place(hours_periods=[
+            {"open": {"day": 0, "hour": 9, "minute": 0}, "close": {"day": 0, "hour": 18, "minute": 0}},
+        ])
+        result = rs.check_is_open(p, datetime(2026, 7, 27, 12, 0))  # Monday
+        assert result == {"is_open": False, "wait_min": 0, "status": "Closed Today"}
+
 
 class TestFindAnchorWindow:
     MONDAY = date(2026, 7, 27)
@@ -215,6 +239,10 @@ class TestFindAnchorWindow:
             {"open": {"day": 1, "hour": 9, "minute": 0}, "close": {"day": 1, "hour": 11, "minute": 0}},
             {"open": {"day": 1, "hour": 17, "minute": 0}, "close": {"day": 1, "hour": 19, "minute": 0}},
         ])
+        assert rs.find_anchor_window(p, self.MONDAY) is None
+
+    def test_24_7_sentinel_is_not_an_anchor(self):
+        p = make_place(hours_periods=[{"open": {"day": 0, "hour": 0, "minute": 0}}])
         assert rs.find_anchor_window(p, self.MONDAY) is None
 
     def test_overnight_window_is_not_an_anchor(self):
@@ -542,6 +570,19 @@ class TestReassignInfeasibleDays:
         p = make_place(id="p1", name="DefunctPlace", hours_periods=None, business_status="CLOSED_PERMANENTLY")
         result = rs.reassign_infeasible_days({1: [p], 2: []}, self.START, 2)
         assert result[1] == []
+        assert result[2] == []
+
+    def test_24_7_place_is_never_dropped_even_with_no_sunday_in_the_trip(self):
+        # Regression: START is a Monday and this 2-day trip never touches a
+        # Sunday -- before the 24/7-sentinel fix, check_is_open would report
+        # "Closed Today" on both days (day-filter only matches the
+        # sentinel's day=0 on an actual Sunday) and this must-go place would
+        # get dropped as "closed every day of the trip".
+        always_open = make_place(id="p1", name="AlwaysOpenPark", hours_periods=[
+            {"open": {"day": 0, "hour": 0, "minute": 0}},
+        ])
+        result = rs.reassign_infeasible_days({1: [always_open], 2: []}, self.START, 2)
+        assert [pl.id for pl in result[1]] == ["p1"]
         assert result[2] == []
 
 
