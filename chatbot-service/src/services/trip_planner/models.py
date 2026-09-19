@@ -18,6 +18,13 @@ class Place(BaseModel):
     district: Optional[str] = None  # Google administrative_area_level_2, e.g. "เมืองขอนแก่น" (see import-places.js's mapDistrict())
     hours: Optional[str] = None
     hours_periods: Optional[List[Dict[str, Any]]] = None
+    # Google's operating status: OPERATIONAL / CLOSED_TEMPORARILY /
+    # CLOSED_PERMANENTLY (see backend's 20260728000006_add_business_status.sql
+    # migration) -- route_scheduler.check_is_open()/find_anchor_window()
+    # treat CLOSED_TEMPORARILY/CLOSED_PERMANENTLY as closed regardless of
+    # hours_periods, since a place that's shut down doesn't become open again
+    # just because its scraped weekly hours still say otherwise.
+    business_status: Optional[str] = None
     phone: Optional[str] = None
     website: Optional[str] = None
     maps_url: Optional[str] = None
@@ -114,3 +121,10 @@ class JudgeVerdict(BaseModel):
     issues: List[str] = []
     feedback: str = ""        # re-injected verbatim into the next generation prompt (model-facing)
     rationale: str = ""       # short Thai, user-facing explanation of the plan's logic (human-facing)
+    # True only when evaluate() never got a real verdict from the judge LLM
+    # (call/parse exception) and fell back to an unconditional pass. `passed`
+    # stays True either way (see judge.py's fail-open rationale), but this
+    # flag lets a caller -- or an experiment collecting score/pass-rate data
+    # -- tell "the judge said yes" apart from "the judge never actually ran".
+    # Conflating the two silently corrupts any pass-rate/score metric.
+    judge_call_failed: bool = False

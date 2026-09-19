@@ -170,6 +170,50 @@ class TestCheckIsOpen:
         result = rs.check_is_open(p, datetime(2026, 7, 27, 8, 0))  # Monday 08:00
         assert result == {"is_open": False, "wait_min": 60, "status": "Waiting"}  # waits for 09:00, not 14:00
 
+    @pytest.mark.parametrize("status", ["CLOSED_TEMPORARILY", "CLOSED_PERMANENTLY"])
+    def test_business_closed_overrides_normal_hours(self, status):
+        # Scraped weekly hours say it's open right now -- business_status
+        # says otherwise and must win.
+        p = make_place(hours_periods=self._periods_every_day(), business_status=status)
+        result = rs.check_is_open(p, datetime(2026, 7, 27, 12, 0))  # Monday noon, well within hours
+        assert result == {"is_open": False, "wait_min": 0, "status": "Closed Today"}
+
+    def test_business_closed_with_no_hours_data_is_still_closed(self):
+        # Without the business_status check, this would fall into the "no
+        # hours_periods -> assume open" branch.
+        p = make_place(hours_periods=None, business_status="CLOSED_PERMANENTLY")
+        result = rs.check_is_open(p, datetime(2026, 7, 27, 12, 0))
+        assert result == {"is_open": False, "wait_min": 0, "status": "Closed Today"}
+
+    def test_operational_business_status_does_not_affect_normal_hours(self):
+        p = make_place(hours_periods=self._periods_every_day(), business_status="OPERATIONAL")
+        result = rs.check_is_open(p, datetime(2026, 7, 27, 12, 0))
+        assert result["status"] == "Open"
+
+    def test_24_7_sentinel_is_open_every_weekday(self):
+        # Regression: Google represents "open 24 hours, every day" as ONE
+        # period {"open": {"day": 0, "hour": 0, "minute": 0}} with no
+        # "close" key -- day 0 is a fixed sentinel here, not "Sundays
+        # only". Filtering by the arrival's actual weekday (as a normal,
+        # real per-day schedule needs) used to make this match only on an
+        # actual Sunday, reporting "Closed Today" every other day -- a real
+        # 24/7 park got dropped from a trip with no Sunday in it this way.
+        p = make_place(hours_periods=[{"open": {"day": 0, "hour": 0, "minute": 0}}])
+        for day_offset in range(7):  # Monday..Sunday
+            arrival = datetime(2026, 7, 27, 3, 0) + timedelta(days=day_offset)
+            result = rs.check_is_open(p, arrival)
+            assert result == {"is_open": True, "wait_min": 0, "status": "Open"}, day_offset
+
+    def test_normal_sunday_only_hours_are_not_mistaken_for_24_7(self):
+        # A place genuinely open Sunday 09:00-18:00 only (has a "close"
+        # key) must still be correctly "Closed Today" on other weekdays --
+        # the 24/7-sentinel fix must not swallow this real case.
+        p = make_place(hours_periods=[
+            {"open": {"day": 0, "hour": 9, "minute": 0}, "close": {"day": 0, "hour": 18, "minute": 0}},
+        ])
+        result = rs.check_is_open(p, datetime(2026, 7, 27, 12, 0))  # Monday
+        assert result == {"is_open": False, "wait_min": 0, "status": "Closed Today"}
+
 
 class TestFindAnchorWindow:
     MONDAY = date(2026, 7, 27)
@@ -197,10 +241,21 @@ class TestFindAnchorWindow:
         ])
         assert rs.find_anchor_window(p, self.MONDAY) is None
 
+    def test_24_7_sentinel_is_not_an_anchor(self):
+        p = make_place(hours_periods=[{"open": {"day": 0, "hour": 0, "minute": 0}}])
+        assert rs.find_anchor_window(p, self.MONDAY) is None
+
     def test_overnight_window_is_not_an_anchor(self):
         p = make_place(hours_periods=[
             {"open": {"day": 1, "hour": 20, "minute": 0}, "close": {"day": 2, "hour": 1, "minute": 0}},
         ])
+        assert rs.find_anchor_window(p, self.MONDAY) is None
+
+    def test_business_closed_is_never_an_anchor_even_with_a_narrow_window(self):
+        p = make_place(
+            hours_periods=[{"open": {"day": 1, "hour": 6, "minute": 0}, "close": {"day": 1, "hour": 9, "minute": 0}}],
+            business_status="CLOSED_PERMANENTLY",
+        )
         assert rs.find_anchor_window(p, self.MONDAY) is None
 
 
@@ -300,6 +355,74 @@ class TestOrderDayStops:
         route = rs.order_day_stops(stops, HOTEL, self.DAY, time(9, 0), time(11, 0), "standard")
         assert isinstance(route, list)
 
+    def test_must_go_place_gets_priority_over_cheaper_optional_place(self):
+        # A 1-hour window only has room for one 45-min-visit flexible stop
+        # once travel is included. "Optional" sits right next to the hotel
+        # (near-zero travel cost) and would win a plain cheapest-insertion
+        # race every time -- "MustGo" is a few km out but still
+        # individually feasible in the window, and is the one the user
+        # actually asked for via must_go_ids.
+        optional = make_place(id="optional", name="Optional", category="คาเฟ่", lat=16.4401, lng=102.8401, hours_periods=None)
+        must_go = make_place(id="mustgo", name="MustGo", category="คาเฟ่", lat=16.455, lng=102.855, hours_periods=None)
+        route = rs.order_day_stops(
+            [optional, must_go], HOTEL, self.DAY, time(9, 0), time(10, 0), "standard",
+            must_go_ids={"mustgo"},
+        )
+        assert [p.id for p in route] == ["mustgo"]
+
+    def test_without_must_go_ids_the_cheaper_place_wins_instead(self):
+        # Same fixture as above but no must_go_ids -- confirms the outcome
+        # flip is really the priority tier, not something else about the
+        # window/fixture.
+        optional = make_place(id="optional", name="Optional", category="คาเฟ่", lat=16.4401, lng=102.8401, hours_periods=None)
+        must_go = make_place(id="mustgo", name="MustGo", category="คาเฟ่", lat=16.455, lng=102.855, hours_periods=None)
+        route = rs.order_day_stops(
+            [optional, must_go], HOTEL, self.DAY, time(9, 0), time(10, 0), "standard",
+        )
+        assert [p.id for p in route] == ["optional"]
+
+    def test_must_go_anchor_survives_a_conflicting_optional_anchor(self):
+        # Both are real anchors (narrow same-day windows): "optional" opens
+        # 06:00-07:00 right next to the hotel, "mustgo" opens 06:15-06:45
+        # ~9km away. Visiting optional first (120-min "ตลาด" visit) then
+        # traveling to mustgo arrives at 8:18 -- long after mustgo's 06:45
+        # close, so the two anchors genuinely conflict; only one can be
+        # scheduled. must_go_ids must decide that conflict in mustgo's
+        # favor, not "whichever opens earlier in the day" (the old
+        # single-pass anchor sort's tie-break, which knew nothing about
+        # must_go_ids at all).
+        optional = make_place(
+            id="optional", name="OptionalMarket", category="ตลาด", lat=16.441, lng=102.841,
+            hours_periods=[{"open": {"day": 1, "hour": 6, "minute": 0}, "close": {"day": 1, "hour": 7, "minute": 0}}],
+        )
+        must_go = make_place(
+            id="mustgo", name="MustGoMarket", category="ตลาด", lat=16.50, lng=102.90,
+            hours_periods=[{"open": {"day": 1, "hour": 6, "minute": 15}, "close": {"day": 1, "hour": 6, "minute": 45}}],
+        )
+        route = rs.order_day_stops(
+            [optional, must_go], HOTEL, self.DAY, time(6, 0), time(20, 0), "standard",
+            must_go_ids={"mustgo"},
+        )
+        assert [p.id for p in route] == ["mustgo"]
+
+    def test_without_must_go_ids_the_earlier_anchor_wins_the_conflict_instead(self):
+        # Same fixture as above but no must_go_ids -- confirms the flip is
+        # really the priority tier and not something else about the
+        # coordinates/windows: without it, the anchor that simply opens
+        # earlier (optional, 06:00) wins and bumps the other one out.
+        optional = make_place(
+            id="optional", name="OptionalMarket", category="ตลาด", lat=16.441, lng=102.841,
+            hours_periods=[{"open": {"day": 1, "hour": 6, "minute": 0}, "close": {"day": 1, "hour": 7, "minute": 0}}],
+        )
+        must_go = make_place(
+            id="mustgo", name="MustGoMarket", category="ตลาด", lat=16.50, lng=102.90,
+            hours_periods=[{"open": {"day": 1, "hour": 6, "minute": 15}, "close": {"day": 1, "hour": 6, "minute": 45}}],
+        )
+        route = rs.order_day_stops(
+            [optional, must_go], HOTEL, self.DAY, time(6, 0), time(20, 0), "standard",
+        )
+        assert [p.id for p in route] == ["optional"]
+
 
 class TestMaterializeDaySchedule:
     DAY = date(2026, 7, 27)
@@ -345,6 +468,64 @@ class TestMaterializeDaySchedule:
         assert slot.is_anchor is True
         assert slot.meal_role == "lunch"
 
+    def test_no_gap_filler_pool_falls_back_to_free_time_block(self):
+        # Baseline (no pool given): a long wait before a "dinner"-tagged
+        # spot still gets the old placeholder block, unchanged behavior.
+        dinner = make_place(id="dinner", name="DinnerPlace", category="ร้านอาหาร", lat=16.44, lng=102.84, hours_periods=None)
+        schedule, _, _ = rs.materialize_day_schedule(
+            [dinner], set(), {"dinner": "dinner"}, HOTEL, self.DAY, time(14, 0), time(21, 0), "standard",
+        )
+        assert any(s.status == "Free Time" for s in schedule)
+
+    def test_gap_filler_pool_inserts_real_place_instead_of_free_time(self):
+        # A ~3.5h wait before dinner (14:00 -> 17:30 MEAL_DINNER_WINDOW)
+        # with a nearby open cafe in the pool should visit the cafe rather
+        # than leave/shrink a "free time" placeholder for no reason.
+        dinner = make_place(id="dinner", name="DinnerPlace", category="ร้านอาหาร", lat=16.44, lng=102.84, hours_periods=None)
+        cafe = make_place(id="cafe1", name="CozyCafe", category="คาเฟ่", lat=16.441, lng=102.841, hours_periods=None)
+        pool = [cafe]
+        schedule, _, _ = rs.materialize_day_schedule(
+            [dinner], set(), {"dinner": "dinner"}, HOTEL, self.DAY, time(14, 0), time(21, 0), "standard",
+            gap_filler_pool=pool,
+        )
+        assert any(s.place.id == "cafe1" for s in schedule)
+        assert pool == []  # consumed, so it can't be double-booked elsewhere
+
+    def test_gap_filler_chains_multiple_stops_to_close_a_long_gap(self):
+        # With enough nearby candidates, a long gap should be closed by
+        # chaining several real stops rather than stopping after one and
+        # leaving the rest as "free time".
+        dinner = make_place(id="dinner", name="DinnerPlace", category="ร้านอาหาร", lat=16.44, lng=102.84, hours_periods=None)
+        cafe = make_place(id="cafe1", name="CozyCafe", category="คาเฟ่", lat=16.441, lng=102.841, hours_periods=None)
+        park = make_place(id="park1", name="RiverPark", category="สวนสาธารณะ", lat=16.442, lng=102.842, hours_periods=None)
+        museum = make_place(id="mus1", name="LocalMuseum", category="พิพิธภัณฑ์", lat=16.443, lng=102.843, hours_periods=None)
+        pool = [cafe, park, museum]
+        schedule, _, _ = rs.materialize_day_schedule(
+            [dinner], set(), {"dinner": "dinner"}, HOTEL, self.DAY, time(14, 0), time(21, 0), "standard",
+            gap_filler_pool=pool,
+        )
+        visited_ids = {s.place.id for s in schedule}
+        assert {"cafe1", "park1", "mus1"}.issubset(visited_ids)
+        assert not any(s.status == "Free Time" for s in schedule)
+        assert pool == []
+
+    def test_gap_filler_never_evicts_or_duplicates_pool_items_across_days(self):
+        # Same shared-pool convention as backfill_underfilled_*: an item
+        # consumed for one day's gap must not still be sitting in the pool
+        # for a second call (e.g. day 2) to pick up too.
+        dinner = make_place(id="dinner", name="DinnerPlace", category="ร้านอาหาร", lat=16.44, lng=102.84, hours_periods=None)
+        cafe = make_place(id="cafe1", name="CozyCafe", category="คาเฟ่", lat=16.441, lng=102.841, hours_periods=None)
+        pool = [cafe]
+        rs.materialize_day_schedule(
+            [dinner], set(), {"dinner": "dinner"}, HOTEL, self.DAY, time(14, 0), time(21, 0), "standard",
+            gap_filler_pool=pool,
+        )
+        schedule_day2, _, _ = rs.materialize_day_schedule(
+            [dinner], set(), {"dinner": "dinner"}, HOTEL, self.DAY, time(14, 0), time(21, 0), "standard",
+            gap_filler_pool=pool,
+        )
+        assert not any(s.place.id == "cafe1" for s in schedule_day2)
+
 
 class TestReassignInfeasibleDays:
     START = date(2026, 8, 3)  # Monday
@@ -380,6 +561,29 @@ class TestReassignInfeasibleDays:
         ])
         result = rs.reassign_infeasible_days({1: [p]}, self.START, 1)
         assert [pl.id for pl in result[1]] == ["p1"]
+
+    def test_drops_business_closed_place_even_with_no_hours_data(self):
+        # Regression: the old "if not place.hours_periods: continue" guard
+        # used to skip this place entirely (hours_periods=None), so a
+        # permanently-closed place with no scraped hours would never get
+        # dropped here.
+        p = make_place(id="p1", name="DefunctPlace", hours_periods=None, business_status="CLOSED_PERMANENTLY")
+        result = rs.reassign_infeasible_days({1: [p], 2: []}, self.START, 2)
+        assert result[1] == []
+        assert result[2] == []
+
+    def test_24_7_place_is_never_dropped_even_with_no_sunday_in_the_trip(self):
+        # Regression: START is a Monday and this 2-day trip never touches a
+        # Sunday -- before the 24/7-sentinel fix, check_is_open would report
+        # "Closed Today" on both days (day-filter only matches the
+        # sentinel's day=0 on an actual Sunday) and this must-go place would
+        # get dropped as "closed every day of the trip".
+        always_open = make_place(id="p1", name="AlwaysOpenPark", hours_periods=[
+            {"open": {"day": 0, "hour": 0, "minute": 0}},
+        ])
+        result = rs.reassign_infeasible_days({1: [always_open], 2: []}, self.START, 2)
+        assert [pl.id for pl in result[1]] == ["p1"]
+        assert result[2] == []
 
 
 def make_filler(place_id, category="คาเฟ่"):

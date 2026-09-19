@@ -213,6 +213,100 @@ class TestBuildItineraryFromLLMDays:
         assert "Place1" in names
 
 
+class TestRestaurantCapAndRoles:
+    """_enforce_restaurant_cap_and_roles: caps ร้านอาหาร at
+    MAX_RESTAURANTS_PER_DAY per day (relocating excess to another day with
+    room, dropping only if nowhere fits) and backfills lunch/dinner roles
+    for any day left with exactly 2 restaurants and an incomplete pairing,
+    regardless of whether the LLM ever set meal_role itself."""
+
+    def test_third_restaurant_in_a_single_day_trip_is_dropped(self):
+        r1 = make_place(id="r1", name="R1", category="ร้านอาหาร", lat=16.44, lng=102.84, hours_periods=None)
+        r2 = make_place(id="r2", name="R2", category="ร้านอาหาร", lat=16.44, lng=102.84, hours_periods=None)
+        r3 = make_place(id="r3", name="R3", category="ร้านอาหาร", lat=16.44, lng=102.84, hours_periods=None)
+        planner = LLMTripPlanner(candidates=[r1, r2, r3], start_point=HOTEL)
+        force_passing_judge(planner)
+        planner._call_llm_for_itinerary = lambda prompt: {"itinerary": [
+            {"day": 1, "places": [{"place_id": "r1"}, {"place_id": "r2"}, {"place_id": "r3"}]},
+        ]}
+
+        user_input = TripInput(
+            trip_duration_days=1, start_date="2026-08-03", accommodation_name="Hotel",
+            start_time="09:00", end_time="20:00",
+        )
+        result, _ = planner.solve_route_with_llm(user_input, "", "")
+        restaurant_ids = {s.place.id for s in result[0].schedule if s.place.category == "ร้านอาหาร"}
+        assert len(restaurant_ids) == 2
+        roles = {s.meal_role for s in result[0].schedule if s.place.id in restaurant_ids}
+        assert roles == {"lunch", "dinner"}
+
+    def test_third_restaurant_relocated_to_an_emptier_day_instead_of_dropped(self):
+        r1 = make_place(id="r1", name="R1", category="ร้านอาหาร", lat=16.44, lng=102.84, hours_periods=None)
+        r2 = make_place(id="r2", name="R2", category="ร้านอาหาร", lat=16.44, lng=102.84, hours_periods=None)
+        r3 = make_place(id="r3", name="R3", category="ร้านอาหาร", lat=16.44, lng=102.84, hours_periods=None)
+        planner = LLMTripPlanner(candidates=[r1, r2, r3], start_point=HOTEL)
+        force_passing_judge(planner)
+        planner._call_llm_for_itinerary = lambda prompt: {"itinerary": [
+            {"day": 1, "places": [{"place_id": "r1"}, {"place_id": "r2"}, {"place_id": "r3"}]},
+            {"day": 2, "places": []},
+        ]}
+
+        user_input = TripInput(
+            trip_duration_days=2, start_date="2026-08-03", accommodation_name="Hotel",
+            start_time="09:00", end_time="20:00",
+        )
+        result, _ = planner.solve_route_with_llm(user_input, "", "")
+        day1_ids = {s.place.id for s in result[0].schedule}
+        day2_ids = {s.place.id for s in result[1].schedule}
+        assert "r3" not in day1_ids
+        assert "r3" in day2_ids  # relocated, not dropped -- day 2 had room
+
+    def test_business_closed_restaurant_with_no_hours_data_is_not_relocated(self):
+        # Regression: the relocation check used to be skipped entirely
+        # whenever hours_periods was None, so a permanently-closed
+        # restaurant with no scraped hours could get "relocated" to
+        # another day instead of dropped.
+        r1 = make_place(id="r1", name="R1", category="ร้านอาหาร", lat=16.44, lng=102.84, hours_periods=None)
+        r2 = make_place(id="r2", name="R2", category="ร้านอาหาร", lat=16.44, lng=102.84, hours_periods=None)
+        r3 = make_place(
+            id="r3", name="Defunct", category="ร้านอาหาร", lat=16.44, lng=102.84,
+            hours_periods=None, business_status="CLOSED_PERMANENTLY",
+        )
+        planner = LLMTripPlanner(candidates=[r1, r2, r3], start_point=HOTEL)
+        force_passing_judge(planner)
+        planner._call_llm_for_itinerary = lambda prompt: {"itinerary": [
+            {"day": 1, "places": [{"place_id": "r1"}, {"place_id": "r2"}, {"place_id": "r3"}]},
+            {"day": 2, "places": []},
+        ]}
+
+        user_input = TripInput(
+            trip_duration_days=2, start_date="2026-08-03", accommodation_name="Hotel",
+            start_time="09:00", end_time="20:00",
+        )
+        result, _ = planner.solve_route_with_llm(user_input, "", "")
+        all_ids = {s.place.id for day in result for s in day.schedule}
+        assert "r3" not in all_ids
+
+    def test_two_restaurants_without_llm_assigned_roles_still_get_lunch_and_dinner(self):
+        r1 = make_place(id="r1", name="R1", category="ร้านอาหาร", lat=16.44, lng=102.84, hours_periods=None)
+        r2 = make_place(id="r2", name="R2", category="ร้านอาหาร", lat=16.44, lng=102.84, hours_periods=None)
+        planner = LLMTripPlanner(candidates=[r1, r2], start_point=HOTEL)
+        force_passing_judge(planner)
+        # LLM didn't set meal_role at all -- STRICT RULE 6 isn't always
+        # obeyed, this is the deterministic backstop for that gap too.
+        planner._call_llm_for_itinerary = lambda prompt: {"itinerary": [
+            {"day": 1, "places": [{"place_id": "r1"}, {"place_id": "r2"}]},
+        ]}
+
+        user_input = TripInput(
+            trip_duration_days=1, start_date="2026-08-03", accommodation_name="Hotel",
+            start_time="09:00", end_time="20:00",
+        )
+        result, _ = planner.solve_route_with_llm(user_input, "", "")
+        roles = {s.place.id: s.meal_role for s in result[0].schedule if s.place.id in ("r1", "r2")}
+        assert roles == {"r1": "lunch", "r2": "dinner"}
+
+
 class TestSolveRouteWithLLMJudgeRegeneration:
     def _planner_with_one_place(self):
         place = make_place(id="p1", name="Place1", category="คาเฟ่", lat=16.44, lng=102.84, hours_periods=None)
@@ -275,6 +369,29 @@ class TestSolveRouteWithLLMJudgeRegeneration:
         assert result[0].schedule  # still a valid itinerary
         assert rationale == "best effort so far"
 
+    def test_judge_call_failed_still_accepted_immediately_but_logged_distinctly(self, caplog):
+        # judge_call_failed=True is judge.py's fail-open path (see judge.py's
+        # evaluate()) -- it must still short-circuit the loop (no point
+        # regenerating when the judge itself is broken, not the itinerary),
+        # but should be visibly distinguishable from a genuine pass in logs,
+        # since a metrics/experiment pipeline reading these logs would
+        # otherwise silently count an unevaluated itinerary as "passed".
+        planner = self._planner_with_one_place()
+        calls = []
+        original = planner._call_llm_for_itinerary
+        planner._call_llm_for_itinerary = lambda prompt: (calls.append(prompt), original(prompt))[1]
+        planner.judge.evaluate = lambda user_input, itinerary: JudgeVerdict(
+            passed=True, score=0.0, pacing_ok=True, intent_match_ok=True,
+            rationale="", judge_call_failed=True,
+        )
+
+        import logging
+        with caplog.at_level(logging.WARNING):
+            result, rationale = planner.solve_route_with_llm(self._user_input(), "", "")
+
+        assert len(calls) == 1
+        assert any("fail-open" in r.message.lower() for r in caplog.records)
+
     def test_technical_generation_failure_propagates_and_judge_never_called(self):
         place = make_place(id="p1", name="Place1", category="คาเฟ่", lat=16.44, lng=102.84, hours_periods=None)
         planner = LLMTripPlanner(candidates=[place], start_point=HOTEL)
@@ -289,3 +406,74 @@ class TestSolveRouteWithLLMJudgeRegeneration:
 
         with pytest.raises(ValueError):
             planner.solve_route_with_llm(self._user_input(), "", "")
+
+
+class TestMustGoProtection:
+    """must_go_ids (see orchestrator.build_candidate_list /
+    routes_tripplanner.py) marks which candidates came from the user's
+    must_go list -- these tests check the resulting protection: the LLM
+    skipping a must-go id entirely no longer means it's silently absent,
+    order_day_stops' priority tier keeps it off the drop list when
+    possible, the restaurant cap trims optional picks first, and a
+    genuinely infeasible must-go place is still reported instead of
+    vanishing."""
+
+    def test_llm_omits_must_go_place_but_it_still_gets_injected_and_scheduled(self):
+        must_go_place = make_place(id="mg1", name="MustGoPlace", category="คาเฟ่", lat=16.44, lng=102.84, hours_periods=None)
+        planner = LLMTripPlanner(candidates=[must_go_place], start_point=HOTEL, must_go_ids={"mg1"})
+        force_passing_judge(planner)
+        # LLM ignores the must-go candidate entirely -- STRICT RULE 1 only
+        # says derive from provided data, nothing forces inclusion.
+        planner._call_llm_for_itinerary = lambda prompt: {"itinerary": [{"day": 1, "places": []}]}
+
+        user_input = TripInput(
+            trip_duration_days=1, start_date="2026-08-03", accommodation_name="Hotel",
+            start_time="09:00", end_time="18:00",
+        )
+        result, _ = planner.solve_route_with_llm(user_input, "", "")
+        names = [s.place.name for s in result[0].schedule]
+        assert "MustGoPlace" in names
+        assert planner.last_dropped_must_go == []
+
+    def test_must_go_place_genuinely_infeasible_is_reported_via_last_dropped_must_go(self):
+        # Closed every day of a 1-day (Monday) trip -- injection + priority
+        # can't rescue a real hard infeasibility, but it must not vanish
+        # silently either.
+        closed_must_go = make_place(
+            id="mg1", name="ClosedMustGo", category="คาเฟ่", lat=16.44, lng=102.84,
+            hours_periods=[{"open": {"day": 0, "hour": 9, "minute": 0}, "close": {"day": 0, "hour": 18, "minute": 0}}],  # Sunday only
+        )
+        planner = LLMTripPlanner(candidates=[closed_must_go], start_point=HOTEL, must_go_ids={"mg1"})
+        force_passing_judge(planner)
+        planner._call_llm_for_itinerary = lambda prompt: {"itinerary": [{"day": 1, "places": [{"place_id": "mg1"}]}]}
+
+        user_input = TripInput(
+            trip_duration_days=1, start_date="2026-08-03", accommodation_name="Hotel",  # Monday
+            start_time="09:00", end_time="18:00",
+        )
+        result, _ = planner.solve_route_with_llm(user_input, "", "")
+        names = [s.place.name for s in result[0].schedule]
+        assert "ClosedMustGo" not in names
+        assert [p.name for p in planner.last_dropped_must_go] == ["ClosedMustGo"]
+
+    def test_must_go_restaurant_is_kept_over_optional_ones_at_the_cap(self):
+        r_must = make_place(id="rmust", name="MustGoRestaurant", category="ร้านอาหาร", lat=16.44, lng=102.84, hours_periods=None)
+        r1 = make_place(id="r1", name="R1", category="ร้านอาหาร", lat=16.44, lng=102.84, hours_periods=None)
+        r2 = make_place(id="r2", name="R2", category="ร้านอาหาร", lat=16.44, lng=102.84, hours_periods=None)
+        planner = LLMTripPlanner(candidates=[r_must, r1, r2], start_point=HOTEL, must_go_ids={"rmust"})
+        force_passing_judge(planner)
+        # Must-go restaurant listed LAST -- a plain "keep the first N, drop
+        # the rest" policy would drop it by accident; this only passes if
+        # priority (not list order) decides who gets trimmed.
+        planner._call_llm_for_itinerary = lambda prompt: {"itinerary": [
+            {"day": 1, "places": [{"place_id": "r1"}, {"place_id": "r2"}, {"place_id": "rmust"}]},
+        ]}
+
+        user_input = TripInput(
+            trip_duration_days=1, start_date="2026-08-03", accommodation_name="Hotel",
+            start_time="09:00", end_time="20:00",
+        )
+        result, _ = planner.solve_route_with_llm(user_input, "", "")
+        restaurant_ids = {s.place.id for s in result[0].schedule if s.place.category == "ร้านอาหาร"}
+        assert "rmust" in restaurant_ids
+        assert len(restaurant_ids) == 2
