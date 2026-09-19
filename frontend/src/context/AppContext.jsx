@@ -241,12 +241,20 @@ export function AppProvider({ children }) {
   const toggleFavorite = (id) => setState((s) => ({
     favoriteIds: s.favoriteIds.includes(id) ? s.favoriteIds.filter((x) => x !== id) : [...s.favoriteIds, id]
   }))
-  // Session-only: the backend has no is_active column for places yet, so this
-  // hides/shows a place on the public site for the current session only and
-  // resets on reload. See placePayload() in backend/src/lib/mappers.js.
-  const togglePlaceActive = (id) => setState((s) => ({
-    places: s.places.map((p) => p.id === id ? { ...p, isActive: p.isActive === false ? true : false } : p)
-  }))
+  // Persists via places.is_active (see backend/src/lib/mappers.js's
+  // placePayload) -- passes the whole place back through updatePlace rather
+  // than a bare {isActive} patch, since placePayload rebuilds every column
+  // from its input and a partial body would null out the rest.
+  const togglePlaceActive = async (id) => {
+    const place = stateRef.current.places.find((p) => p.id === id)
+    if (!place) return
+    try {
+      const updated = await updatePlace(id, { ...place, isActive: place.isActive === false ? true : false })
+      setState((s) => ({ places: s.places.map((p) => p.id === id ? updated : p) }))
+    } catch (err) {
+      showToast('อัปเดตสถานะไม่สำเร็จ: ' + err.message)
+    }
+  }
 
   const setSearchQuery = (v) => setState({ searchQuery: v })
   const onSearchChange = (e) => setSearchQuery(e.target.value)
@@ -698,7 +706,7 @@ export function AppProvider({ children }) {
 
   const openCreateForm = (type) => {
     const defaults = {
-      place: { name: '', category: 'คาเฟ่', rating: '4.5', reviews: '0', price: '', address: '', hours: '', phone: '', desc: '', amenities: '', tags: '', hasQR: false, qrPoints: '0', img: '', isActive: true },
+      place: { name: '', category: 'คาเฟ่', rating: '4.5', reviews: '0', price: '', address: '', lat: '', lng: '', hours: '', phone: '', desc: '', amenities: '', tags: '', hasQR: false, qrPoints: '0', img: '', isActive: true },
       event: { name: '', category: '', dateRange: '', venueName: '', admission: '', organizer: '', suitableFor: '', desc: '', status: 'upcoming', img: '', eventStartDate: '', eventEndDate: '', placeId: '' },
       kb: { title: '', category: 'transport', content: '', isPinned: false, isActive: true },
       qr: { placeId: '', points: '10' },
@@ -711,6 +719,10 @@ export function AppProvider({ children }) {
     if (Array.isArray(clone.amenities)) clone.amenities = clone.amenities.join(', ')
     if (Array.isArray(clone.tags)) clone.tags = clone.tags.join(', ')
     if (Array.isArray(clone.suitableFor)) clone.suitableFor = clone.suitableFor.join(', ')
+    // rowToPlace() (backend/src/lib/mappers.js) returns location as
+    // {lat,lng} -- flatten it so LocationPicker/PlacesTab's plain lat/lng
+    // form fields have something to bind to when editing an existing place.
+    if (clone.location) { clone.lat = clone.location.lat; clone.lng = clone.location.lng }
     setState({ formOpen: true, formType: type, formData: clone, editingId: item.id })
   }
   const updateFormField = (f, v) => setState((s) => ({ formData: { ...s.formData, [f]: v } }))

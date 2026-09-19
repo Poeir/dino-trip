@@ -6,6 +6,7 @@ export default function EventDetailPage() {
   const { state, actions } = useApp()
   const { id } = useParams()
   const ev = state.events.find((event) => event.id === id) || { suitableFor: [] }
+  const place = state.places.find((p) => p.id === ev.placeId)
   return (
     <main style={{ maxWidth: 1360, margin: '0 auto', padding: '28px 32px 60px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5, color: '#8a938c', flexWrap: 'wrap' }}>
@@ -16,7 +17,7 @@ export default function EventDetailPage() {
         <span style={{ color: '#1B5E20', fontWeight: 700 }}>{ev.name}</span>
       </div>
       <div style={{ marginTop: 16 }}>
-        <EventDetailView event={ev} />
+        <EventDetailView event={ev} place={place} />
       </div>
     </main>
   )

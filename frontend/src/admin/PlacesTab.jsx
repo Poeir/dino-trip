@@ -7,6 +7,7 @@ import SectionHeading from '../components/SectionHeading.jsx'
 import ChipMultiSelect from '../components/ChipMultiSelect.jsx'
 import StarRatingInput from '../components/StarRatingInput.jsx'
 import AddressComposer from '../components/AddressComposer.jsx'
+import LocationPicker from '../components/LocationPicker.jsx'
 import HoursComposer from '../components/HoursComposer.jsx'
 import PlacePhotoGallery, { MAX_PHOTOS } from '../components/PlacePhotoGallery.jsx'
 import { AMENITY_OPTIONS, TAG_OPTIONS } from '../data/placeVocabulary.js'
@@ -207,7 +208,14 @@ export default function PlacesTab() {
             <legend style={{ fontSize: 12, fontWeight: 700, color: '#3c463f', marginBottom: 4, padding: 0 }}>ที่อยู่และตำแหน่ง</legend>
             <AddressComposer onCompose={(addr) => actions.updateFormField('address', addr)} />
             <Field label="ที่อยู่เต็ม (ประกอบอัตโนมัติจากด้านบน แก้ไขเองได้)">
-              <input value={f.address || ''} onChange={actions.onField_address} style={inputStyle} />
+              <input value={f.address || ''} onChange={actions.onField_address} style={{ ...inputStyle, marginBottom: 10 }} />
+            </Field>
+            <Field label="ปักหมุดบนแผนที่ (สำหรับแสดงแผนที่ในหน้ารายละเอียด)">
+              <LocationPicker
+                value={f.lat && f.lng ? { lat: parseFloat(f.lat), lng: parseFloat(f.lng) } : null}
+                onChange={(loc) => { actions.updateFormField('lat', loc.lat); actions.updateFormField('lng', loc.lng) }}
+                onSelectPlace={(p) => { if (!f.address) actions.updateFormField('address', p.address) }}
+              />
             </Field>
           </fieldset>
 
@@ -240,10 +248,10 @@ export default function PlacesTab() {
           </Field>
 
           <SectionHeading>การมองเห็นบนหน้าเว็บ</SectionHeading>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13.5, marginBottom: 4, opacity: 0.6 }}>
-            <input type="checkbox" checked={f.isActive !== false} onChange={actions.onField_isActive} disabled /> เผยแพร่บนหน้าเว็บ
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13.5, marginBottom: 4 }}>
+            <input type="checkbox" checked={f.isActive !== false} onChange={actions.onField_isActive} /> เผยแพร่บนหน้าเว็บ
           </label>
-          <div style={{ fontSize: 11.5, color: '#8a938c', marginBottom: 14 }}>ตั้งค่านี้ยังไม่บันทึกลง backend — ใช้ปุ่ม "ซ่อนจากหน้าเว็บ" ที่การ์ดสถานที่ในหน้ารายการแทน (ชั่วคราว รีเซ็ตเมื่อโหลดหน้าใหม่)</div>
+          <div style={{ fontSize: 11.5, color: '#8a938c', marginBottom: 14 }}>ปิดไว้เพื่อกันไม่ให้สถานที่นี้ไปโผล่ในหน้ารายการสาธารณะ (เช่น สถานที่ที่เพิ่มมาแค่เป็นหมุดของ Event) โดยไม่ต้องลบทิ้ง</div>
 
           <SectionHeading>คำอธิบายและแท็ก</SectionHeading>
           <Field label="คำอธิบาย">

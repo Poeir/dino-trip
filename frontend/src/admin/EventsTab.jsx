@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useApp } from '../context/AppContext.jsx'
-import { extractEventFromText, createEvent, updateEvent, fetchEventPhotos, uploadEventPhoto, deleteEventPhoto } from '../lib/apiClient.js'
+import { extractEventFromText, createEvent, updateEvent, fetchEventPhotos, uploadEventPhoto, deleteEventPhoto, createPlace } from '../lib/apiClient.js'
 import ImageSlot from '../components/ImageSlot.jsx'
 import Modal from '../components/Modal.jsx'
 import Field from '../components/Field.jsx'
@@ -333,6 +333,20 @@ export default function EventsTab() {
                   if (place) actions.updateFormField('venueName', place.name)
                 }}
                 allowClear
+                onAddFromGoogle={async ({ name, address, lat, lng }) => {
+                  // Quick-added mid-search -- not a reviewed touristic
+                  // destination, so it starts hidden from the public places
+                  // list (isActive: false) until an admin promotes it from
+                  // PlacesTab. See placePayload() in backend/src/lib/mappers.js.
+                  const created = await createPlace({
+                    name, category: '', rating: '', reviews: '0', price: '', address, lat, lng,
+                    hours: '', phone: '', desc: '', amenities: '', tags: '', hasQR: false, qrPoints: '0',
+                    isActive: false,
+                  })
+                  actions.applyPlaceUpdate(created)
+                  actions.updateFormField('placeId', created.id)
+                  actions.updateFormField('venueName', created.name)
+                }}
               />
             </div>
             <div style={{ fontSize: 11, color: '#8a938c', marginBottom: 14 }}>เลือกถ้างานนี้จัดที่สถานที่ที่มีอยู่แล้วในระบบ -- เติมชื่อสถานที่ด้านล่างให้อัตโนมัติ (แก้ไขเพิ่มเองได้)</div>
