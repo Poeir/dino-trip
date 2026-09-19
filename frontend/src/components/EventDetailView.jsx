@@ -1,7 +1,13 @@
 import ImageSlot from './ImageSlot.jsx'
 
-export default function EventDetailView({ event: ev, imageHeight = 460 }) {
+export default function EventDetailView({ event: ev, place, imageHeight = 460 }) {
   if (!ev || !ev.id) return null
+  // Mirrors PlaceDetailView.jsx's own mapEmbedSrc: prefers the linked
+  // place's coordinates (set via PlacesTab/EventsTab's LocationPicker), and
+  // falls back to a text query on the venue name so events at a venue with
+  // no registered place (or predating the placeId link) still get a map.
+  const mapQuery = place?.location ? `${place.location.lat},${place.location.lng}` : (ev.venueName || null)
+  const mapEmbedSrc = mapQuery ? `https://maps.google.com/maps?q=${encodeURIComponent(mapQuery)}&z=15&output=embed` : null
   return (
     <div style={{ background: '#fff', border: '1px solid #E7E3D2', borderRadius: 22, padding: 32, boxShadow: '0 14px 34px rgba(46,125,50,0.08)' }}>
       <div data-role="event-detail-grid" style={{ display: 'grid', gridTemplateColumns: '400px 1fr', gap: 32, alignItems: 'start' }}>
@@ -41,7 +47,20 @@ export default function EventDetailView({ event: ev, imageHeight = 460 }) {
               ))}
             </div>
           </div>
-          <ImageSlot shape="rounded" radius={12} style={{ width: '100%', height: 160 }} placeholder="แผนที่สถานที่จัดงาน" />
+          {mapEmbedSrc ? (
+            <iframe
+              title={`แผนที่ ${ev.name}`}
+              src={mapEmbedSrc}
+              width="100%"
+              height={280}
+              style={{ border: 0, borderRadius: 16, display: 'block' }}
+              loading="lazy"
+              referrerPolicy="no-referrer-when-downgrade"
+              allowFullScreen
+            />
+          ) : (
+            <ImageSlot shape="rounded" radius={12} style={{ width: '100%', height: 160 }} placeholder="แผนที่สถานที่จัดงาน" />
+          )}
         </div>
       </div>
     </div>

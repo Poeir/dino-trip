@@ -25,6 +25,7 @@ export function rowToPlace(row) {
     qrPoints: row.qr_points,
     reviewsList: row.reviews || [],
     location: row.lat != null && row.lng != null ? { lat: row.lat, lng: row.lng } : null,
+    isActive: row.is_active !== false,
     // An admin-uploaded gallery (row.uploadedPhotoUrls, attached by
     // places.routes.js's attachUploadedPhotos()) wins outright over whatever
     // was in `img`/`images` (a Google-imported gallery from import-places.js,
@@ -77,12 +78,24 @@ const splitList = (v) => (Array.isArray(v) ? v : (v || '').split(',').map((s) =>
 // AppContext.jsx's saveForm().
 
 export function placePayload(body) {
+  // lat/lng normally arrive as flat form fields (PlacesTab's LocationPicker),
+  // but togglePlaceActive (AppContext.jsx) round-trips a place through this
+  // same payload just to flip visibility, passing the API's own `location`
+  // shape ({lat,lng}) instead -- accept either so that path doesn't null out
+  // coordinates it never touched.
+  const lat = body.lat != null && body.lat !== '' ? parseFloat(body.lat) : (body.location?.lat ?? null)
+  const lng = body.lng != null && body.lng !== '' ? parseFloat(body.lng) : (body.location?.lng ?? null)
   return {
     name: body.name, category: body.category, rating: parseFloat(body.rating) || null,
     review_count: parseInt(body.reviews) || 0, price: body.price, address: body.address,
     hours: body.hours, phone: body.phone, description: body.desc,
     amenities: splitList(body.amenities), tags: splitList(body.tags),
     has_qr: !!body.hasQR, qr_points: parseInt(body.qrPoints) || 0,
+    lat: Number.isFinite(lat) ? lat : null, lng: Number.isFinite(lng) ? lng : null,
+    // Defaults to visible/true unless explicitly turned off -- matches
+    // openCreateForm's `isActive: true` default and lets any caller that
+    // omits the field (older code paths) leave existing rows untouched.
+    is_active: body.isActive !== false,
   }
 }
 
