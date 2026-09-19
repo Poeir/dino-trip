@@ -81,6 +81,19 @@ DROPPED_STOP_PENALTY = 1000.0
 # llm_extractor.py's backfill_pool construction), never just capped.
 CATEGORY_DAILY_CAP = {"คาเฟ่": 2}
 
+# Soft cost (same "detour-km equivalent" units as DISTANCE_WEIGHT/
+# TIME_PENALTY_PER_MIN below) charged in _route_cost when two stops of one
+# of these categories land back-to-back in a day's route. CATEGORY_DAILY_CAP
+# only limits COUNT per day, not adjacency -- confirmed live: a
+# budget-หรูหรา trip with a wide candidate pool regularly placed its 2
+# allowed "คาเฟ่" for the day right next to each other, since
+# cheapest-insertion/Or-opt had no signal telling that pairing apart from
+# any other. A soft penalty (not a hard filter) lets the optimizer avoid it
+# when a better arrangement exists, without risking an infeasible day or a
+# dropped stop when a day's pool genuinely has nothing else to interleave.
+ADJACENT_PENALTY_CATEGORIES = {"คาเฟ่"}
+ADJACENT_SAME_CATEGORY_PENALTY = 5.0
+
 
 def _category_count(places: List[Place], category: str) -> int:
     return sum(1 for p in places if p.category == category)
@@ -354,6 +367,7 @@ def _route_cost(
     stops = _simulate_day_walk(route, hotel, day_date, start_dt, end_dt_bound, pace)
     surviving_ids = {s["place"].id for s in stops}
     total = DROPPED_STOP_PENALTY * sum(1 for p in route if p.id not in surviving_ids)
+    prev_category = None
     for s in stops:
         total += s["dist"] * DISTANCE_WEIGHT
         window = preferred_time_window(s["place"], meal_roles.get(s["place"].id))
@@ -364,6 +378,10 @@ def _route_cost(
                 total += (lo - arrival_min) * TIME_PENALTY_PER_MIN
             elif arrival_min > hi:
                 total += (arrival_min - hi) * TIME_PENALTY_PER_MIN
+        category = s["place"].category
+        if category in ADJACENT_PENALTY_CATEGORIES and category == prev_category:
+            total += ADJACENT_SAME_CATEGORY_PENALTY
+        prev_category = category
     return total
 
 
