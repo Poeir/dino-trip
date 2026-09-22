@@ -157,6 +157,10 @@ input, textarea, select, button { font-family: inherit; }
 .dc-signup-input { transition: border-color 0.15s ease, box-shadow 0.15s ease; }
 .dc-signup-input:focus { outline: none; border-color: #2E7D32 !important; box-shadow: 0 0 0 3px rgba(46,125,50,0.14); }
 
+.dc-pager-btn { transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease; }
+.dc-pager-btn:hover:not(:disabled):not(.dc-pager-active) { background: #E8F5E9; border-color: #A5D6A7; }
+.dc-pager-btn:active:not(:disabled) { transform: scale(0.9); }
+
 @media (max-width: 880px) {
   [data-role="desktop-nav"] { display: none !important; }
   [data-role="hamburger-btn"] { display: flex !important; }

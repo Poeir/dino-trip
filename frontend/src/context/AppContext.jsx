@@ -16,7 +16,6 @@ import {
   fetchPointsBalance, scanQr, redeemReward as apiRedeemReward,
 } from '../lib/apiClient.js'
 import { sendChatMessage, requestTripPlan } from '../lib/chatbotService.js'
-import { haversineKm } from '../utils/geo.js'
 
 const AppContext = createContext(null)
 
@@ -98,8 +97,15 @@ const initialState = {
   chatMessages: [
     { from: 'bot', text: 'สวัสดีครับ! ผมน้องไดโน ผู้ช่วยนำเที่ยวขอนแก่น สอบถามเรื่องสถานที่ อาหาร หรือเทศกาลได้เลยครับ' }
   ],
-  tripForm: { startDate: '', endDate: '', interests: [], budget: 'ปานกลาง', areaScope: 'ทั่วขอนแก่น', accommodation: '', mustGo: [], pace: 'standard', dailyStart: '09:00', dailyEnd: '18:00' },
+  // `accommodation` is null until picked, then { name, address, lat, lng }
+  // (name/address only present when picked via search, not a dragged pin --
+  // see onAccommodationSelect/onAccommodationLocationChange).
+  tripForm: { startDate: '', endDate: '', interests: [], budget: 'ปานกลาง', areaScope: 'ทั่วขอนแก่น', accommodation: null, mustGo: [], pace: 'standard', dailyStart: '09:00', dailyEnd: '18:00' },
   mustGoQuery: '',
+  // Populated by a debounced fetchPlaces({search}) as mustGoQuery changes
+  // (see the effect below) -- used to be a client-side filter over the
+  // bulk-loaded `places` array, which no longer exists (see loadData).
+  mustGoSuggestions: [],
   tripFormError: '',
   tripStep: 0,
   tripPlanning: false,
@@ -115,11 +121,20 @@ const initialState = {
   // Set from navigator.geolocation on mount, if the user grants permission (see below).
   userLocation: null,
   // Populated from the backend API on mount (see loadData below) instead of static seed data.
-  places: [],
+  // `places` isn't loaded in bulk here anymore -- every page that needs place
+  // data now fetches its own slice (PlacesListPage/PlacesTab's paginated
+  // fetch, PlaceDetailPage/EventDetailPage/TripResultPage/PlacePicker's
+  // single-row fetchPlace, HomePage's top-20, PointsPage's hasQR fetch, etc.)
+  // instead of everything reading one bulk array loaded on every page.
   events: [],
   knowledgeBase: [],
   rewards: [],
   qrs: [],
+  // True until that initial load settles -- the DB this API talks to can take
+  // several seconds (occasionally much longer) to answer a cold query, so
+  // pages reading places/events/etc. before then need to tell "still
+  // loading" apart from "genuinely empty" (see LoadingSpinner.jsx usage).
+  dataLoading: true,
   adminLoggedIn: false,
   formOpen: false,
   formType: null,
@@ -176,13 +191,14 @@ export function AppProvider({ children }) {
   useEffect(() => {
     async function loadData() {
       try {
-        const [places, events, knowledgeBase, rewards, qrs] = await Promise.all([
-          fetchPlaces(), fetchEvents(), fetchKnowledgeBase(), fetchRewards(), fetchQrs(),
+        const [events, knowledgeBase, rewards, qrs] = await Promise.all([
+          fetchEvents(), fetchKnowledgeBase(), fetchRewards(), fetchQrs(),
         ])
-        setState({ places, events, knowledgeBase, rewards, qrs })
+        setState({ events, knowledgeBase, rewards, qrs, dataLoading: false })
       } catch (err) {
         console.error('Failed to load data from API:', err)
         showToast('โหลดข้อมูลไม่สำเร็จ ตรวจสอบการเชื่อมต่อ API')
+        setState({ dataLoading: false })
       }
     }
     loadData()
@@ -197,6 +213,22 @@ export function AppProvider({ children }) {
       )
     }
   }, [])
+
+  // TripFormPage's "ต้องไปให้ได้" (mustGo) autocomplete -- used to be a
+  // client-side filter over the bulk-loaded `places` array, which no longer
+  // exists, so debounce a search fetch instead (see mustGoSuggestionsView
+  // in the derived section below for the tripForm.mustGo exclusion + view
+  // shaping).
+  useEffect(() => {
+    const q = state.mustGoQuery.trim()
+    if (!q) { setState({ mustGoSuggestions: [] }); return }
+    const t = setTimeout(() => {
+      fetchPlaces({ search: q, isActive: true, limit: 8 })
+        .then(({ data }) => setState({ mustGoSuggestions: data }))
+        .catch(() => setState({ mustGoSuggestions: [] }))
+    }, 300)
+    return () => clearTimeout(t)
+  }, [state.mustGoQuery])
 
   // Hydrates loggedIn/userName from the backend's httpOnly session cookie
   // on load, so a page refresh doesn't drop the session (GET /api/auth/me
@@ -244,13 +276,13 @@ export function AppProvider({ children }) {
   // Persists via places.is_active (see backend/src/lib/mappers.js's
   // placePayload) -- passes the whole place back through updatePlace rather
   // than a bare {isActive} patch, since placePayload rebuilds every column
-  // from its input and a partial body would null out the rest.
-  const togglePlaceActive = async (id) => {
-    const place = stateRef.current.places.find((p) => p.id === id)
-    if (!place) return
+  // from its input and a partial body would null out the rest. Takes the
+  // place object itself (PlacesTab already has it from its own paginated
+  // `paged.rows`) rather than an id -- there's no bulk `state.places` array
+  // to look it up in anymore.
+  const togglePlaceActive = async (place) => {
     try {
-      const updated = await updatePlace(id, { ...place, isActive: place.isActive === false ? true : false })
-      setState((s) => ({ places: s.places.map((p) => p.id === id ? updated : p) }))
+      await updatePlace(place.id, { ...place, isActive: place.isActive === false ? true : false })
     } catch (err) {
       showToast('อัปเดตสถานะไม่สำเร็จ: ' + err.message)
     }
@@ -447,24 +479,24 @@ export function AppProvider({ children }) {
     if (!text) return
     // Push the user message plus an empty bot placeholder that fills in as
     // tokens stream in -- always the last message in the array while streaming.
-    setState((s) => ({ chatMessages: [...s.chatMessages, { from: 'user', text }, { from: 'bot', text: '', places: [] }], chatInput: '', chatTyping: true }))
+    setState((s) => ({ chatMessages: [...s.chatMessages, { from: 'user', text }, { from: 'bot', text: '', places: [], events: [] }], chatInput: '', chatTyping: true }))
     const appendToLastBotMessage = (patch) => setState((s) => {
       const msgs = s.chatMessages.slice()
       msgs[msgs.length - 1] = { ...msgs[msgs.length - 1], ...patch(msgs[msgs.length - 1]) }
       return { chatMessages: msgs }
     })
     try {
-      const { places } = await sendChatMessage(text, {
+      const { places, events } = await sendChatMessage(text, {
         onToken: (token) => {
           setState({ chatTyping: false })
           appendToLastBotMessage((last) => ({ text: last.text + token }))
         },
       })
-      appendToLastBotMessage(() => ({ places }))
+      appendToLastBotMessage(() => ({ places, events }))
       setState({ chatTyping: false })
     } catch (err) {
       console.error('Chat request failed:', err)
-      appendToLastBotMessage(() => ({ text: 'ขออภัยครับ ระบบแชทขัดข้องชั่วคราว ลองใหม่อีกครั้งนะครับ', places: [] }))
+      appendToLastBotMessage(() => ({ text: 'ขออภัยครับ ระบบแชทขัดข้องชั่วคราว ลองใหม่อีกครั้งนะครับ', places: [], events: [] }))
       setState({ chatTyping: false })
     }
   }
@@ -472,7 +504,27 @@ export function AppProvider({ children }) {
   const updateTripField = (f, v) => setState((s) => ({ tripForm: { ...s.tripForm, [f]: v }, tripFormError: '' }))
   const onStartDateChange = (e) => updateTripField('startDate', e.target.value)
   const onEndDateChange = (e) => updateTripField('endDate', e.target.value)
-  const onAccommodationChange = (e) => updateTripField('accommodation', e.target.value)
+  // Fires from LocationPicker's onChange (dragging the pin or editing the
+  // manual lat/lng fields) -- merges into whatever's already set instead of
+  // replacing it, so a name/address picked earlier via search survives a
+  // subsequent pin nudge.
+  const onAccommodationLocationChange = (loc) => setState((s) => ({
+    tripForm: { ...s.tripForm, accommodation: { ...(s.tripForm.accommodation || {}), lat: loc.lat, lng: loc.lng } },
+    tripFormError: '',
+  }))
+  // Fires from LocationPicker's onSelectPlace (an Autocomplete search hit) --
+  // replaces the whole accommodation, since a new search result has its own
+  // name/address too.
+  const onAccommodationSelect = (place) => updateTripField('accommodation', { name: place.name, address: place.address, lat: place.lat, lng: place.lng })
+  // Reuses the geolocation coordinate already sitting in state.userLocation
+  // (see the navigator.geolocation call in the app-mount effect below) --
+  // best-effort no-op if it's still null (denied/unsupported/not resolved
+  // yet), same as every other consumer of userLocation in this file.
+  const useCurrentLocationForAccommodation = () => {
+    const loc = stateRef.current.userLocation
+    if (!loc) return
+    updateTripField('accommodation', { name: 'ตำแหน่งปัจจุบันของฉัน', address: '', lat: loc.lat, lng: loc.lng })
+  }
   const setTripDatePreset = (preset) => {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
@@ -513,8 +565,12 @@ export function AppProvider({ children }) {
   // Reshapes chatbot-service's TripResponse (itinerary/schedule/place, snake_case)
   // into the shape the rest of the app already renders (days/items/place,
   // camelCase) so TripResultPage.jsx and the derived.tripPlan logic below
-  // don't need to know where the plan came from.
-  const tripResponseToPlan = (resp, startDate) => {
+  // don't need to know where the plan came from. `qrPointsByPlaceId` (id ->
+  // {hasQR,qrPoints}) comes from submitTripForm's own fetchPlaces({ids})
+  // call -- chatbot-service's TripResponse deliberately omits has_qr/
+  // qr_points (see trip_planner/models.py's `extra = "ignore"`), and there's
+  // no bulk `state.places` array to cross-reference anymore.
+  const tripResponseToPlan = (resp, startDate, qrPointsByPlaceId) => {
     const baseTime = startDate && !Number.isNaN(new Date(startDate).getTime()) ? new Date(startDate).getTime() : Date.now()
     const days = resp.itinerary.map((day) => {
       const dateObj = new Date(baseTime + (day.day - 1) * 86400000)
@@ -537,8 +593,8 @@ export function AppProvider({ children }) {
     })
     const flatItems = days.flatMap((d) => d.items)
     const totalPoints = flatItems.reduce((sum, it) => {
-      const p = stateRef.current.places.find((pp) => pp.id === it.placeId)
-      return sum + (p && p.hasQR ? p.qrPoints : 0)
+      const qr = qrPointsByPlaceId.get(it.placeId)
+      return sum + (qr && qr.hasQR ? qr.qrPoints : 0)
     }, 0)
     return { days, totalBudget: resp.total_cost_estimate, totalDistance: resp.total_distance_km, totalPoints }
   }
@@ -556,7 +612,9 @@ export function AppProvider({ children }) {
       const resp = await requestTripPlan({
         trip_duration_days: days,
         start_date: f.startDate,
-        accommodation_name: f.accommodation,
+        accommodation_name: f.accommodation?.name || '',
+        accommodation_lat: f.accommodation?.lat ?? null,
+        accommodation_lng: f.accommodation?.lng ?? null,
         must_go: f.mustGo,
         interests: f.interests,
         trip_pace: f.pace,
@@ -569,7 +627,26 @@ export function AppProvider({ children }) {
         setState({ tripPlanning: false, tripFormError: resp.note || 'ไม่พบสถานที่ที่ตรงกับเงื่อนไข ลองปรับความสนใจหรืองบประมาณดูนะครับ' })
         return
       }
-      setState({ tripPlan: tripResponseToPlan(resp, f.startDate), tripPlanNote: resp.note, tripPlanRationale: resp.planning_rationale || '', tripPlanning: false, feedbackText: '' })
+      const placeIds = [...new Set(resp.itinerary.flatMap((day) => day.schedule.map((slot) => slot.place.id)))]
+      // A generated itinerary is the valuable part -- QR/points info is a
+      // nice-to-have layered on top of it. Confirmed live: this call can
+      // fail on a transient network blip right after /trip/llm already
+      // succeeded, and that used to throw here, discarding the whole
+      // already-generated plan and showing "generation failed" even though
+      // it hadn't. A failure here now just means every place renders
+      // without a QR badge/points (tripResponseToPlan already handles a
+      // place missing from this map -- see its totalPoints reduce), instead
+      // of losing the plan entirely.
+      let qrPointsByPlaceId = new Map()
+      if (placeIds.length) {
+        try {
+          const qrPlaces = await fetchPlaces({ ids: placeIds.join(',') })
+          qrPointsByPlaceId = new Map(qrPlaces.map((p) => [p.id, { hasQR: p.hasQR, qrPoints: p.qrPoints }]))
+        } catch (err) {
+          console.error('Fetching QR points for trip plan places failed (continuing without them):', err)
+        }
+      }
+      setState({ tripPlan: tripResponseToPlan(resp, f.startDate, qrPointsByPlaceId), tripPlanNote: resp.note, tripPlanRationale: resp.planning_rationale || '', tripPlanning: false, feedbackText: '' })
       navigate('/trip/result')
     } catch (err) {
       console.error('Trip plan request failed:', err)
@@ -586,14 +663,26 @@ export function AppProvider({ children }) {
     }))
   }
 
-  const swapItem = (dayNum, placeId) => {
-    const s = stateRef.current
-    const plan = s.tripPlan
+  // Shapes a fetched place row into the same trimmed `place` object
+  // tripResponseToPlan embeds on every item -- swap/regenerate need to embed
+  // this themselves now (there's no bulk `state.places` for the derived
+  // `tripPlan` view's fallback lookup to fall back to anymore, see below).
+  const toTripPlace = (p) => ({
+    id: p.id, name: p.name, category: p.category, rating: p.rating, address: p.address, img: p.img,
+    location: (p.location?.lat != null && p.location?.lng != null) ? p.location : null,
+  })
+
+  const swapItem = async (dayNum, placeId) => {
+    const plan = stateRef.current.tripPlan
     const usedIds = new Set(plan.days.flatMap((d) => d.items.map((i) => i.placeId)))
     const current = plan.days.flatMap((d) => d.items).find((i) => i.placeId === placeId)
     const currentCategory = current && current.place && current.place.category
-    const sameCategory = s.places.filter((p) => !usedIds.has(p.id) && p.category === currentCategory)
-    const pool = sameCategory.length ? sameCategory : s.places.filter((p) => !usedIds.has(p.id))
+    let { data: pool } = await fetchPlaces({ category: currentCategory, isActive: true, limit: 30 }).catch(() => ({ data: [] }))
+    pool = pool.filter((p) => !usedIds.has(p.id))
+    if (!pool.length) {
+      const fallback = await fetchPlaces({ isActive: true, limit: 30 }).catch(() => ({ data: [] }))
+      pool = fallback.data.filter((p) => !usedIds.has(p.id))
+    }
     if (!pool.length) { showToast('ไม่มีสถานที่อื่นให้สลับแล้วครับ'); return }
     const replacement = pool[Math.floor(Math.random() * pool.length)]
     setState((s2) => ({
@@ -601,26 +690,25 @@ export function AppProvider({ children }) {
         ...s2.tripPlan,
         days: s2.tripPlan.days.map((d) => d.dayNum !== dayNum ? d : {
           ...d,
-          items: d.items.map((it) => it.placeId !== placeId ? it : { placeId: replacement.id, time: it.time, liked: null })
+          items: d.items.map((it) => it.placeId !== placeId ? it : { placeId: replacement.id, time: it.time, liked: null, place: toTripPlace(replacement) })
         })
       }
     }))
   }
 
-  const regeneratePlan = () => {
-    const s = stateRef.current
-    const plan = s.tripPlan
-    const all = s.places
+  const regeneratePlan = async () => {
+    const plan = stateRef.current.tripPlan
     const usedIds = new Set(plan.days.flatMap((d) => d.items.map((i) => i.placeId)))
     const dislikedIds = new Set(plan.days.flatMap((d) => d.items.filter((i) => i.liked === false).map((i) => i.placeId)))
-    const replacements = all.filter((p) => !usedIds.has(p.id))
+    const { data: pool } = await fetchPlaces({ isActive: true, limit: 50 }).catch(() => ({ data: [] }))
+    const replacements = pool.filter((p) => !usedIds.has(p.id))
     let ri = 0
     const newDays = plan.days.map((d) => ({
       ...d,
       items: d.items.map((it) => {
         if (dislikedIds.has(it.placeId) && ri < replacements.length) {
           const rep = replacements[ri++]
-          return { placeId: rep.id, time: it.time, liked: null }
+          return { placeId: rep.id, time: it.time, liked: null, place: toTripPlace(rep) }
         }
         return { ...it, liked: null }
       })
@@ -758,15 +846,7 @@ export function AppProvider({ children }) {
     return item
   }
 
-  // Merges a single already-saved place into state without a full refetch --
-  // upsert, not just replace: PlacesTab.jsx's save+upload flow calls this
-  // with a brand-new place too (not in s.places yet), not just the response
-  // from uploading/removing an existing one's photo.
-  const applyPlaceUpdate = (item) => setState((s) => ({
-    places: s.places.some((p) => p.id === item.id) ? s.places.map((p) => p.id === item.id ? item : p) : [...s.places, item],
-  }))
-
-  // Same as applyPlaceUpdate, for EventsTab.jsx's own save+image-upload flow.
+  // Merges a single already-saved event into state without a full refetch.
   const applyEventUpdate = (item) => setState((s) => ({
     events: s.events.some((e) => e.id === item.id) ? s.events.map((e) => e.id === item.id ? item : e) : [...s.events, item],
   }))
@@ -809,12 +889,12 @@ export function AppProvider({ children }) {
     onResetPasswordChange, onResetConfirmPasswordChange,
     onAuthConsentChange, submitLogin, submitSignup, completeEmailConfirmation, submitForgotPassword, submitResetPassword, logout,
     toggleChat, onChatInputChange, sendChat,
-    onStartDateChange, onEndDateChange, onAccommodationChange, setTripDatePreset,
+    onStartDateChange, onEndDateChange, onAccommodationLocationChange, onAccommodationSelect, useCurrentLocationForAccommodation, setTripDatePreset,
     onMustGoQueryChange, addMustGo, removeMustGo, onMustGoKeyDown,
     setPace, onDailyStartChange, onDailyEndChange,
     onFeedbackChange, toggleInterest, setBudget, setAreaScope, submitTripForm, setItemLike, swapItem, regeneratePlan,
     startScan, handleQrDetected, handleScanCancelled, claimScan, resetScan, redeemReward,
-    adminLogin, adminLogout, openCreateForm, openEditForm, updateFormField, cancelForm, applyPlaceUpdate, applyEventUpdate,
+    adminLogin, adminLogout, openCreateForm, openEditForm, updateFormField, cancelForm, applyEventUpdate,
     saveForm, deleteItem, onNewPlace, onNewEvent, onNewKb, onNewQr, onNewReward,
     ...fieldHandlers,
   }
@@ -869,20 +949,14 @@ export function AppProvider({ children }) {
   }))
   const isGrid = (k) => k === 'grid', isCup = (k) => k === 'cup', isTemple = (k) => k === 'temple', isMuseum = (k) => k === 'museum', isTree = (k) => k === 'tree', isMountain = (k) => k === 'mountain', isBasket = (k) => k === 'basket', isCamera = (k) => k === 'camera', isFood = (k) => k === 'food', isBed = (k) => k === 'bed'
   const categoriesViewIcons = categoriesView.map((c) => ({ ...c, showGrid: isGrid(c.icon), showCup: isCup(c.icon), showTemple: isTemple(c.icon), showMuseum: isMuseum(c.icon), showTree: isTree(c.icon), showMountain: isMountain(c.icon), showBasket: isBasket(c.icon), showCamera: isCamera(c.icon), showFood: isFood(c.icon), showBed: isBed(c.icon) }))
-  const placeBadge = (p) => p.reviews >= 1500 ? { label: 'ยอดนิยม', bg: '#FDEEE3', color: '#E07B39' } : { label: '', bg: '', color: '' }
-  const filteredPlaces = s.places.filter((p) => {
-    const activeOk = p.isActive !== false
-    const catOk = s.activeCategory === 'ทั้งหมด' || p.category === s.activeCategory
-    const q = s.searchQuery.trim().toLowerCase()
-    const qOk = !q || p.name.toLowerCase().includes(q) || p.desc.toLowerCase().includes(q)
-    return activeOk && catOk && qOk
-  }).map((p) => ({ ...p, onOpen: () => openPlace(p.id), badge: placeBadge(p), isFavorite: s.favoriteIds.includes(p.id), onToggleFavorite: () => toggleFavorite(p.id) }))
-
-  const eventsView = s.events.filter((e) => {
-    const q = s.eventSearchQuery.trim().toLowerCase()
-    return !q || e.name.toLowerCase().includes(q) || (e.desc || '').toLowerCase().includes(q)
-  }).map((e) => ({ ...e, onOpen: () => openEvent(e.id) }))
-  const qrPlacesList = s.places.filter((p) => p.hasQR).map((p) => ({ ...p, onOpen: () => openPlace(p.id) }))
+  // PlacesListPage/EventsListPage now fetch+filter their own server-paginated
+  // page (see usePagedList.js) instead of reading a client-filtered view
+  // off the bulk-loaded array -- category chips (categoriesViewIcons above)
+  // and search inputs on those pages still read/write state.activeCategory/
+  // state.searchQuery/state.eventSearchQuery, just no longer through a
+  // derived list here. HomePage's top-4 and PointsPage's QR-places list
+  // fetch their own place data too now (see HomePage.jsx/PointsPage.jsx),
+  // so placeBadge/qrPlacesList moved out of this file entirely.
 
   const datePresetOptions = [
     { key: 'today', label: 'วันนี้ (เดย์ทริป)' },
@@ -891,11 +965,9 @@ export function AppProvider({ children }) {
     { key: 'weekend', label: 'สุดสัปดาห์นี้' },
   ].map((p) => ({ ...p, onClick: () => setTripDatePreset(p.key) }))
 
-  const mustGoQueryTrim = s.mustGoQuery.trim().toLowerCase()
-  const mustGoSuggestionsView = mustGoQueryTrim
-    ? s.places.filter((p) => p.name.toLowerCase().includes(mustGoQueryTrim) && !s.tripForm.mustGo.includes(p.name))
-      .slice(0, 6).map((p) => ({ id: p.id, name: p.name, category: p.category, onClick: () => addMustGo(p.name) }))
-    : []
+  const mustGoSuggestionsView = s.mustGoSuggestions
+    .filter((p) => !s.tripForm.mustGo.includes(p.name))
+    .slice(0, 6).map((p) => ({ id: p.id, name: p.name, category: p.category, onClick: () => addMustGo(p.name) }))
   const mustGoChipsView = s.tripForm.mustGo.map((name) => ({ name, onRemove: () => removeMustGo(name) }))
 
   const interestOptionsView = interestList.map((i) => {
@@ -935,13 +1007,29 @@ export function AppProvider({ children }) {
       dotBg: active ? 'linear-gradient(135deg,#66BB6A,#388E3C)' : '#fff'
     }
   })
+  // For TripResultPage's "เงื่อนไขที่เลือกไว้" recap -- a plain readback of
+  // what the user picked in the form (not to be confused with
+  // tripPlanRationale, the LLM's own explanation for its place choices).
+  // budget/areaScope are already stored as their own Thai display strings
+  // (see budgetList/areaScopeList), only pace needs the key->label lookup.
+  const tripFormSummaryView = {
+    dateRangeLabel: s.tripForm.startDate === s.tripForm.endDate ? s.tripForm.startDate : `${s.tripForm.startDate} - ${s.tripForm.endDate}`,
+    interests: s.tripForm.interests,
+    budget: s.tripForm.budget,
+    areaScope: s.tripForm.areaScope,
+    paceLabel: paceList.find((p) => p.key === s.tripForm.pace)?.label || s.tripForm.pace,
+    accommodationLabel: s.tripForm.accommodation?.name || null,
+    mustGo: s.tripForm.mustGo,
+    dailyStart: s.tripForm.dailyStart,
+    dailyEnd: s.tripForm.dailyEnd,
+  }
 
   const tripPlan = s.tripPlan ? {
     ...s.tripPlan,
     days: s.tripPlan.days.map((d) => ({
       ...d,
       items: d.items.map((it) => {
-        const place = it.place || s.places.find((p) => p.id === it.placeId) || { name: '-', rating: '-', address: '-' }
+        const place = it.place || { name: '-', rating: '-', address: '-' }
         const isHotelReturn = it.status === 'End of Day (Return to Hotel)'
         const durationMin = (!isHotelReturn && it.time && it.departureTime)
           ? (hhmmToMinutes(it.departureTime) ?? 0) - (hhmmToMinutes(it.time) ?? 0)
@@ -964,11 +1052,14 @@ export function AppProvider({ children }) {
     const canRedeem = s.userPoints >= r.cost
     return { ...r, onRedeem: () => redeemReward(r.id), disabled: !canRedeem, btnBg: canRedeem ? '#2E7D32' : '#eee', btnColor: canRedeem ? '#fff' : '#999' }
   })
-  const rewardsAdminView = s.rewards.map((r) => ({ ...r, onEdit: () => openEditForm('reward', r), onDelete: () => deleteItem('reward', r.id) }))
-  const placesView = s.places.map((p) => ({ ...p, isActive: p.isActive !== false, onToggleActive: () => togglePlaceActive(p.id), onEdit: () => openEditForm('place', p), onDelete: () => deleteItem('place', p.id) }))
-  const eventsAdminView = s.events.map((e) => ({ ...e, onEdit: () => openEditForm('event', e), onDelete: () => deleteItem('event', e.id) }))
-  const kbView = s.knowledgeBase.map((k) => ({ ...k, statusLabel: (k.isPinned ? '📌 Pinned · ' : '') + (k.isActive ? 'Active' : 'Inactive'), onEdit: () => openEditForm('kb', k), onDelete: () => deleteItem('kb', k.id) }))
-  const qrsView = s.qrs.map((q) => ({ ...q, placeName: (s.places.find((p) => p.id === q.placeId) || {}).name || '-', onEdit: () => openEditForm('qr', q), onDelete: () => deleteItem('qr', q.id) }))
+  // Admin tabs for places/events/knowledgeBase/rewards now fetch their own
+  // server-paginated page (see usePagedList.js) instead of reading a
+  // pre-built admin view off the bulk-loaded array -- only qrs stays here,
+  // since its admin list has no DB column to paginate/search "by place name"
+  // against server-side. `placeName` isn't joined here anymore (no bulk
+  // `s.places` to join against) -- QrTab.jsx joins it itself against a
+  // fetchPlaceNames() id->name map instead.
+  const qrsView = s.qrs.map((q) => ({ ...q, onEdit: () => openEditForm('qr', q), onDelete: () => deleteItem('qr', q.id) }))
 
   const stepMeta = [0, 1, 2, 3].map((i) => {
     const done = i < s.tripStep
@@ -986,20 +1077,10 @@ export function AppProvider({ children }) {
     }
   })
 
-  // `places` already arrives rating-ranked from the API. When we know the user's
-  // location, re-rank the top of that list (a quality floor) by distance instead
-  // of showing the single best-rated places regardless of how far away they are.
-  const NEARBY_QUALITY_POOL = 20
-  const activePlaces = s.places.filter((p) => p.isActive !== false)
-  const homePlacesRanked = s.userLocation
-    ? activePlaces
-        .slice(0, NEARBY_QUALITY_POOL)
-        .map((p) => ({ ...p, distanceKm: p.location ? haversineKm(s.userLocation, p.location) : null }))
-        .sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity))
-    : activePlaces
-
   const derived = {
-    homePlaces: homePlacesRanked.slice(0, 4).map((p) => ({ ...p, onOpen: () => openPlace(p.id), badge: placeBadge(p), isFavorite: s.favoriteIds.includes(p.id), onToggleFavorite: () => toggleFavorite(p.id) })),
+    // HomePage computes its own top-4 "recommended places" locally now
+    // (fetches + distance re-ranks itself) -- no bulk `state.places` array
+    // here to derive it from anymore.
     homeEvents: s.events.slice(0, 3).map((e) => ({ ...e, onOpen: () => openEvent(e.id) })),
     stepMeta,
     isPlaceFormOpen: s.formOpen && s.formType === 'place',
@@ -1019,17 +1100,15 @@ export function AppProvider({ children }) {
     passwordsMatch: s.authForm.confirmPassword.length > 0 && s.authForm.password === s.authForm.confirmPassword,
     resetPasswordRules: PASSWORD_RULES.map((r) => ({ key: r.key, label: r.label, met: r.test(s.resetForm.password) })),
     resetPasswordsMatch: s.resetForm.confirmPassword.length > 0 && s.resetForm.password === s.resetForm.confirmPassword,
-    categoriesView, categoriesViewIcons, filteredPlaces, placesEmpty: filteredPlaces.length === 0, eventsView,
-    qrPlacesList,
+    categoriesView, categoriesViewIcons,
     chatMessagesView: s.chatMessages.map((m) => ({ ...m, align: m.from === 'user' ? 'flex-end' : 'flex-start', bg: m.from === 'user' ? '#2E7D32' : '#f0efe7', color: m.from === 'user' ? '#fff' : '#1f2a24' })),
-    interestOptionsView, budgetOptionsView, areaScopeOptionsView, paceOptionsView, datePresetOptions, mustGoSuggestionsView, mustGoChipsView,
+    interestOptionsView, budgetOptionsView, areaScopeOptionsView, paceOptionsView, datePresetOptions, mustGoSuggestionsView, mustGoChipsView, tripFormSummaryView,
     isStep0: s.tripStep === 0, isStep1: s.tripStep === 1, isStep2: s.tripStep === 2, isStep3: s.tripStep === 3,
     primaryLabel: s.tripStep === 3 ? 'สร้างแผนการเดินทาง →' : 'ถัดไป →',
     onPrimaryStep: s.tripStep === 3 ? submitTripForm : nextStep,
     prevOpacity: s.tripStep === 0 ? '0.35' : '1',
     tripPlan,
-    rewardsView, rewardsAdminView,
-    placesView, eventsAdminView, kbView, qrsView,
+    rewardsView, qrsView,
     placeCategoryOptions: categories.filter((c) => c !== 'ทั้งหมด'),
   }
 

@@ -1,12 +1,31 @@
+import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useApp } from '../context/AppContext.jsx'
 import EventDetailView from '../components/EventDetailView.jsx'
+import LoadingSpinner from '../components/LoadingSpinner.jsx'
+import { fetchPlace } from '../lib/apiClient.js'
 
 export default function EventDetailPage() {
   const { state, actions } = useApp()
   const { id } = useParams()
-  const ev = state.events.find((event) => event.id === id) || { suitableFor: [] }
-  const place = state.places.find((p) => p.id === ev.placeId)
+  const foundEvent = state.events.find((event) => event.id === id)
+  const [place, setPlace] = useState(null)
+  const placeId = foundEvent?.placeId
+
+  useEffect(() => {
+    if (!placeId) { setPlace(null); return }
+    let cancelled = false
+    fetchPlace(placeId).then((p) => { if (!cancelled) setPlace(p) }).catch(() => { if (!cancelled) setPlace(null) })
+    return () => { cancelled = true }
+  }, [placeId])
+
+  // See PlaceDetailPage.jsx for why: a direct link/refresh would otherwise
+  // render a blank event for however long the bulk fetch takes.
+  if (!foundEvent && state.dataLoading) {
+    return <main style={{ maxWidth: 1360, margin: '0 auto', padding: '90px 32px' }}><LoadingSpinner size={40} label="กำลังโหลดข้อมูลกิจกรรม..." /></main>
+  }
+
+  const ev = foundEvent || { suitableFor: [] }
   return (
     <main style={{ maxWidth: 1360, margin: '0 auto', padding: '28px 32px 60px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5, color: '#8a938c', flexWrap: 'wrap' }}>

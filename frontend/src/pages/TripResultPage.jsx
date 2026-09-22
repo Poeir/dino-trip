@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext.jsx'
 import ImageSlot from '../components/ImageSlot.jsx'
@@ -6,6 +6,7 @@ import DayRouteMap from '../components/DayRouteMap.jsx'
 import Modal from '../components/Modal.jsx'
 import PlaceDetailView from '../components/PlaceDetailView.jsx'
 import { CalendarIcon, RouteIcon, GiftIcon, PencilIcon, PinIcon } from '../components/Icons.jsx'
+import { fetchPlace } from '../lib/apiClient.js'
 
 const sparkles = [
   { left: '6%', top: '20%', size: 7, duration: '3.2s', delay: '0s' },
@@ -14,6 +15,15 @@ const sparkles = [
   { left: '85%', top: '60%', size: 8, duration: '3s', delay: '0.2s' },
   { left: '45%', top: '10%', size: 5, duration: '2.8s', delay: '1s' },
 ]
+
+function SummaryRow({ label, value }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+      <span style={{ color: '#8a938c', flexShrink: 0 }}>{label}</span>
+      <span style={{ color: '#3c463f', fontWeight: 700, textAlign: 'right' }}>{value}</span>
+    </div>
+  )
+}
 
 function StatCard({ icon, value, label, accent }) {
   return (
@@ -30,9 +40,18 @@ function StatCard({ icon, value, label, accent }) {
 export default function TripResultPage() {
   const { state, actions, derived } = useApp()
   const [selectedPlaceId, setSelectedPlaceId] = useState(null)
+  const [selectedPlace, setSelectedPlace] = useState(null)
+  const [summaryOpen, setSummaryOpen] = useState(false)
+
+  useEffect(() => {
+    if (!selectedPlaceId) { setSelectedPlace(null); return }
+    let cancelled = false
+    fetchPlace(selectedPlaceId).then((p) => { if (!cancelled) setSelectedPlace(p) }).catch(() => { if (!cancelled) setSelectedPlace(null) })
+    return () => { cancelled = true }
+  }, [selectedPlaceId])
+
   if (!state.tripPlan) return <Navigate to="/trip" replace />
   const plan = derived.tripPlan
-  const selectedPlace = selectedPlaceId ? state.places.find((p) => p.id === selectedPlaceId) : null
   const selectedPlaceView = selectedPlace
     ? { ...selectedPlace, isFavorite: state.favoriteIds.includes(selectedPlace.id), onToggleFavorite: () => actions.toggleFavorite(selectedPlace.id) }
     : null
@@ -58,6 +77,27 @@ export default function TripResultPage() {
                 <StatCard icon={<GiftIcon size={15} color="#FBC02D" box={false} />} value={`+${plan.totalPoints}`} label="พอยท์ที่จะได้" accent="#FBC02D" />
               </div>
             </div>
+          </div>
+
+          <div style={{ background: '#fff', border: '1px solid #E7E3D2', borderRadius: 16, animation: 'dc-fade-up 0.45s ease 0.05s both' }}>
+            <div onClick={() => setSummaryOpen((v) => !v)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '13px 16px', cursor: 'pointer' }}>
+              <span style={{ fontWeight: 800, fontSize: 13, color: '#1B5E20' }}>เงื่อนไขที่เลือกไว้</span>
+              <span style={{ fontSize: 11, color: '#8a938c', fontWeight: 700 }}>{summaryOpen ? 'ซ่อน ▾' : 'ดู ▸'}</span>
+            </div>
+            {summaryOpen && (
+              <div style={{ padding: '0 16px 16px', display: 'grid', gap: 8, fontSize: 12.5 }}>
+                <SummaryRow label="วันที่" value={derived.tripFormSummaryView.dateRangeLabel} />
+                <SummaryRow label="ช่วงเวลาต่อวัน" value={`${derived.tripFormSummaryView.dailyStart} - ${derived.tripFormSummaryView.dailyEnd}`} />
+                <SummaryRow label="ที่พัก" value={derived.tripFormSummaryView.accommodationLabel || 'ไม่ได้ระบุ (ใช้ใจกลางเมือง)'} />
+                <SummaryRow label="ความสนใจ" value={derived.tripFormSummaryView.interests.length ? derived.tripFormSummaryView.interests.join(', ') : 'ไม่ได้เลือก'} />
+                <SummaryRow label="งบประมาณ" value={derived.tripFormSummaryView.budget} />
+                <SummaryRow label="จังหวะการเที่ยว" value={derived.tripFormSummaryView.paceLabel} />
+                <SummaryRow label="ขอบเขตพื้นที่" value={derived.tripFormSummaryView.areaScope} />
+                {derived.tripFormSummaryView.mustGo.length > 0 && (
+                  <SummaryRow label="ต้องไปแน่ๆ" value={derived.tripFormSummaryView.mustGo.join(', ')} />
+                )}
+              </div>
+            )}
           </div>
 
           {state.tripPlanRationale && (

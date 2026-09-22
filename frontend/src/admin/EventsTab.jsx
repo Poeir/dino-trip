@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useApp } from '../context/AppContext.jsx'
-import { extractEventFromText, createEvent, updateEvent, fetchEventPhotos, uploadEventPhoto, deleteEventPhoto, createPlace } from '../lib/apiClient.js'
+import { extractEventFromText, createEvent, updateEvent, fetchEvents, fetchEventPhotos, uploadEventPhoto, deleteEventPhoto, createPlace, fetchPlaceNames } from '../lib/apiClient.js'
 import ImageSlot from '../components/ImageSlot.jsx'
 import Modal from '../components/Modal.jsx'
 import Field from '../components/Field.jsx'
@@ -9,6 +9,16 @@ import ChipMultiSelect from '../components/ChipMultiSelect.jsx'
 import PlacePhotoGallery, { MAX_PHOTOS } from '../components/PlacePhotoGallery.jsx'
 import PlacePicker from '../components/PlacePicker.jsx'
 import EventDateComposer from '../components/EventDateComposer.jsx'
+import PageControls from '../components/PageControls.jsx'
+import LoadingSpinner from '../components/LoadingSpinner.jsx'
+import { usePagedList } from '../lib/usePagedList.js'
+
+// EventsTab's own sort dropdown -> crudRouter.js's ?sort=/?dir=.
+const EVENT_SORT_PARAMS = {
+  'name-asc': { sort: 'name', dir: 'asc' },
+  'name-desc': { sort: 'name', dir: 'desc' },
+  status: { sort: 'status', dir: 'asc' },
+}
 
 const inputStyle = { width: '100%', border: '1px solid #DCD8C6', borderRadius: 8, padding: 9, fontSize: 14 }
 const EXTRACT_FIELDS = ['name', 'category', 'dateRange', 'venueName', 'admission', 'organizer', 'suitableFor', 'desc']
@@ -78,8 +88,8 @@ function inferDateMode(f) {
 export default function EventsTab() {
   const { state, actions, derived } = useApp()
   const f = state.formData
-  const [query, setQuery] = useState('')
   const [sortBy, setSortBy] = useState('name-asc')
+  const paged = usePagedList(fetchEvents, { pageSize: 20, extraParams: EVENT_SORT_PARAMS[sortBy] })
   const [pasteText, setPasteText] = useState('')
   const [extracting, setExtracting] = useState(false)
   const [extractError, setExtractError] = useState('')
@@ -99,6 +109,14 @@ export default function EventsTab() {
   const [galleryBusy, setGalleryBusy] = useState(false)
   const [galleryBusyText, setGalleryBusyText] = useState('')
   const initialFormRef = useRef(null)
+  // Venue-name <datalist> suggestions -- no bulk state.places to map names
+  // off of anymore, so fetch the lean id+name list once instead.
+  const [placeNames, setPlaceNames] = useState([])
+  useEffect(() => {
+    let cancelled = false
+    fetchPlaceNames().then((rows) => { if (!cancelled) setPlaceNames(rows) }).catch(() => {})
+    return () => { cancelled = true }
+  }, [])
 
   useEffect(() => {
     if (derived.isEventFormOpen) {
@@ -191,6 +209,7 @@ export default function EventsTab() {
     try {
       const updated = await deleteEventPhoto(state.editingId, photoId)
       actions.applyEventUpdate(updated)
+      paged.refetch()
       setExistingPhotos((prev) => prev.filter((p) => p.id !== photoId))
       actions.showToast('ลบรูปแล้ว')
     } catch (err) {
@@ -237,6 +256,7 @@ export default function EventsTab() {
         }
       }
       actions.applyEventUpdate(saved)
+      paged.refetch()
       actions.showToast(pendingFiles.length ? 'บันทึกอีเวนท์และรูปแล้ว' : 'บันทึกอีเวนท์แล้ว')
       actions.cancelForm()
     } finally {
@@ -257,14 +277,11 @@ export default function EventsTab() {
       setExtracting(false)
     }
   }
-  const sorters = {
-    'name-asc': (a, b) => a.name.localeCompare(b.name, 'th'),
-    'name-desc': (a, b) => b.name.localeCompare(a.name, 'th'),
-    'status': (a, b) => a.status.localeCompare(b.status),
-  }
-  const filteredEventsView = derived.eventsAdminView
-    .filter((e) => e.name.toLowerCase().includes(query.trim().toLowerCase()))
-    .sort(sorters[sortBy])
+  const eventsAdminView = paged.rows.map((e) => ({
+    ...e,
+    onEdit: () => actions.openEditForm('event', e),
+    onDelete: async () => { await actions.deleteItem('event', e.id); paged.refetch() },
+  }))
   return (
     <>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
@@ -325,11 +342,10 @@ export default function EventsTab() {
           <Field label="เชื่อมกับสถานที่ในระบบ (ไม่บังคับ)">
             <div style={{ marginBottom: 4 }}>
               <PlacePicker
-                places={state.places}
                 value={f.placeId}
                 onChange={(placeId) => {
                   actions.updateFormField('placeId', placeId)
-                  const place = state.places.find((p) => p.id === placeId)
+                  const place = placeNames.find((p) => p.id === placeId)
                   if (place) actions.updateFormField('venueName', place.name)
                 }}
                 allowClear
@@ -343,7 +359,7 @@ export default function EventsTab() {
                     hours: '', phone: '', desc: '', amenities: '', tags: '', hasQR: false, qrPoints: '0',
                     isActive: false,
                   })
-                  actions.applyPlaceUpdate(created)
+                  setPlaceNames((names) => [...names, { id: created.id, name: created.name }])
                   actions.updateFormField('placeId', created.id)
                   actions.updateFormField('venueName', created.name)
                 }}
@@ -355,7 +371,7 @@ export default function EventsTab() {
             <input list="event-venue-options" value={f.venueName || ''} onChange={actions.onField_venueName} placeholder="ชื่อสถานที่/สนาม" style={{ ...inputStyle, marginBottom: 14 }} />
           </Field>
           <datalist id="event-venue-options">
-            {state.places.map((p) => <option key={p.id} value={p.name} />)}
+            {placeNames.map((p) => <option key={p.id} value={p.name} />)}
           </datalist>
 
           <SectionHeading>รูปภาพ</SectionHeading>
@@ -411,16 +427,18 @@ export default function EventsTab() {
           </div>
       </Modal>
 
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
-        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาอีเวนท์..." style={{ flex: 1, minWidth: 220, maxWidth: 360, border: '1px solid #DCD8C6', borderRadius: 20, padding: '9px 16px', fontSize: 13.5 }} />
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 16 }}>
+        <input value={paged.query} onChange={(e) => paged.setQuery(e.target.value)} placeholder="ค้นหาอีเวนท์..." style={{ flex: 1, minWidth: 220, maxWidth: 360, border: '1px solid #DCD8C6', borderRadius: 20, padding: '9px 16px', fontSize: 13.5 }} />
         <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} style={{ border: '1px solid #DCD8C6', borderRadius: 20, padding: '9px 14px', fontSize: 13.5 }}>
           <option value="name-asc">ชื่อ (ก-ฮ)</option>
           <option value="name-desc">ชื่อ (ฮ-ก)</option>
           <option value="status">สถานะ</option>
         </select>
+        <span style={{ fontSize: 12.5, color: '#8a938c' }}>{paged.loading ? 'กำลังโหลด...' : `พบ ${paged.total} รายการ`}</span>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))', gap: 16 }}>
-        {filteredEventsView.map((e) => (
+      {paged.loading && eventsAdminView.length === 0 && <LoadingSpinner size={32} label="กำลังโหลดอีเวนท์..." />}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))', gap: 16, opacity: paged.loading ? 0.5 : 1, transition: 'opacity 0.15s ease', pointerEvents: paged.loading ? 'none' : 'auto' }}>
+        {eventsAdminView.map((e) => (
           <div key={e.id} style={{ background: '#fff', border: '1px solid #E7E3D2', borderRadius: 14, overflow: 'hidden' }}>
             <ImageSlot src={e.img} shape="rect" style={{ width: '100%', height: 110 }} placeholder="ภาพงาน" />
             <div style={{ padding: 14 }}>
@@ -435,6 +453,7 @@ export default function EventsTab() {
           </div>
         ))}
       </div>
+      <PageControls page={paged.page} totalPages={paged.totalPages} total={paged.total} onChange={paged.setPage} />
     </>
   )
 }

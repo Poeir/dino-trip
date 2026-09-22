@@ -1,9 +1,24 @@
+import { useEffect, useState } from 'react'
 import { useApp } from '../context/AppContext.jsx'
 import { GiftIcon, PinIcon } from '../components/Icons.jsx'
 import QrScannerModal from '../components/QrScannerModal.jsx'
+import LoadingSpinner from '../components/LoadingSpinner.jsx'
+import { fetchPlaces } from '../lib/apiClient.js'
 
 export default function PointsPage() {
   const { state, actions, derived } = useApp()
+  const [qrPlaces, setQrPlaces] = useState([])
+  const [qrPlacesLoading, setQrPlacesLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    fetchPlaces({ hasQR: true, isActive: true, limit: 100 })
+      .then(({ data }) => { if (!cancelled) setQrPlaces(data) })
+      .catch(() => { if (!cancelled) setQrPlaces([]) })
+      .finally(() => { if (!cancelled) setQrPlacesLoading(false) })
+    return () => { cancelled = true }
+  }, [])
+
   return (
     <main style={{ maxWidth: 960, margin: '0 auto', padding: '36px 32px 60px' }}>
       <h1 data-font="culture" style={{ fontSize: 24, fontWeight: 800, color: '#1B5E20', margin: '0 0 6px' }}>พอยท์สะสมของคุณ</h1>
@@ -57,8 +72,9 @@ export default function PointsPage() {
         <GiftIcon />
         <h2 style={{ fontSize: 17, fontWeight: 800, color: '#1B5E20', margin: 0 }}>แลกของรางวัล</h2>
       </div>
+      {state.dataLoading && <LoadingSpinner size={32} label="กำลังโหลดของรางวัล..." />}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(220px,1fr))', gap: 16, marginBottom: 28 }}>
-        {derived.rewardsView.map((r) => (
+        {!state.dataLoading && derived.rewardsView.map((r) => (
           <div key={r.id} style={{ border: '1px solid #E7E3D2', borderRadius: 14, padding: 18 }}>
             <div style={{ fontWeight: 700, fontSize: 14.5, color: '#1f2a24', marginBottom: 10 }}>{r.name}</div>
             <div style={{ fontSize: 13, color: '#7A5205', fontWeight: 700, marginBottom: 12 }}>{r.cost} พอยท์</div>
@@ -71,9 +87,10 @@ export default function PointsPage() {
         <PinIcon />
         <h2 style={{ fontSize: 17, fontWeight: 800, color: '#1B5E20', margin: 0 }}>สถานที่ที่มี QR รับพอยท์</h2>
       </div>
+      {qrPlacesLoading && <LoadingSpinner size={32} label="กำลังโหลดสถานที่..." />}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {derived.qrPlacesList.map((p) => (
-          <div key={p.id} onClick={p.onOpen} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid #E7E3D2', borderRadius: 12, padding: '12px 16px', cursor: 'pointer' }}>
+        {!qrPlacesLoading && qrPlaces.map((p) => (
+          <div key={p.id} onClick={() => actions.openPlace(p.id)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid #E7E3D2', borderRadius: 12, padding: '12px 16px', cursor: 'pointer' }}>
             <span style={{ fontSize: 14, fontWeight: 600, color: '#1f2a24' }}>{p.name}</span>
             <span style={{ fontSize: 12.5, fontWeight: 700, color: '#7A5205' }}>+{p.qrPoints} พอยท์</span>
           </div>

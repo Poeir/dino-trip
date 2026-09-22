@@ -4,10 +4,10 @@
 const BASE_URL = import.meta.env.VITE_CHATBOT_SERVICE_URL || 'http://localhost:8000'
 
 // The service streams Server-Sent Events: `token` chunks as the reply is
-// generated, then one `done` event with the full reply + source places.
-// `places` is only known once the whole reply is in (agent.py has to check
-// for the fallback message first), so it always arrives on `done`, not
-// progressively.
+// generated, then one `done` event with the full reply + source places/events.
+// `places`/`events` are only known once the whole reply is in (agent.py has
+// to check for the fallback message first), so they always arrive on `done`,
+// not progressively.
 export async function sendChatMessage(message, { onToken } = {}) {
   const res = await fetch(`${BASE_URL}/chat/`, {
     method: 'POST',
@@ -21,14 +21,15 @@ export async function sendChatMessage(message, { onToken } = {}) {
   let buffer = ''
   let reply = ''
   let places = []
+  let events = []
 
   while (true) {
     const { done, value } = await reader.read()
     if (done) break
     buffer += decoder.decode(value, { stream: true })
-    const events = buffer.split('\n\n')
-    buffer = events.pop() // last chunk may be incomplete, keep for next read
-    for (const raw of events) {
+    const sseEvents = buffer.split('\n\n')
+    buffer = sseEvents.pop() // last chunk may be incomplete, keep for next read
+    for (const raw of sseEvents) {
       const line = raw.trim()
       if (!line.startsWith('data: ')) continue
       const payload = JSON.parse(line.slice(6))
@@ -38,11 +39,12 @@ export async function sendChatMessage(message, { onToken } = {}) {
       } else if (payload.type === 'done') {
         reply = payload.reply
         places = payload.places
+        events = payload.events
       }
     }
   }
 
-  return { reply, places } // shape matches the old non-streaming response
+  return { reply, places, events } // shape matches the old non-streaming response
 }
 
 export async function requestTripPlan(tripInput) {

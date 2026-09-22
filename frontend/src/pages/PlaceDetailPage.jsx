@@ -1,11 +1,32 @@
+import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useApp } from '../context/AppContext.jsx'
 import PlaceDetailView from '../components/PlaceDetailView.jsx'
+import LoadingSpinner from '../components/LoadingSpinner.jsx'
+import { fetchPlace } from '../lib/apiClient.js'
 
 export default function PlaceDetailPage() {
   const { state, actions } = useApp()
   const { id } = useParams()
-  const found = state.places.find((place) => place.id === id)
+  const [found, setFound] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    fetchPlace(id)
+      .then((place) => { if (!cancelled) setFound(place) })
+      .catch(() => { if (!cancelled) setFound(null) })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [id])
+
+  // Distinguish "still loading" from "no such place" so a direct link/
+  // refresh shows a spinner instead of a broken-looking blank detail view.
+  if (!found && loading) {
+    return <main style={{ maxWidth: 1360, margin: '0 auto', padding: '90px 32px' }}><LoadingSpinner size={40} label="กำลังโหลดข้อมูลสถานที่..." /></main>
+  }
+
   const p = found
     ? { ...found, isFavorite: state.favoriteIds.includes(found.id), onToggleFavorite: () => actions.toggleFavorite(found.id) }
     : { amenities: [] }

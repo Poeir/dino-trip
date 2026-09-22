@@ -1,6 +1,16 @@
+import { useEffect, useState } from 'react'
 import { useApp } from '../context/AppContext.jsx'
 import ImageSlot from '../components/ImageSlot.jsx'
 import { GridIcon, CupIcon, TempleIcon, MuseumIcon, TreeIcon, MountainIcon, BasketIcon, CameraIcon, FoodIcon, BedIcon, HeartIcon } from '../components/Icons.jsx'
+import PageControls from '../components/PageControls.jsx'
+import { fetchPlaces } from '../lib/apiClient.js'
+import { usePagedList } from '../lib/usePagedList.js'
+import LoadingSpinner from '../components/LoadingSpinner.jsx'
+
+// >=1500 reviews reads as "popular" -- mirrors the badge PlacesTab/PlaceCard
+// used to compute in AppContext.jsx before this page moved to its own
+// server-paginated fetch.
+const placeBadge = (p) => p.reviews >= 1500 ? { label: 'ยอดนิยม', bg: '#FDEEE3', color: '#E07B39' } : { label: '', bg: '', color: '' }
 
 function CategoryIcon({ cat }) {
   const props = { size: 15, color: cat.iconBorder, box: false }
@@ -19,6 +29,33 @@ function CategoryIcon({ cat }) {
 
 export default function PlacesListPage() {
   const { state, actions, derived } = useApp()
+
+  // Debounced so typing doesn't fire a request per keystroke.
+  const [debouncedSearch, setDebouncedSearch] = useState(state.searchQuery)
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(state.searchQuery), 300)
+    return () => clearTimeout(t)
+  }, [state.searchQuery])
+
+  // The search box binds to AppContext's state.searchQuery (shared with the
+  // category chips' onClick handlers), so this page passes the debounced
+  // term through extraParams rather than usePagedList's own query/setQuery.
+  const paged = usePagedList(fetchPlaces, {
+    pageSize: 24,
+    extraParams: {
+      search: debouncedSearch || undefined,
+      category: state.activeCategory === 'ทั้งหมด' ? undefined : state.activeCategory,
+      isActive: true,
+    },
+  })
+  const placesView = paged.rows.map((p) => ({
+    ...p,
+    onOpen: () => actions.openPlace(p.id),
+    badge: placeBadge(p),
+    isFavorite: state.favoriteIds.includes(p.id),
+    onToggleFavorite: () => actions.toggleFavorite(p.id),
+  }))
+
   return (
     <main style={{ maxWidth: 1360, margin: '0 auto', padding: '36px 32px 60px' }}>
       <h1 data-font="culture" style={{ fontSize: 27, fontWeight: 800, color: '#1B5E20', margin: '0 0 6px' }}>สถานที่ท่องเที่ยวทั้งหมด</h1>
@@ -37,7 +74,8 @@ export default function PlacesListPage() {
           </button>
         ))}
       </div>
-      {derived.placesEmpty && (
+      {paged.loading && placesView.length === 0 && <LoadingSpinner size={36} label="กำลังโหลดสถานที่..." />}
+      {!paged.loading && placesView.length === 0 && (
         <div style={{ textAlign: 'center', padding: '60px 20px', border: '1px dashed #C8E6C9', borderRadius: 18 }}>
           <img src="./assets/dino-mascot-front.png" alt="" style={{ width: 64, height: 'auto', margin: '0 auto 14px', display: 'block', opacity: 0.8 }} onError={(e) => { e.currentTarget.style.display = 'none' }} />
           <div style={{ fontWeight: 700, fontSize: 15, color: '#3c463f', marginBottom: 4 }}>ไม่พบสถานที่ในหมวดนี้</div>
@@ -45,7 +83,7 @@ export default function PlacesListPage() {
         </div>
       )}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: 24 }}>
-        {derived.filteredPlaces.map((place) => (
+        {placesView.map((place) => (
           <div key={place.id} onClick={place.onOpen} style={{ position: 'relative', display: 'flex', flexDirection: 'column', height: 320, background: '#fff', border: '1px solid #E7E3D2', borderRadius: 16, overflow: 'hidden', cursor: 'pointer', transition: 'transform 0.22s ease,box-shadow 0.22s ease', animation: 'dc-fade-up 0.4s ease both' }}>
             {place.badge.label && (
               <span style={{ position: 'absolute', top: 10, left: 10, zIndex: 2, fontSize: 10.5, fontWeight: 800, padding: '4px 10px', borderRadius: 10, background: place.badge.bg, color: place.badge.color }}>{place.badge.label}</span>
@@ -70,6 +108,7 @@ export default function PlacesListPage() {
           </div>
         ))}
       </div>
+      <PageControls page={paged.page} totalPages={paged.totalPages} total={paged.total} onChange={paged.setPage} />
     </main>
   )
 }

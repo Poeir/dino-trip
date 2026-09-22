@@ -10,8 +10,20 @@ import AddressComposer from '../components/AddressComposer.jsx'
 import LocationPicker from '../components/LocationPicker.jsx'
 import HoursComposer from '../components/HoursComposer.jsx'
 import PlacePhotoGallery, { MAX_PHOTOS } from '../components/PlacePhotoGallery.jsx'
+import PageControls from '../components/PageControls.jsx'
+import LoadingSpinner from '../components/LoadingSpinner.jsx'
 import { AMENITY_OPTIONS, TAG_OPTIONS } from '../data/placeVocabulary.js'
-import { createPlace, updatePlace, fetchPlacePhotos, uploadPlacePhoto, deletePlacePhoto } from '../lib/apiClient.js'
+import { createPlace, updatePlace, fetchPlaces, fetchPlacePhotos, uploadPlacePhoto, deletePlacePhoto } from '../lib/apiClient.js'
+import { usePagedList } from '../lib/usePagedList.js'
+
+// PlacesTab's own sort dropdown -> crudRouter.js's ?sort=/?dir= (distinct
+// from the weighted-rating ranking the public places list uses by default).
+const PLACE_SORT_PARAMS = {
+  'name-asc': { sort: 'name', dir: 'asc' },
+  'name-desc': { sort: 'name', dir: 'desc' },
+  'rating-desc': { sort: 'rating', dir: 'desc' },
+  'rating-asc': { sort: 'rating', dir: 'asc' },
+}
 
 const MAX_PHOTO_BYTES = 2 * 1024 * 1024
 const ACCEPTED_PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
@@ -21,8 +33,8 @@ const inputStyle = { width: '100%', border: '1px solid #DCD8C6', borderRadius: 8
 export default function PlacesTab() {
   const { state, actions, derived } = useApp()
   const f = state.formData
-  const [query, setQuery] = useState('')
   const [sortBy, setSortBy] = useState('name-asc')
+  const paged = usePagedList(fetchPlaces, { pageSize: 20, extraParams: PLACE_SORT_PARAMS[sortBy] })
   const [errors, setErrors] = useState({})
   const [saving, setSaving] = useState(false)
   // Existing = already-uploaded photos (has an id, fetched when opening an
@@ -103,8 +115,8 @@ export default function PlacesTab() {
   const handleRemoveExisting = async (photoId) => {
     setRemovingPhotoId(photoId)
     try {
-      const updated = await deletePlacePhoto(state.editingId, photoId)
-      actions.applyPlaceUpdate(updated)
+      await deletePlacePhoto(state.editingId, photoId)
+      paged.refetch()
       setExistingPhotos((prev) => prev.filter((p) => p.id !== photoId))
       actions.showToast('ลบรูปแล้ว')
     } catch (err) {
@@ -151,7 +163,7 @@ export default function PlacesTab() {
           setGalleryBusyText('')
         }
       }
-      actions.applyPlaceUpdate(saved)
+      paged.refetch()
       actions.showToast(pendingFiles.length ? 'บันทึกสถานที่และรูปแล้ว' : 'บันทึกสถานที่แล้ว')
       actions.cancelForm()
     } finally {
@@ -165,15 +177,12 @@ export default function PlacesTab() {
   // an admin turning the badge on with no way for a visitor to claim it.
   const linkedQr = state.qrs.find((q) => q.placeId === state.editingId)
 
-  const sorters = {
-    'name-asc': (a, b) => a.name.localeCompare(b.name, 'th'),
-    'name-desc': (a, b) => b.name.localeCompare(a.name, 'th'),
-    'rating-desc': (a, b) => (b.rating || 0) - (a.rating || 0),
-    'rating-asc': (a, b) => (a.rating || 0) - (b.rating || 0),
-  }
-  const filteredPlacesView = derived.placesView
-    .filter((p) => p.name.toLowerCase().includes(query.trim().toLowerCase()))
-    .sort(sorters[sortBy])
+  const placesView = paged.rows.map((p) => ({
+    ...p,
+    onEdit: () => actions.openEditForm('place', p),
+    onDelete: async () => { await actions.deleteItem('place', p.id); paged.refetch() },
+    onToggleActive: async () => { await actions.togglePlaceActive(p); paged.refetch() },
+  }))
   return (
     <>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
@@ -238,7 +247,7 @@ export default function PlacesTab() {
           <SectionHeading>เวลาทำการและการติดต่อ</SectionHeading>
           <fieldset style={{ border: 'none', padding: 0, margin: '0 0 14px' }}>
             <legend style={{ fontSize: 12, fontWeight: 700, color: '#3c463f', marginBottom: 6, padding: 0 }}>เวลาทำการ</legend>
-            <HoursComposer onCompose={(hours) => actions.updateFormField('hours', hours)} />
+            <HoursComposer value={f.hours} onCompose={(hours) => actions.updateFormField('hours', hours)} />
           </fieldset>
           <Field label="ข้อความเวลาทำการ (ประกอบอัตโนมัติจากด้านบน แก้ไขเองได้)">
             <textarea value={f.hours || ''} onChange={actions.onField_hours} style={{ ...inputStyle, minHeight: 44, fontFamily: 'inherit', marginBottom: 14 }} />
@@ -309,17 +318,19 @@ export default function PlacesTab() {
           </div>
       </Modal>
 
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
-        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาสถานที่..." style={{ flex: 1, minWidth: 220, maxWidth: 360, border: '1px solid #DCD8C6', borderRadius: 20, padding: '9px 16px', fontSize: 13.5 }} />
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 16 }}>
+        <input value={paged.query} onChange={(e) => paged.setQuery(e.target.value)} placeholder="ค้นหาสถานที่..." style={{ flex: 1, minWidth: 220, maxWidth: 360, border: '1px solid #DCD8C6', borderRadius: 20, padding: '9px 16px', fontSize: 13.5 }} />
         <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} style={{ border: '1px solid #DCD8C6', borderRadius: 20, padding: '9px 14px', fontSize: 13.5 }}>
           <option value="name-asc">ชื่อ (ก-ฮ)</option>
           <option value="name-desc">ชื่อ (ฮ-ก)</option>
           <option value="rating-desc">คะแนนสูง-ต่ำ</option>
           <option value="rating-asc">คะแนนต่ำ-สูง</option>
         </select>
+        <span style={{ fontSize: 12.5, color: '#8a938c' }}>{paged.loading ? 'กำลังโหลด...' : `พบ ${paged.total} รายการ`}</span>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))', gap: 16 }}>
-        {filteredPlacesView.map((p) => (
+      {paged.loading && placesView.length === 0 && <LoadingSpinner size={32} label="กำลังโหลดสถานที่..." />}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))', gap: 16, opacity: paged.loading ? 0.5 : 1, transition: 'opacity 0.15s ease', pointerEvents: paged.loading ? 'none' : 'auto' }}>
+        {placesView.map((p) => (
           <PlaceCard key={p.id} place={p} dim={!p.isActive} badge={!p.isActive ? 'ซ่อนอยู่' : null}>
             <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
               <button onClick={p.onEdit} style={{ flex: 1, background: '#E8F5E9', color: '#2E7D32', border: 'none', padding: 7, borderRadius: 10, fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>แก้ไข</button>
@@ -331,6 +342,7 @@ export default function PlacesTab() {
           </PlaceCard>
         ))}
       </div>
+      <PageControls page={paged.page} totalPages={paged.totalPages} total={paged.total} onChange={paged.setPage} />
     </>
   )
 }

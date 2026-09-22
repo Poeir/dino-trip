@@ -2,20 +2,35 @@ import { useState } from 'react'
 import { useApp } from '../context/AppContext.jsx'
 import Modal from '../components/Modal.jsx'
 import Field from '../components/Field.jsx'
+import PageControls from '../components/PageControls.jsx'
+import LoadingSpinner from '../components/LoadingSpinner.jsx'
+import { fetchKnowledgeBase } from '../lib/apiClient.js'
+import { usePagedList } from '../lib/usePagedList.js'
+
+// KnowledgeTab's own sort dropdown -> crudRouter.js's ?sort=/?dir=.
+const KB_SORT_PARAMS = {
+  'title-asc': { sort: 'title', dir: 'asc' },
+  'title-desc': { sort: 'title', dir: 'desc' },
+  category: { sort: 'category', dir: 'asc' },
+}
 
 export default function KnowledgeTab() {
   const { state, actions, derived } = useApp()
   const f = state.formData
-  const [query, setQuery] = useState('')
   const [sortBy, setSortBy] = useState('title-asc')
-  const sorters = {
-    'title-asc': (a, b) => a.title.localeCompare(b.title, 'th'),
-    'title-desc': (a, b) => b.title.localeCompare(a.title, 'th'),
-    'category': (a, b) => a.category.localeCompare(b.category),
+  const paged = usePagedList(fetchKnowledgeBase, { pageSize: 20, extraParams: KB_SORT_PARAMS[sortBy] })
+
+  const handleSave = async () => {
+    await actions.saveForm()
+    paged.refetch()
   }
-  const filteredKbView = derived.kbView
-    .filter((k) => k.title.toLowerCase().includes(query.trim().toLowerCase()))
-    .sort(sorters[sortBy])
+
+  const kbView = paged.rows.map((k) => ({
+    ...k,
+    statusLabel: (k.isPinned ? '📌 Pinned · ' : '') + (k.isActive ? 'Active' : 'Inactive'),
+    onEdit: () => actions.openEditForm('kb', k),
+    onDelete: async () => { await actions.deleteItem('kb', k.id); paged.refetch() },
+  }))
   return (
     <>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
@@ -42,21 +57,23 @@ export default function KnowledgeTab() {
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13.5 }}><input type="checkbox" checked={!!f.isActive} onChange={actions.onField_isActive} /> ใช้งาน (Active)</label>
           </div>
           <div style={{ display: 'flex', gap: 10 }}>
-            <button onClick={actions.saveForm} style={{ background: 'linear-gradient(135deg,#66BB6A,#388E3C)', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: 16, fontWeight: 700, fontSize: 13.5, cursor: 'pointer' }}>บันทึก</button>
+            <button onClick={handleSave} style={{ background: 'linear-gradient(135deg,#66BB6A,#388E3C)', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: 16, fontWeight: 700, fontSize: 13.5, cursor: 'pointer' }}>บันทึก</button>
             <button onClick={actions.cancelForm} style={{ background: '#fff', border: '1px solid #DCD8C6', padding: '10px 20px', borderRadius: 16, fontWeight: 700, fontSize: 13.5, cursor: 'pointer' }}>ยกเลิก</button>
           </div>
       </Modal>
 
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
-        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาฐานความรู้..." style={{ flex: 1, minWidth: 220, maxWidth: 360, border: '1px solid #DCD8C6', borderRadius: 20, padding: '9px 16px', fontSize: 13.5 }} />
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 16 }}>
+        <input value={paged.query} onChange={(e) => paged.setQuery(e.target.value)} placeholder="ค้นหาฐานความรู้..." style={{ flex: 1, minWidth: 220, maxWidth: 360, border: '1px solid #DCD8C6', borderRadius: 20, padding: '9px 16px', fontSize: 13.5 }} />
         <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} style={{ border: '1px solid #DCD8C6', borderRadius: 20, padding: '9px 14px', fontSize: 13.5 }}>
           <option value="title-asc">หัวข้อ (ก-ฮ)</option>
           <option value="title-desc">หัวข้อ (ฮ-ก)</option>
           <option value="category">หมวดหมู่</option>
         </select>
+        <span style={{ fontSize: 12.5, color: '#8a938c' }}>{paged.loading ? 'กำลังโหลด...' : `พบ ${paged.total} รายการ`}</span>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(240px,1fr))', gap: 16 }}>
-        {filteredKbView.map((k) => (
+      {paged.loading && kbView.length === 0 && <LoadingSpinner size={32} label="กำลังโหลดฐานความรู้..." />}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(240px,1fr))', gap: 16, opacity: paged.loading ? 0.5 : 1, transition: 'opacity 0.15s ease', pointerEvents: paged.loading ? 'none' : 'auto' }}>
+        {kbView.map((k) => (
           <div key={k.id} style={{ background: '#fff', border: '1px solid #E7E3D2', borderRadius: 14, padding: 16 }}>
             <div style={{ width: 36, height: 36, borderRadius: 10, background: '#E8F5E9', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
               <span style={{ width: 18, height: 14, background: '#2E7D32', borderRadius: '5px 5px 5px 0', position: 'relative' }}>
@@ -72,6 +89,7 @@ export default function KnowledgeTab() {
           </div>
         ))}
       </div>
+      <PageControls page={paged.page} totalPages={paged.totalPages} total={paged.total} onChange={paged.setPage} />
     </>
   )
 }

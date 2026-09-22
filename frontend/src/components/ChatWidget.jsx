@@ -148,6 +148,22 @@ export default function ChatWidget() {
                     ))}
                   </div>
                 )}
+                {msg.from === 'bot' && msg.events && msg.events.length > 0 && (
+                  <div style={{ paddingLeft: 29, fontSize: 10.5, color: '#8a938c' }}>
+                    อ้างอิงจาก {msg.events.length} อีเวนท์
+                  </div>
+                )}
+                {msg.from === 'bot' && msg.events && msg.events.length > 0 && (
+                  <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingLeft: 29 }}>
+                    {msg.events.map((e) => (
+                      <div key={e.id} onClick={() => actions.openEvent(e.id)} style={{ flexShrink: 0, width: 150, background: '#fff', border: '1px solid #E7E3D2', borderRadius: 12, padding: 10, cursor: 'pointer' }}>
+                        <div style={{ fontWeight: 700, fontSize: 12, color: '#1f2a24', marginBottom: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.name}</div>
+                        <div style={{ fontSize: 11, color: '#6d7a72', marginBottom: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.venueName || '-'}</div>
+                        <div style={{ fontSize: 10.5, color: '#8a938c', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.dateRange || 'ไม่มีข้อมูลวันที่'}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {msg.from === 'bot' && msg.places && msg.places.length > 0 && i === derived.chatMessagesView.length - 1 && !state.chatTyping && (
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', paddingLeft: 29 }}>
                     {getFollowUpChips(msg.places).map((chip) => (

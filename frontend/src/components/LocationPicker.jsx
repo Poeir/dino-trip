@@ -15,7 +15,7 @@ const DEFAULT_CENTER = { lat: 16.4419, lng: 102.8360 }
 // name/address the caller may want), or drag the pin directly (onChange
 // only). Manual lat/lng inputs are the fallback when the script fails to
 // load, same reasoning as DayRouteMap's loadError state.
-export default function LocationPicker({ value, onChange, onSelectPlace, height = 220 }) {
+export default function LocationPicker({ value, onChange, onSelectPlace, height = 220, showCoordinates = true }) {
   const mapContainerRef = useRef(null)
   const inputRef = useRef(null)
   const mapRef = useRef(null)
@@ -113,18 +113,26 @@ export default function LocationPicker({ value, onChange, onSelectPlace, height 
       ) : (
         <div ref={mapContainerRef} style={{ width: '100%', height, borderRadius: 12, marginBottom: 8, background: '#F0EDE0' }} />
       )}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-        <input
-          type="number" step="any" placeholder="ละติจูด (lat)"
-          value={value?.lat ?? ''} onChange={(e) => setManual('lat', e.target.value)}
-          style={{ border: '1px solid #DCD8C6', borderRadius: 8, padding: 8, fontSize: 13 }}
-        />
-        <input
-          type="number" step="any" placeholder="ลองจิจูด (lng)"
-          value={value?.lng ?? ''} onChange={(e) => setManual('lng', e.target.value)}
-          style={{ border: '1px solid #DCD8C6', borderRadius: 8, padding: 8, fontSize: 13 }}
-        />
-      </div>
+      {/* The manual lat/lng fields are the only way in when the map fails to
+          load, so they stay even for a caller that asked to hide them
+          (showCoordinates=false) -- only skipped when the map is working
+          and the caller doesn't want the raw numbers exposed (e.g. a public
+          search-your-hotel field, as opposed to an admin form that wants
+          precise manual control). */}
+      {(showCoordinates || loadError) && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          <input
+            type="number" step="any" placeholder="ละติจูด (lat)"
+            value={value?.lat ?? ''} onChange={(e) => setManual('lat', e.target.value)}
+            style={{ border: '1px solid #DCD8C6', borderRadius: 8, padding: 8, fontSize: 13 }}
+          />
+          <input
+            type="number" step="any" placeholder="ลองจิจูด (lng)"
+            value={value?.lng ?? ''} onChange={(e) => setManual('lng', e.target.value)}
+            style={{ border: '1px solid #DCD8C6', borderRadius: 8, padding: 8, fontSize: 13 }}
+          />
+        </div>
+      )}
     </div>
   )
 }

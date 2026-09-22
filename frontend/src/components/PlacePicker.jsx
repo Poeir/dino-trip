@@ -1,7 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import ImageSlot from './ImageSlot.jsx'
 import PlaceCard from './PlaceCard.jsx'
 import LocationPicker from './LocationPicker.jsx'
+import { fetchPlace, fetchPlaces } from '../lib/apiClient.js'
+import { usePagedList } from '../lib/usePagedList.js'
 
 // Search + a scrollable list of place cards (thumbnail, name, category) --
 // for picking one place out of a list that can run into the hundreds. A
@@ -11,18 +13,22 @@ import LocationPicker from './LocationPicker.jsx'
 // picked, collapses to a single summary card with a "เปลี่ยน" (change) button
 // instead of leaving the whole scrollable list open.
 //
+// Fetches its own search results (usePagedList) and resolves `value` via a
+// single-row fetchPlace -- there's no bulk `state.places` array for callers
+// to hand in anymore (see AppContext.jsx).
+//
 // `allowClear` adds a second button to unset the selection entirely (calls
 // onChange('')) -- for a caller where the link is optional (EventsTab.jsx),
 // as opposed to QrTab.jsx's usage where a QR always needs some place.
 //
 // `onAddFromGoogle`, if given, adds a second tab for venues that aren't in
-// `places` yet but exist on Google Maps (e.g. a one-off event ground) --
+// the system yet but exist on Google Maps (e.g. a one-off event ground) --
 // search+pin via LocationPicker, then hand {name,address,lat,lng} to the
-// caller, which is expected to create a real places row and update its own
-// `value`/`places` before this resolves. QrTab doesn't pass this prop: a QR
-// needs a reviewed, curated place, not a venue quick-added mid-search.
-export default function PlacePicker({ places, value, onChange, allowClear, onAddFromGoogle }) {
-  const [query, setQuery] = useState('')
+// caller, which is expected to create a real places row and call onChange
+// with its id -- the resulting `value` change is what makes this component
+// pick the new place up (via the fetchPlace effect below), no separate
+// "just added" bookkeeping needed here.
+export default function PlacePicker({ value, onChange, allowClear, onAddFromGoogle }) {
   const [browsing, setBrowsing] = useState(!value)
   const [mode, setMode] = useState('system')
   const [googleLoc, setGoogleLoc] = useState(null)
@@ -30,7 +36,15 @@ export default function PlacePicker({ places, value, onChange, allowClear, onAdd
   const [googleAddress, setGoogleAddress] = useState('')
   const [adding, setAdding] = useState(false)
   const [addError, setAddError] = useState('')
-  const selected = places.find((p) => p.id === value)
+  const [selected, setSelected] = useState(null)
+  const paged = usePagedList(fetchPlaces, { pageSize: 30, extraParams: { isActive: true } })
+
+  useEffect(() => {
+    if (!value) { setSelected(null); return }
+    let cancelled = false
+    fetchPlace(value).then((p) => { if (!cancelled) setSelected(p) }).catch(() => { if (!cancelled) setSelected(null) })
+    return () => { cancelled = true }
+  }, [value])
 
   const resetGoogleMode = () => {
     setMode('system')
@@ -48,18 +62,13 @@ export default function PlacePicker({ places, value, onChange, allowClear, onAdd
           <div style={{ fontWeight: 700, fontSize: 13.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{selected.name}</div>
           <div style={{ fontSize: 12, color: '#8a938c' }}>{selected.category}{selected.rating ? ` · ★ ${selected.rating}` : ''}</div>
         </div>
-        <button type="button" onClick={() => { setQuery(''); setBrowsing(true) }} style={{ background: '#F1F8E9', color: '#2E7D32', border: 'none', padding: '7px 12px', borderRadius: 10, fontSize: 12.5, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}>เปลี่ยน</button>
+        <button type="button" onClick={() => { paged.setQuery(''); setBrowsing(true) }} style={{ background: '#F1F8E9', color: '#2E7D32', border: 'none', padding: '7px 12px', borderRadius: 10, fontSize: 12.5, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}>เปลี่ยน</button>
         {allowClear && (
           <button type="button" onClick={() => onChange('')} aria-label="เลิกเชื่อมกับสถานที่นี้" style={{ background: '#fdecec', color: '#a33232', border: 'none', padding: '7px 12px', borderRadius: 10, fontSize: 12.5, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}>ล้าง</button>
         )}
       </div>
     )
   }
-
-  const filtered = (query.trim()
-    ? places.filter((p) => p.name.toLowerCase().includes(query.trim().toLowerCase()))
-    : places
-  ).slice(0, 30)
 
   const handleAddFromGoogle = async () => {
     if (!googleLoc || !googleName.trim()) return
@@ -122,17 +131,19 @@ export default function PlacePicker({ places, value, onChange, allowClear, onAdd
         <>
           <input
             autoFocus={!!selected}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            value={paged.query}
+            onChange={(e) => paged.setQuery(e.target.value)}
             placeholder="พิมพ์ค้นหาชื่อสถานที่..."
             style={{ width: '100%', border: '1px solid #DCD8C6', borderRadius: 8, padding: 9, fontSize: 14, marginBottom: 8 }}
           />
           <div style={{ maxHeight: 340, overflowY: 'auto', border: '1px solid #F0EDE0', borderRadius: 12, padding: 10, background: '#FBF8EE' }}>
-            {filtered.length === 0 ? (
-              <div style={{ padding: '16px 8px', textAlign: 'center', fontSize: 13, color: '#8a938c' }}>ไม่พบสถานที่ที่ตรงกับ "{query}"</div>
+            {paged.rows.length === 0 ? (
+              <div style={{ padding: '16px 8px', textAlign: 'center', fontSize: 13, color: '#8a938c' }}>
+                {paged.loading ? 'กำลังค้นหา...' : `ไม่พบสถานที่ที่ตรงกับ "${paged.query}"`}
+              </div>
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(150px,1fr))', gap: 10 }}>
-                {filtered.map((p) => (
+                {paged.rows.map((p) => (
                   <PlaceCard key={p.id} place={p} selected={p.id === value} onClick={() => { onChange(p.id); setBrowsing(false) }} />
                 ))}
               </div>

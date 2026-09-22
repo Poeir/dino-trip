@@ -1,6 +1,7 @@
 import { useApp } from '../context/AppContext.jsx'
-import { CalendarIcon, HeartIcon, WalletIcon, ClockIcon } from '../components/Icons.jsx'
+import { CalendarIcon, HeartIcon, WalletIcon, ClockIcon, PinIcon } from '../components/Icons.jsx'
 import TripLoadingPage from './TripLoadingPage.jsx'
+import LocationPicker from '../components/LocationPicker.jsx'
 
 export default function TripFormPage() {
   const { state, actions, derived } = useApp()
@@ -56,9 +57,36 @@ export default function TripFormPage() {
                   <input type="date" value={f.endDate} min={f.startDate || undefined} onChange={actions.onEndDateChange} style={{ width: '100%', border: '1px solid #DCD8C6', borderRadius: 10, padding: 11, fontSize: 14 }} />
                 </div>
               </div>
-              <label style={{ fontSize: 13, fontWeight: 700, color: '#1B5E20', display: 'block', marginBottom: 6 }}>พักที่ไหน?</label>
-              <input value={f.accommodation} onChange={actions.onAccommodationChange} placeholder="เช่น โรงแรมพูลแมน ขอนแก่น" style={{ width: '100%', border: '1px solid #DCD8C6', borderRadius: 10, padding: 11, fontSize: 14 }} />
-              <p style={{ fontSize: 11.5, color: '#8a938c', margin: '5px 0 18px' }}>ถ้าไม่ระบุ ระบบจะใช้ใจกลางเมืองขอนแก่นแทน ซึ่งอาจทำให้แผนเดินทางคลาดเคลื่อนจากที่พักจริง</p>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <label style={{ fontSize: 13, fontWeight: 700, color: '#1B5E20' }}>พักที่ไหน?</label>
+                {state.userLocation && (
+                  <button
+                    type="button" onClick={actions.useCurrentLocationForAccommodation}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 4, border: '1px solid #C8E6C9', background: '#F1F8E9', color: '#2E7D32', borderRadius: 20, padding: '5px 12px 5px 8px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+                  >
+                    <span style={{ transform: 'scale(0.6)', display: 'flex' }}><PinIcon box={false} /></span>
+                    ตำแหน่งปัจจุบัน
+                  </button>
+                )}
+              </div>
+              <LocationPicker
+                value={f.accommodation?.lat != null ? { lat: f.accommodation.lat, lng: f.accommodation.lng } : null}
+                onChange={actions.onAccommodationLocationChange}
+                onSelectPlace={actions.onAccommodationSelect}
+                height={160}
+                showCoordinates={false}
+              />
+              {/* One status line, never both at once -- what's picked (name
+                  only; the map pin already shows exactly where) once
+                  something's set, otherwise the fallback-behavior notice. */}
+              {f.accommodation?.lat != null ? (
+                <p style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12.5, color: '#2E7D32', fontWeight: 700, margin: '8px 0 18px' }}>
+                  <span style={{ transform: 'scale(0.6)', display: 'flex' }}><PinIcon box={false} /></span>
+                  {f.accommodation.name || 'ปักหมุดไว้แล้ว'}
+                </p>
+              ) : (
+                <p style={{ fontSize: 11.5, color: '#8a938c', margin: '8px 0 18px' }}>ถ้าไม่ระบุ ระบบจะใช้ใจกลางเมืองขอนแก่นแทน ซึ่งอาจทำให้แผนเดินทางคลาดเคลื่อนจากที่พักจริง</p>
+              )}
               <label style={{ fontSize: 13, fontWeight: 700, color: '#1B5E20', display: 'block', marginBottom: 6 }}>มีสถานที่ที่อยากไปแน่ๆ มั้ย? (ถ้ามี)</label>
               {derived.mustGoChipsView.length > 0 && (
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>

@@ -19,17 +19,43 @@ async function request(path, options) {
   return res.status === 204 ? null : res.json()
 }
 
-const apiGet = (path) => request(path)
+// `params` values that are undefined/null/'' are dropped rather than sent as
+// literal "undefined" strings -- callers pass e.g. `category: undefined` for
+// "ทั้งหมด" (no category filter) rather than branching around the call.
+const apiGet = (path, params) => {
+  if (!params) return request(path)
+  const qs = new URLSearchParams()
+  for (const [key, value] of Object.entries(params)) {
+    if (value != null && value !== '') qs.set(key, value)
+  }
+  const qsStr = qs.toString()
+  return request(qsStr ? `${path}?${qsStr}` : path)
+}
 const apiPost = (path, body) => request(path, { method: 'POST', body: JSON.stringify(body) })
 const apiPut = (path, body) => request(path, { method: 'PUT', body: JSON.stringify(body) })
 const apiDelete = (path) => request(path, { method: 'DELETE' })
 
-export const fetchPlaces = () => apiGet('/api/places')
+// Called with no `params`, these return the full unpaginated array
+// (crudRouter.js's default GET / behavior). Passing `{ page, limit, ... }`
+// switches the response to the paginated `{ data, total, page, pageSize,
+// totalPages }` shape instead -- used by the admin tables and the public
+// places/events list pages, each fetching their own page. `{ ids }` (comma-
+// joined) instead returns exactly those rows, unpaginated -- see
+// AppContext.jsx's post-trip-plan QR-points lookup.
+export const fetchPlaces = (params) => apiGet('/api/places', params)
+// Single place by id -- PlaceDetailPage/EventDetailPage/TripResultPage's
+// lookups and PlacePicker's "resolve the currently-selected value", all of
+// which used to page through AppContext's full bulk `state.places` array
+// before that was removed (see crudRouter.js's generic `GET /:id`).
+export const fetchPlace = (id) => apiGet(`/api/places/${id}`)
+// id+name only, for EventsTab's venue-name <datalist> -- see
+// places.routes.js's `/meta/names`.
+export const fetchPlaceNames = () => apiGet('/api/places/meta/names')
 export const createPlace = (payload) => apiPost('/api/places', payload)
 export const updatePlace = (id, payload) => apiPut(`/api/places/${id}`, payload)
 export const deletePlace = (id) => apiDelete(`/api/places/${id}`)
 
-export const fetchEvents = () => apiGet('/api/events')
+export const fetchEvents = (params) => apiGet('/api/events', params)
 export const createEvent = (payload) => apiPost('/api/events', payload)
 export const updateEvent = (id, payload) => apiPut(`/api/events/${id}`, payload)
 export const deleteEvent = (id) => apiDelete(`/api/events/${id}`)
@@ -58,17 +84,17 @@ export const uploadEventPhoto = async (id, file) => {
 }
 export const deleteEventPhoto = (id, photoId) => apiDelete(`/api/events/${id}/photos/${photoId}`)
 
-export const fetchKnowledgeBase = () => apiGet('/api/knowledge-base')
+export const fetchKnowledgeBase = (params) => apiGet('/api/knowledge-base', params)
 export const createKnowledgeBase = (payload) => apiPost('/api/knowledge-base', payload)
 export const updateKnowledgeBase = (id, payload) => apiPut(`/api/knowledge-base/${id}`, payload)
 export const deleteKnowledgeBase = (id) => apiDelete(`/api/knowledge-base/${id}`)
 
-export const fetchQrs = () => apiGet('/api/qrs')
+export const fetchQrs = (params) => apiGet('/api/qrs', params)
 export const createQr = (payload) => apiPost('/api/qrs', payload)
 export const updateQr = (id, payload) => apiPut(`/api/qrs/${id}`, payload)
 export const deleteQr = (id) => apiDelete(`/api/qrs/${id}`)
 
-export const fetchRewards = () => apiGet('/api/rewards')
+export const fetchRewards = (params) => apiGet('/api/rewards', params)
 export const createReward = (payload) => apiPost('/api/rewards', payload)
 export const updateReward = (id, payload) => apiPut(`/api/rewards/${id}`, payload)
 export const deleteReward = (id) => apiDelete(`/api/rewards/${id}`)
@@ -109,6 +135,10 @@ export const redeemReward = (rewardId) => apiPost('/api/points/redeem', { reward
 // created or edited since the last run -- see backend/src/routes/reindex.routes.js.
 export const triggerReindex = () => apiPost('/api/reindex', {})
 export const fetchReindexStatus = () => apiGet('/api/reindex/status')
+// { places: [{id,name}], knowledgeBase: [{id,name}], events: [{id,name}] } -- fetched
+// on demand (see DashboardTab's ReindexCard) rather than polled, since it's only
+// needed when the admin expands the pending list.
+export const fetchReindexPending = () => apiGet('/api/reindex/pending')
 
 // Up to 5 photos per place (see MAX_PHOTOS_PER_PLACE in
 // backend/src/routes/places.routes.js, matching fetch-places.js's own

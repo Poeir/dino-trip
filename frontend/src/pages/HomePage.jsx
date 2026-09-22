@@ -1,6 +1,16 @@
+import { useEffect, useState } from 'react'
 import { useApp } from '../context/AppContext.jsx'
 import ImageSlot from '../components/ImageSlot.jsx'
+import LoadingSpinner from '../components/LoadingSpinner.jsx'
 import { CalendarIcon, PinIcon } from '../components/Icons.jsx'
+import { fetchPlaces } from '../lib/apiClient.js'
+import { haversineKm } from '../utils/geo.js'
+
+// `places` arrives rating-ranked from the API (?limit=20 still takes
+// crudRouter's weighted-sort path -- see places.routes.js). When we know the
+// user's location, re-rank that top-20 quality floor by distance instead of
+// showing the single best-rated places regardless of how far away they are.
+const NEARBY_QUALITY_POOL = 20
 
 const heroParticles = [
   { left: '6%', top: '20%', size: 6, duration: 6.5, delay: 0 },
@@ -16,6 +26,27 @@ const heroParticles = [
 
 export default function HomePage() {
   const { state, actions, derived } = useApp()
+  const [places, setPlaces] = useState([])
+  const [placesLoading, setPlacesLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    fetchPlaces({ limit: NEARBY_QUALITY_POOL, isActive: true })
+      .then(({ data }) => { if (!cancelled) setPlaces(data) })
+      .catch(() => { if (!cancelled) setPlaces([]) })
+      .finally(() => { if (!cancelled) setPlacesLoading(false) })
+    return () => { cancelled = true }
+  }, [])
+
+  const homePlacesRanked = state.userLocation
+    ? places
+        .map((p) => ({ ...p, distanceKm: p.location ? haversineKm(state.userLocation, p.location) : null }))
+        .sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity))
+    : places
+  const homePlaces = homePlacesRanked.slice(0, 4).map((p) => ({
+    ...p, onOpen: () => actions.openPlace(p.id), isFavorite: state.favoriteIds.includes(p.id), onToggleFavorite: () => actions.toggleFavorite(p.id),
+  }))
+
   return (
     <>
       <main>
@@ -77,8 +108,9 @@ export default function HomePage() {
             </div>
             <a href="#" onClick={(e) => { e.preventDefault(); actions.goEvents() }} style={{ fontSize: 13.5, fontWeight: 700, color: '#2E7D32' }}>ดูทั้งหมด →</a>
           </div>
+          {state.dataLoading && <LoadingSpinner size={32} label="กำลังโหลดกิจกรรม..." />}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(320px,1fr))', gap: 22 }}>
-            {derived.homeEvents.map((event) => (
+            {!state.dataLoading && derived.homeEvents.map((event) => (
               <div key={event.id} onClick={event.onOpen} style={{ display: 'flex', gap: 16, background: '#fff', border: '1px solid #E7E3D2', borderRadius: 16, overflow: 'hidden', cursor: 'pointer', transition: 'transform 0.22s ease,box-shadow 0.22s ease', animation: 'dc-fade-up 0.45s ease both' }}>
                 <ImageSlot src={event.img} shape="rect" style={{ width: 130, alignSelf: 'stretch', flexShrink: 0 }} placeholder="ภาพงาน" />
                 <div style={{ padding: '14px 14px 14px 0', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
@@ -99,8 +131,9 @@ export default function HomePage() {
             </div>
             <a href="#" onClick={(e) => { e.preventDefault(); actions.goPlaces() }} style={{ fontSize: 13.5, fontWeight: 700, color: '#2E7D32' }}>ดูสถานที่ทั้งหมด →</a>
           </div>
+          {placesLoading && <LoadingSpinner size={32} label="กำลังโหลดสถานที่แนะนำ..." />}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: 24 }}>
-            {derived.homePlaces.map((place) => (
+            {!placesLoading && homePlaces.map((place) => (
               <div key={place.id} onClick={place.onOpen} style={{ background: '#fff', border: '1px solid #E7E3D2', borderRadius: 16, overflow: 'hidden', cursor: 'pointer', transition: 'transform 0.22s ease,box-shadow 0.22s ease', animation: 'dc-fade-up 0.45s ease both' }}>
                 <ImageSlot src={place.img} shape="rect" style={{ width: '100%', height: 160 }} placeholder="ภาพสถานที่" />
                 <div style={{ padding: 16 }}>
