@@ -11,4 +11,8 @@ export const rewardsRouter = crudRouter({
   order: { column: 'cost' },
   toRow: rewardPayload,
   mutateAuth: [requireAdmin],
+  // ?search= (QrTab's rewards search box).
+  searchColumns: ['name'],
+  // QrTab's rewards sort dropdown (name/cost).
+  sortable: ['name', 'cost'],
 })

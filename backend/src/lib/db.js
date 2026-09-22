@@ -14,5 +14,9 @@ pg.types.setTypeParser(1082, (val) => val)
 export const db = knex({
   client: 'pg',
   connection: process.env.DATABASE_URL,
-  pool: { min: 0, max: 10 },
+  // min: 2 keeps a couple of connections authenticated and idle-ready --
+  // with min: 0, any gap in traffic tears the pool down, and the next
+  // request pays a ~3-4s reconnect (TCP+TLS+auth to the remote Supabase
+  // pooler) on top of the query itself.
+  pool: { min: 2, max: 10 },
 })

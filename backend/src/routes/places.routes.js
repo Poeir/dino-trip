@@ -1,4 +1,4 @@
-import { crudRouter } from '../lib/crudRouter.js'
+import { crudRouter, invalidateCache, getCached, setCached } from '../lib/crudRouter.js'
 import { requireAdmin } from '../middleware/requireAdmin.js'
 import { rowToPlace, placePayload } from '../lib/mappers.js'
 import { sortPlacesByWeightedRating } from '../services/placeRanking.js'
@@ -42,7 +42,40 @@ export const placesRouter = crudRouter({
   // (or scripts/embed_content.py) recomputes it.
   invalidateColumns: ['embedding'],
   enrichRows: attachUploadedPhotos,
+  // ?search= (PlacesTab/PlacesListPage's search box), ?category= (exact
+  // match, both admin sort dropdown and the public category chips),
+  // ?isActive=true (PlacesListPage only -- admin sees hidden places too, so
+  // it never sends this param), ?hasQR=true (PointsPage's QR-places list),
+  // and ?ids= (AppContext's post-trip-plan QR-points lookup, batched by id
+  // instead of one `GET /:id` per place in the plan).
+  searchColumns: ['name', 'address'],
+  // PlacesTab's sort dropdown (name/rating) -- distinct from the weighted
+  // ranking sortRows uses when no explicit sort is requested (see
+  // crudRouter.js).
+  sortable: ['name', 'rating'],
+  filters: (query, q) => {
+    if (q.category) query = query.where('category', q.category)
+    if (q.isActive != null) query = query.where('is_active', q.isActive === 'true')
+    if (q.hasQR != null) query = query.where('has_qr', q.hasQR === 'true')
+    if (q.ids) query = query.whereIn('id', String(q.ids).split(','))
+    return query
+  },
 })
+
+// Lean id+name listing for EventsTab's venue-name <datalist> -- nested two
+// segments deep (not a flat `/names`) so it can't be shadowed by crudRouter's
+// generic `GET /:id`, which is registered first and would otherwise treat
+// "names" as an id. Shares crudRouter's cache map via getCached/setCached --
+// the `places/` prefix means every invalidateCache('places') call already in
+// this file clears it too (see crudRouter.js's invalidateCache).
+const PLACES_NAMES_CACHE_KEY = 'places/meta/names'
+placesRouter.get('/meta/names', asyncHandler(async (req, res) => {
+  const cached = getCached(PLACES_NAMES_CACHE_KEY)
+  if (cached) return res.json(cached)
+  const rows = await db('places').select('id', 'name').orderBy('name')
+  setCached(PLACES_NAMES_CACHE_KEY, rows)
+  res.json(rows)
+}))
 
 const photoUpload = createImageUploadMiddleware('photoFile')
 
@@ -65,6 +98,7 @@ placesRouter.post('/:id/photos', requireAdmin, photoUpload, asyncHandler(async (
 
   const row = await db('places').select(PLACE_COLUMNS.split(',').map((s) => s.trim())).where('id', placeId).first()
   const [enriched] = await attachUploadedPhotos([row])
+  invalidateCache('places')
   res.status(201).json(rowToPlace(enriched))
 }))
 
@@ -80,5 +114,6 @@ placesRouter.delete('/:id/photos/:photoId', requireAdmin, asyncHandler(async (re
 
   const row = await db('places').select(PLACE_COLUMNS.split(',').map((s) => s.trim())).where('id', req.params.id).first()
   const [enriched] = await attachUploadedPhotos([row])
+  invalidateCache('places')
   res.json(rowToPlace(enriched))
 }))

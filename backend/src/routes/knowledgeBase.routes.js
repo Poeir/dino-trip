@@ -13,4 +13,8 @@ export const knowledgeBaseRouter = crudRouter({
   mutateAuth: [requireAdmin],
   // title/category/content feed the RAG embedding text (see places.routes.js).
   invalidateColumns: ['embedding'],
+  // ?search= (KnowledgeTab's search box).
+  searchColumns: ['title', 'content'],
+  // KnowledgeTab's sort dropdown (title/category).
+  sortable: ['title', 'category'],
 })

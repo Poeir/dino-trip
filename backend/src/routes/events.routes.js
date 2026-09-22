@@ -1,4 +1,4 @@
-import { crudRouter } from '../lib/crudRouter.js'
+import { crudRouter, invalidateCache } from '../lib/crudRouter.js'
 import { requireAdmin } from '../middleware/requireAdmin.js'
 import { asyncHandler } from '../middleware/asyncHandler.js'
 import { httpError } from '../middleware/errorHandler.js'
@@ -45,6 +45,10 @@ export const eventsRouter = crudRouter({
   // recomputes it.
   invalidateColumns: ['embedding'],
   enrichRows: attachEventPhotos,
+  // ?search= (EventsTab/EventsListPage's search box).
+  searchColumns: ['name'],
+  // EventsTab's sort dropdown (name/status).
+  sortable: ['name', 'status'],
 })
 
 // LLM-extracts event form fields from a pasted Facebook post (see
@@ -80,6 +84,7 @@ eventsRouter.post('/:id/photos', requireAdmin, photoUpload, asyncHandler(async (
 
   const row = await db('events').select(EVENT_COLUMN_LIST).where('id', eventId).first()
   const [enriched] = await attachEventPhotos([row])
+  invalidateCache('events')
   res.status(201).json(rowToEvent(enriched))
 }))
 
@@ -95,5 +100,6 @@ eventsRouter.delete('/:id/photos/:photoId', requireAdmin, asyncHandler(async (re
 
   const row = await db('events').select(EVENT_COLUMN_LIST).where('id', req.params.id).first()
   const [enriched] = await attachEventPhotos([row])
+  invalidateCache('events')
   res.json(rowToEvent(enriched))
 }))

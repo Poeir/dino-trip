@@ -17,3 +17,7 @@ reindexRouter.post('/', requireAdmin, asyncHandler(async (req, res) => {
 reindexRouter.get('/status', requireAdmin, asyncHandler(async (req, res) => {
   res.json(await forwardToChatbotService('/admin/reindex/status'))
 }))
+
+reindexRouter.get('/pending', requireAdmin, asyncHandler(async (req, res) => {
+  res.json(await forwardToChatbotService('/admin/reindex/pending'))
+}))
