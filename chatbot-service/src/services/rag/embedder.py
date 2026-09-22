@@ -120,6 +120,17 @@ def get_pending_counts() -> dict:
     return {"places": places.count or 0, "knowledgeBase": kb.count or 0, "events": len(pending_events())}
 
 
+def get_pending_items() -> dict:
+    """Same "pending" definition as get_pending_counts(), but names instead
+    of just counts -- for the admin dashboard's expandable pending list, so
+    an admin can see *what* still needs indexing instead of just how many."""
+    return {
+        "places": [{"id": p["id"], "name": p.get("name") or "(ไม่มีชื่อ)"} for p in pending_places()],
+        "knowledgeBase": [{"id": k["id"], "name": k.get("title") or "(ไม่มีชื่อ)"} for k in pending_knowledge_base()],
+        "events": [{"id": e["id"], "name": e.get("name") or "(ไม่มีชื่อ)"} for e in pending_events()],
+    }
+
+
 def embed_rows(table: str, rows: list[dict], text_fn) -> int:
     """Encodes and writes `rows` back to `table`. Returns how many succeeded."""
     if not rows:

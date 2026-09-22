@@ -1,4 +1,5 @@
 import datetime
+import itertools
 import logging
 import time
 from openai import OpenAI
@@ -13,16 +14,46 @@ FALLBACK_MESSAGE = "(น้องไดโน) ไม่มีข้อมูล
 # can detect a no-match answer deterministically (instead of string-matching
 # the LLM's prose against FALLBACK_MESSAGE, which breaks the moment the model
 # paraphrases its refusal instead of repeating it verbatim), and separately
-# so `places` cards are only attached when the answer actually drew on the
-# `places` table -- a knowledge_base-only answer (history/culture/transport)
+# so `places`/`events` cards are only attached when the answer actually drew
+# on that table -- a knowledge_base-only answer (history/culture/transport)
 # was otherwise still shipping the top-3 retrieved *places* as source cards,
 # even though the reply never mentioned them (confirmed by testing).
+SOURCE_PLACES = "PLACES"
+SOURCE_KB = "KB"
+SOURCE_EVENTS = "EVENTS"
+_SOURCES = (SOURCE_PLACES, SOURCE_KB, SOURCE_EVENTS)
+
 MATCH_PLACES_TAG = "[MATCH:PLACES]"
 MATCH_KB_TAG = "[MATCH:KB]"
-MATCH_BOTH_TAG = "[MATCH:BOTH]"
+MATCH_EVENTS_TAG = "[MATCH:EVENTS]"
 NO_MATCH_TAG = "[NO_MATCH]"
-ALL_TAGS = (MATCH_PLACES_TAG, MATCH_KB_TAG, MATCH_BOTH_TAG, NO_MATCH_TAG)
-PLACE_CARD_TAGS = (MATCH_PLACES_TAG, MATCH_BOTH_TAG)
+
+# Every way the model could plausibly write a multi-source tag: any
+# non-empty subset of {PLACES, KB, EVENTS}, in any order. The prompt asks
+# for one canonical order (PLACES, KB, EVENTS) for readability, but this
+# accepts every permutation too -- a model that writes "[MATCH:EVENTS+PLACES]"
+# instead of "[MATCH:PLACES+EVENTS]" still matches cleanly instead of
+# leaking the raw tag into the visible reply (see chat_stream's
+# prefix-buffering, which falls through to "not a tag" if nothing here matches).
+MATCH_TAGS = tuple(
+    f"[MATCH:{'+'.join(combo)}]"
+    for r in range(1, len(_SOURCES) + 1)
+    for combo in itertools.permutations(_SOURCES, r)
+)
+ALL_TAGS = (*MATCH_TAGS, NO_MATCH_TAG)
+
+
+def match_tag(*sources: str) -> str:
+    """Builds a [MATCH:...] tag from source names, e.g.
+    match_tag(SOURCE_PLACES, SOURCE_EVENTS) -> "[MATCH:PLACES+EVENTS]"."""
+    return f"[MATCH:{'+'.join(sources)}]"
+
+
+def _tag_sources(tag: str) -> set[str]:
+    """Which of PLACES/KB/EVENTS a [MATCH:...] tag cites -- order-independent."""
+    if not tag or tag == NO_MATCH_TAG:
+        return set()
+    return set(tag[len("[MATCH:"):-1].split("+"))
 
 
 class RAGChatbotService:
@@ -31,19 +62,21 @@ class RAGChatbotService:
         self.client = OpenAI(api_key=API_KEY, base_url=BASE_URL)
         self.model_name = MODEL_NAME
 
-    def _prepare(self, user_message: str) -> tuple[list[dict], list[dict], dict]:
-        # Retrieve from both places and knowledge_base -- unlike the old
+    def _prepare(self, user_message: str) -> tuple[list[dict], list[dict], list[dict], dict]:
+        # Retrieve from places, knowledge_base, and events -- unlike the old
         # project, which only ever searched places.
         t0 = time.time()
         places = self.retriever.search_and_expand(query=user_message, limit=3)
         kb_entries = self.retriever.search_knowledge_base(query=user_message, limit=3)
+        events = self.retriever.search_events(query=user_message, limit=3)
         retrieve_ms = (time.time() - t0) * 1000
 
         logger.info(
-            "chat retrieval query=%r place_ids=%s kb_ids=%s retrieve_ms=%.0f",
+            "chat retrieval query=%r place_ids=%s kb_ids=%s event_ids=%s retrieve_ms=%.0f",
             user_message,
             [p["id"] for p in places],
             [k["id"] for k in kb_entries],
+            [e["id"] for e in events],
             retrieve_ms,
         )
 
@@ -57,6 +90,18 @@ class RAGChatbotService:
                 "image_url": p.get("img"),
             }
             for p in places
+        ]
+        source_events = [
+            {
+                "id": e["id"],
+                "name": e["name"],
+                "category": e.get("category"),
+                "venueName": e.get("venue_name"),
+                "dateRange": e.get("date_range"),
+                "admission": e.get("admission"),
+                "image_url": e.get("img"),
+            }
+            for e in events
         ]
 
         place_context = "\n---\n".join(
@@ -73,24 +118,33 @@ class RAGChatbotService:
         kb_context = "\n---\n".join(
             f"หัวข้อ: {k['title']}\nเนื้อหา: {k.get('content', '')}" for k in kb_entries
         )
-        context_str = "\n---\n".join(filter(None, [place_context, kb_context])) or "ไม่มีข้อมูลที่ตรงกับคำถามในฐานข้อมูล"
+        event_context = "\n---\n".join(
+            f"ชื่องาน: {e['name']}\n"
+            f"ประเภท: {e.get('category') or '-'}\n"
+            f"สถานที่จัดงาน: {e.get('venue_name') or '-'}\n"
+            f"วันที่จัดงาน: {e.get('date_range') or 'ไม่มีข้อมูลวันที่'}\n"
+            f"ค่าเข้างาน: {e.get('admission') or 'ไม่มีข้อมูลค่าเข้างาน'}\n"
+            f"เหมาะสำหรับ: {', '.join(e.get('suitable_for') or []) or 'ไม่มีข้อมูล'}\n"
+            f"รายละเอียด: {e.get('description') or '-'}"
+            for e in events
+        )
+        context_str = "\n---\n".join(filter(None, [place_context, kb_context, event_context])) or "ไม่มีข้อมูลที่ตรงกับคำถามในฐานข้อมูล"
 
         current_time_info = datetime.datetime.now().strftime("%A เวลา %H:%M น.")
 
         system_prompt = f"""
         คุณคือ 'น้องไดโน' ผู้ช่วยส่วนตัวสำหรับการท่องเที่ยวในจังหวัดขอนแก่น เป็นมิตรและสุภาพ
-        ขณะนี้คือวัน {current_time_info} (ใช้ข้อมูลนี้ตัดสินว่าสถานที่เปิดหรือปิด)
+        ขณะนี้คือวัน {current_time_info} (ใช้ข้อมูลนี้ตัดสินว่าสถานที่เปิดหรือปิด และงานไหนยังไม่ผ่านไป)
 
         [กฎเหล็ก]
-        1. ขึ้นต้นคำตอบทุกครั้งด้วยแท็กใดแท็กหนึ่งต่อไปนี้เป็นอันดับแรกเสมอ (ห้ามมีข้อความอื่นนำหน้าแท็ก) [ข้อมูลบริบท] ด้านล่างมี 2 ส่วนคือ "รายการสถานที่" (ร้าน/คาเฟ่/ที่เที่ยว) และ "ความรู้ทั่วไป" (ประวัติศาสตร์/วัฒนธรรม/การเดินทาง ฯลฯ):
-           - {MATCH_PLACES_TAG} ตามด้วยคำตอบ หากคำตอบอ้างอิงเฉพาะ "รายการสถานที่"
-           - {MATCH_KB_TAG} ตามด้วยคำตอบ หากคำตอบอ้างอิงเฉพาะ "ความรู้ทั่วไป" ไม่ได้พูดถึงสถานที่รายการใดใน [ข้อมูลบริบท] เลย
-           - {MATCH_BOTH_TAG} ตามด้วยคำตอบ หากคำตอบอ้างอิงทั้งสองส่วน
-           - ใช้แท็ก MATCH ที่ตรงกับสิ่งที่ตอบจริง แม้จะตอบได้แค่บางส่วนของคำถามที่ถามหลายอย่างพร้อมกัน โดยที่แต่ละส่วนต้องตรงกับที่ผู้ใช้ถามจริงๆ (เช่น ผู้ใช้ถามทั้งร้านกาแฟและร้านอาหาร แต่บริบทมีแต่ร้านกาแฟ ก็ให้ใช้ {MATCH_PLACES_TAG} แนะนำร้านกาแฟที่มี แล้วบอกตรงๆ ว่าไม่มีข้อมูลร้านอาหารในส่วนที่เหลือ)
-           - ใช้ {NO_MATCH_TAG} ถ้าไม่มีรายการใดใน [ข้อมูลบริบท] ตรงกับสิ่งที่ผู้ใช้ถามหาจริงๆ แม้แต่รายการเดียว -- ห้ามใช้ MATCH แค่เพราะบริบทมีสถานที่ประเภทอื่นที่ "ใกล้เคียง" หรืออยู่ในขอนแก่นเหมือนกัน (เช่น ผู้ใช้ถามหา "น้ำตก" แต่บริบทมีแต่สะพานกับสวนน้ำ ซึ่งไม่ใช่น้ำตก เลยไม่นับว่าตรง ต้องใช้ {NO_MATCH_TAG} ห้ามหยิบสะพาน/สวนน้ำมาแนะนำแทน) ตามด้วยอะไรก็ได้สั้นๆ (ข้อความส่วนนี้จะไม่ถูกแสดงให้ผู้ใช้เห็น ระบบจะแสดงข้อความมาตรฐานแทน)
+        1. ขึ้นต้นคำตอบทุกครั้งด้วยแท็ก [MATCH:...] เป็นอันดับแรกเสมอ (ห้ามมีข้อความอื่นนำหน้าแท็ก) [ข้อมูลบริบท] ด้านล่างมี 3 ส่วนคือ "รายการสถานที่" (ร้าน/คาเฟ่/ที่เที่ยว), "ความรู้ทั่วไป" (ประวัติศาสตร์/วัฒนธรรม/การเดินทาง ฯลฯ), และ "รายการอีเวนท์" (งาน/เทศกาล/กิจกรรม):
+           - ใส่ชื่อแหล่งข้อมูลที่คำตอบ "อ้างอิงจริง" ในแท็ก คั่นด้วยเครื่องหมาย + ตามลำดับ PLACES, KB, EVENTS เท่านั้น -- ใช้ได้แค่คำว่า {SOURCE_PLACES} (รายการสถานที่), {SOURCE_KB} (ความรู้ทั่วไป), {SOURCE_EVENTS} (รายการอีเวนท์) เช่น {MATCH_PLACES_TAG}, {MATCH_EVENTS_TAG}, {match_tag(SOURCE_PLACES, SOURCE_EVENTS)}, {match_tag(SOURCE_PLACES, SOURCE_KB, SOURCE_EVENTS)}
+           - ใช้แหล่งข้อมูลที่ตรงกับสิ่งที่ตอบจริงเท่านั้น แม้จะตอบได้แค่บางส่วนของคำถามที่ถามหลายอย่างพร้อมกัน โดยที่แต่ละส่วนต้องตรงกับที่ผู้ใช้ถามจริงๆ (เช่น ผู้ใช้ถามทั้งร้านกาแฟและงานเทศกาล แต่บริบทมีแต่ร้านกาแฟ ก็ให้ใช้ {MATCH_PLACES_TAG} แนะนำร้านกาแฟที่มี แล้วบอกตรงๆ ว่าไม่มีข้อมูลงานเทศกาลในส่วนที่เหลือ)
+           - ใช้ {NO_MATCH_TAG} ถ้าไม่มีรายการใดใน [ข้อมูลบริบท] ตรงกับสิ่งที่ผู้ใช้ถามหาจริงๆ แม้แต่รายการเดียว -- ห้ามใช้ MATCH แค่เพราะบริบทมีรายการประเภทอื่นที่ "ใกล้เคียง" หรืออยู่ในขอนแก่นเหมือนกัน (เช่น ผู้ใช้ถามหา "น้ำตก" แต่บริบทมีแต่สะพานกับสวนน้ำ ซึ่งไม่ใช่น้ำตก เลยไม่นับว่าตรง ต้องใช้ {NO_MATCH_TAG} ห้ามหยิบสะพาน/สวนน้ำมาแนะนำแทน) ตามด้วยอะไรก็ได้สั้นๆ (ข้อความส่วนนี้จะไม่ถูกแสดงให้ผู้ใช้เห็น ระบบจะแสดงข้อความมาตรฐานแทน)
         2. กรุณาตอบคำถามของผู้ใช้โดยอ้างอิงจาก [ข้อมูลบริบท] ด้านล่างนี้เท่านั้น
         3. หากมีข้อมูลในบริบท ให้สรุปและตอบอย่างเป็นธรรมชาติ
-        4. ห้ามแต่งเติม หรือเดาข้อมูลสถานที่ขึ้นมาเองเด็ดขาด รวมถึงคุณสมบัติที่ไม่มีระบุใน [ข้อมูลบริบท] เช่น ที่จอดรถ, wifi, การเดินทาง/ระยะห่างจากจุดอื่น -- ถ้าไม่มีข้อมูลด้านนี้ ให้บอกตรงๆ ว่าไม่มีข้อมูล ห้ามอนุมานจากที่อยู่หรือชื่อสถานที่เอง
+        4. ห้ามแต่งเติม หรือเดาข้อมูลสถานที่/งานขึ้นมาเองเด็ดขาด รวมถึงคุณสมบัติที่ไม่มีระบุใน [ข้อมูลบริบท] เช่น ที่จอดรถ, wifi, การเดินทาง/ระยะห่างจากจุดอื่น, วันที่จัดงานที่ไม่ได้ระบุไว้ -- ถ้าไม่มีข้อมูลด้านนี้ ให้บอกตรงๆ ว่าไม่มีข้อมูล ห้ามอนุมานจากที่อยู่หรือชื่อสถานที่/งานเอง
+        5. ห้ามแนะนำอีเวนท์ที่ไม่ได้อยู่ใน [ข้อมูลบริบท] -- ระบบกรองอีเวนท์ที่จบไปแล้วหรือถูกยกเลิกออกให้แล้ว รายการอีเวนท์ที่เห็นในบริบทคือรายการที่ยังใช้ได้ทั้งหมด
 
         [ข้อมูลบริบท]
         {context_str}
@@ -100,11 +154,11 @@ class RAGChatbotService:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_message},
         ]
-        return messages, source_places, {"retrieve_ms": retrieve_ms}
+        return messages, source_places, source_events, {"retrieve_ms": retrieve_ms}
 
     def chat(self, user_message: str) -> dict:
         t_total0 = time.time()
-        messages, source_places, timings = self._prepare(user_message)
+        messages, source_places, source_events, timings = self._prepare(user_message)
 
         t0 = time.time()
         response = self.client.chat.completions.create(
@@ -124,10 +178,14 @@ class RAGChatbotService:
         if is_fallback:
             bot_reply = FALLBACK_MESSAGE
             source_places = []
+            source_events = []
         elif matched_tag:
             bot_reply = raw_reply[len(matched_tag):].strip()
-            if matched_tag not in PLACE_CARD_TAGS:
+            matched_sources = _tag_sources(matched_tag)
+            if SOURCE_PLACES not in matched_sources:
                 source_places = []
+            if SOURCE_EVENTS not in matched_sources:
+                source_events = []
         else:
             # Model didn't follow the tag instruction -- treat as a match
             # rather than silently dropping the answer.
@@ -138,16 +196,16 @@ class RAGChatbotService:
             matched_tag, timings["retrieve_ms"], llm_ms, total_ms,
         )
 
-        return {"reply": bot_reply, "places": source_places}
+        return {"reply": bot_reply, "places": source_places, "events": source_events}
 
     def chat_stream(self, user_message: str):
         """Generator yielding {"type": "token", "text": ...} chunks as the LLM
-        streams its answer, then a final {"type": "done", "reply", "places"}.
-        `places` is only known once the leading [MATCH]/[NO_MATCH] tag has
-        been read from the stream, so it's withheld until the last event
-        rather than sent up front."""
+        streams its answer, then a final {"type": "done", "reply", "places",
+        "events"}. `places`/`events` are only known once the leading
+        [MATCH]/[NO_MATCH] tag has been read from the stream, so they're
+        withheld until the last event rather than sent up front."""
         t_total0 = time.time()
-        messages, source_places, timings = self._prepare(user_message)
+        messages, source_places, source_events, timings = self._prepare(user_message)
 
         t0 = time.time()
         stream = self.client.chat.completions.create(
@@ -166,6 +224,7 @@ class RAGChatbotService:
         tag_resolved = False
         is_fallback = False
         include_places = False
+        include_events = False
         # Whitespace right after the tag (typically one space before the
         # real reply starts) needs skipping, but it can arrive in its own
         # chunk separately from the tag -- a plain one-shot .lstrip() at the
@@ -195,7 +254,9 @@ class RAGChatbotService:
                         full_text = FALLBACK_MESSAGE
                         yield {"type": "token", "text": FALLBACK_MESSAGE}
                     else:
-                        include_places = matched_tag in PLACE_CARD_TAGS
+                        matched_sources = _tag_sources(matched_tag)
+                        include_places = SOURCE_PLACES in matched_sources
+                        include_events = SOURCE_EVENTS in matched_sources
                         remainder = tag_buffer[len(matched_tag):].lstrip()
                         if remainder:
                             full_text += remainder
@@ -208,6 +269,7 @@ class RAGChatbotService:
                     # normal (matched) reply rather than dropping it.
                     tag_resolved = True
                     include_places = True
+                    include_events = True
                     full_text += tag_buffer
                     yield {"type": "token", "text": tag_buffer}
                 # else: still an ambiguous prefix of one of the tags, keep buffering
@@ -228,10 +290,11 @@ class RAGChatbotService:
         llm_ms = (time.time() - t0) * 1000
         final_reply = FALLBACK_MESSAGE if is_fallback else full_text
         final_places = source_places if include_places else []
+        final_events = source_events if include_events else []
         total_ms = (time.time() - t_total0) * 1000
         logger.info(
-            "chat_stream done fallback=%s include_places=%s retrieve_ms=%.0f llm_ms=%.0f total_ms=%.0f",
-            is_fallback, include_places, timings["retrieve_ms"], llm_ms, total_ms,
+            "chat_stream done fallback=%s include_places=%s include_events=%s retrieve_ms=%.0f llm_ms=%.0f total_ms=%.0f",
+            is_fallback, include_places, include_events, timings["retrieve_ms"], llm_ms, total_ms,
         )
 
-        yield {"type": "done", "reply": final_reply, "places": final_places}
+        yield {"type": "done", "reply": final_reply, "places": final_places, "events": final_events}

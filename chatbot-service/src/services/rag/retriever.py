@@ -35,3 +35,15 @@ class PlaceRetriever:
             "match_knowledge_base_hybrid", {"query_embedding": vec, "query_text": query, "match_count": limit}
         ).execute()
         return res.data or []
+
+    def search_events(self, query: str, limit: int = 3):
+        """Same hybrid approach as search_and_expand(), over `events` --
+        match_events_hybrid already excludes cancelled events and (via
+        `embedding is not null`) expired ones, since embedder.py's
+        expire_events() clears an expired event's embedding on reindex."""
+        query = expand_query(query)
+        vec = embed(query)
+        res = supabase.rpc(
+            "match_events_hybrid", {"query_embedding": vec, "query_text": query, "match_count": limit}
+        ).execute()
+        return res.data or []

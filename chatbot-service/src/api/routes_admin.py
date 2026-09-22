@@ -25,3 +25,8 @@ def trigger_reindex():
 @router.get("/reindex/status")
 def reindex_status():
     return embedder.get_status()
+
+
+@router.get("/reindex/pending")
+def reindex_pending():
+    return embedder.get_pending_items()

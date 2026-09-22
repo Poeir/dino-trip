@@ -176,3 +176,35 @@ class TestMultiInterestRoundRobin:
         # build_candidate_list) -- fires regardless of interests since
         # "Generic1" above is category "คาเฟ่", not "ร้านอาหาร".
         assert service.retriever.queries_seen == ["สถานที่ท่องเที่ยวยอดนิยม ขอนแก่น", "ร้านอาหารแนะนำ ขอนแก่น"]
+
+
+class TestAccommodationLocation:
+    """build_candidate_list's first return value (`_` in every test above) --
+    verifies real coordinates from the frontend's map picker/geolocation are
+    used directly instead of find_place_by_name()'s name-matching against
+    the curated `places` table (which a real accommodation's name almost
+    never matches), and that omitting them preserves the old
+    find_place_by_name -> DEFAULT_HOTEL_LOCATION fallback chain untouched."""
+
+    def test_supplied_coordinates_are_used_directly(self, service, monkeypatch):
+        # find_place_by_name should never even be consulted when coordinates
+        # are supplied -- assert that by making it explode if called.
+        def _boom(name_query):
+            raise AssertionError("find_place_by_name should not be called when coordinates are supplied")
+        monkeypatch.setattr(orchestrator_module, "find_place_by_name", _boom)
+        service.retriever = FakeRetriever([])
+
+        user_input = make_user_input(accommodation_name="My Hotel", accommodation_lat=16.5, accommodation_lng=102.9)
+        accommodation, _, _, _ = service.build_candidate_list(user_input)
+        assert accommodation.lat == 16.5
+        assert accommodation.lng == 102.9
+        assert accommodation.name == "My Hotel"
+
+    def test_missing_coordinates_falls_back_to_default_hotel_location(self, service):
+        # `service` fixture already monkeypatches find_place_by_name to
+        # return None -- this is the "old client / nothing picked" path.
+        service.retriever = FakeRetriever([])
+        user_input = make_user_input()  # no accommodation_lat/lng override
+        accommodation, _, _, _ = service.build_candidate_list(user_input)
+        assert accommodation.lat == orchestrator_module.DEFAULT_HOTEL_LOCATION["lat"]
+        assert accommodation.lng == orchestrator_module.DEFAULT_HOTEL_LOCATION["lng"]

@@ -58,6 +58,15 @@ class TripInput(BaseModel):
     trip_duration_days: int
     start_date: str
     accommodation_name: str
+    # Real coordinates from the frontend's Google Maps search (LocationPicker)
+    # or the browser's geolocation -- when present, orchestrator.py prefers
+    # these over find_place_by_name()'s name-matching against the curated
+    # `places` table, which real accommodations (not tourist attractions)
+    # almost never match, silently falling back to a hardcoded city-center
+    # point. None for both (old clients, or nothing picked) keeps that old
+    # fallback behavior unchanged.
+    accommodation_lat: Optional[float] = None
+    accommodation_lng: Optional[float] = None
     must_go: List[str] = []
     interests: List[str] = []
     trip_pace: str = "relaxed"  # relaxed | standard | packed

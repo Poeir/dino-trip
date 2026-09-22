@@ -54,18 +54,35 @@ class TripBuilderService:
         self.retriever = PlaceRetriever()
 
     def build_candidate_list(self, user_input: TripInput):
-        accommodation_row = find_place_by_name(user_input.accommodation_name)
-        if accommodation_row:
-            accommodation = Place(**accommodation_row)
-        else:
+        # Real coordinates from the frontend's map picker/geolocation take
+        # priority over name-matching -- find_place_by_name() only searches
+        # the curated `places` table (tourist attractions/cafes/restaurants),
+        # which a real accommodation's name almost never matches, so that
+        # path was silently falling back to a hardcoded city-center point
+        # for most users. Only reached when the request didn't supply
+        # coordinates at all (old clients, or nothing picked).
+        if user_input.accommodation_lat is not None and user_input.accommodation_lng is not None:
             accommodation = Place(
                 id="hotel_dummy",
-                name=user_input.accommodation_name,
+                name=user_input.accommodation_name or "ที่พัก",
                 category="ที่พัก",
                 rating=4.5,
-                lat=DEFAULT_HOTEL_LOCATION["lat"],
-                lng=DEFAULT_HOTEL_LOCATION["lng"],
+                lat=user_input.accommodation_lat,
+                lng=user_input.accommodation_lng,
             )
+        else:
+            accommodation_row = find_place_by_name(user_input.accommodation_name)
+            if accommodation_row:
+                accommodation = Place(**accommodation_row)
+            else:
+                accommodation = Place(
+                    id="hotel_dummy",
+                    name=user_input.accommodation_name,
+                    category="ที่พัก",
+                    rating=4.5,
+                    lat=DEFAULT_HOTEL_LOCATION["lat"],
+                    lng=DEFAULT_HOTEL_LOCATION["lng"],
+                )
 
         must_go_list = []
         missing_must_go = []
