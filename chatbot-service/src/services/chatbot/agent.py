@@ -49,6 +49,37 @@ def match_tag(*sources: str) -> str:
     return f"[MATCH:{'+'.join(sources)}]"
 
 
+# Multi-turn: the client owns the conversation and resends it each request
+# (stateless server). Only the tail is kept and each turn is capped so a long
+# chat can't blow up the prompt.
+MAX_HISTORY_MESSAGES = 6
+MAX_HISTORY_CHARS = 1000
+MAX_REWRITE_CHARS = 300
+_HISTORY_ROLES = ("user", "assistant")
+
+REWRITE_PROMPT = """คุณเขียนคำถามล่าสุดของผู้ใช้ใหม่ให้เป็นประโยคที่เข้าใจได้ด้วยตัวเอง โดยไม่ต้องอ่านบทสนทนาก่อนหน้า
+- แทนคำอ้างอิงอย่าง "ร้านนั้น" "งานนั้น" "แล้วที่สองล่ะ" ด้วยชื่อจริงจากบทสนทนา
+- ถ้าคำถามล่าสุดเปลี่ยนหัวข้อใหม่หรือเข้าใจได้ด้วยตัวเองอยู่แล้ว ให้ตอบคำถามเดิมทุกตัวอักษร ห้ามเอาหัวข้อเก่ามาปน
+- ห้ามตอบคำถามเอง ห้ามเพิ่มข้อมูลที่ไม่มีในบทสนทนา
+- ตอบเฉพาะคำถามที่เขียนใหม่ บรรทัดเดียว ไม่มีคำอธิบายอื่น"""
+
+
+def clean_history(history) -> list[dict]:
+    """Sanitizes client-supplied history: only user/assistant turns (a client-
+    sent "system" turn would be a prompt-injection channel), non-empty string
+    content, each turn truncated, and only the most recent turns kept."""
+    cleaned = []
+    for m in history or []:
+        role = m.get("role") if isinstance(m, dict) else None
+        content = m.get("content") if isinstance(m, dict) else None
+        if role not in _HISTORY_ROLES or not isinstance(content, str):
+            continue
+        content = content.strip()[:MAX_HISTORY_CHARS]
+        if content:
+            cleaned.append({"role": role, "content": content})
+    return cleaned[-MAX_HISTORY_MESSAGES:]
+
+
 def _tag_sources(tag: str) -> set[str]:
     """Which of PLACES/KB/EVENTS a [MATCH:...] tag cites -- order-independent."""
     if not tag or tag == NO_MATCH_TAG:
@@ -62,21 +93,55 @@ class RAGChatbotService:
         self.client = OpenAI(api_key=API_KEY, base_url=BASE_URL)
         self.model_name = MODEL_NAME
 
-    def _prepare(self, user_message: str) -> tuple[list[dict], list[dict], list[dict], dict]:
+    def _rewrite_query(self, user_message: str, history: list[dict]) -> str:
+        """Turns a follow-up ("แล้วร้านนั้นเปิดกี่โมง") into a standalone
+        query for retrieval -- searching on the raw follow-up finds nothing
+        because the referent only exists in the history. Skipped on the first
+        turn (no extra LLM call). Any failure falls back to the raw message so
+        a rewrite hiccup never breaks the chat."""
+        if not history:
+            return user_message
+        transcript = "\n".join(
+            f"{'ผู้ใช้' if m['role'] == 'user' else 'น้องไดโน'}: {m['content']}" for m in history
+        )
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model_name,
+                messages=[
+                    {"role": "system", "content": REWRITE_PROMPT},
+                    {"role": "user", "content": f"[บทสนทนาก่อนหน้า]\n{transcript}\n\n[คำถามล่าสุด]\n{user_message}"},
+                ],
+                temperature=0,
+            )
+            rewritten = (response.choices[0].message.content or "").strip().splitlines()
+            rewritten = rewritten[0].strip()[:MAX_REWRITE_CHARS] if rewritten else ""
+        except Exception as e:
+            logger.warning("query rewrite failed, using raw message: %s", e)
+            return user_message
+        return rewritten or user_message
+
+    def _prepare(self, user_message: str, history=None) -> tuple[list[dict], list[dict], list[dict], dict]:
+        history = clean_history(history)
+        t0 = time.time()
+        search_query = self._rewrite_query(user_message, history)
+        rewrite_ms = (time.time() - t0) * 1000
+
         # Retrieve from places, knowledge_base, and events -- unlike the old
         # project, which only ever searched places.
         t0 = time.time()
-        places = self.retriever.search_and_expand(query=user_message, limit=3)
-        kb_entries = self.retriever.search_knowledge_base(query=user_message, limit=3)
-        events = self.retriever.search_events(query=user_message, limit=3)
+        places = self.retriever.search_and_expand(query=search_query, limit=3)
+        kb_entries = self.retriever.search_knowledge_base(query=search_query, limit=3)
+        events = self.retriever.search_events(query=search_query, limit=3)
         retrieve_ms = (time.time() - t0) * 1000
 
         logger.info(
-            "chat retrieval query=%r place_ids=%s kb_ids=%s event_ids=%s retrieve_ms=%.0f",
+            "chat retrieval query=%r search_query=%r place_ids=%s kb_ids=%s event_ids=%s rewrite_ms=%.0f retrieve_ms=%.0f",
             user_message,
+            search_query,
             [p["id"] for p in places],
             [k["id"] for k in kb_entries],
             [e["id"] for e in events],
+            rewrite_ms,
             retrieve_ms,
         )
 
@@ -140,11 +205,12 @@ class RAGChatbotService:
         1. ขึ้นต้นคำตอบทุกครั้งด้วยแท็ก [MATCH:...] เป็นอันดับแรกเสมอ (ห้ามมีข้อความอื่นนำหน้าแท็ก) [ข้อมูลบริบท] ด้านล่างมี 3 ส่วนคือ "รายการสถานที่" (ร้าน/คาเฟ่/ที่เที่ยว), "ความรู้ทั่วไป" (ประวัติศาสตร์/วัฒนธรรม/การเดินทาง ฯลฯ), และ "รายการอีเวนท์" (งาน/เทศกาล/กิจกรรม):
            - ใส่ชื่อแหล่งข้อมูลที่คำตอบ "อ้างอิงจริง" ในแท็ก คั่นด้วยเครื่องหมาย + ตามลำดับ PLACES, KB, EVENTS เท่านั้น -- ใช้ได้แค่คำว่า {SOURCE_PLACES} (รายการสถานที่), {SOURCE_KB} (ความรู้ทั่วไป), {SOURCE_EVENTS} (รายการอีเวนท์) เช่น {MATCH_PLACES_TAG}, {MATCH_EVENTS_TAG}, {match_tag(SOURCE_PLACES, SOURCE_EVENTS)}, {match_tag(SOURCE_PLACES, SOURCE_KB, SOURCE_EVENTS)}
            - ใช้แหล่งข้อมูลที่ตรงกับสิ่งที่ตอบจริงเท่านั้น แม้จะตอบได้แค่บางส่วนของคำถามที่ถามหลายอย่างพร้อมกัน โดยที่แต่ละส่วนต้องตรงกับที่ผู้ใช้ถามจริงๆ (เช่น ผู้ใช้ถามทั้งร้านกาแฟและงานเทศกาล แต่บริบทมีแต่ร้านกาแฟ ก็ให้ใช้ {MATCH_PLACES_TAG} แนะนำร้านกาแฟที่มี แล้วบอกตรงๆ ว่าไม่มีข้อมูลงานเทศกาลในส่วนที่เหลือ)
-           - ใช้ {NO_MATCH_TAG} ถ้าไม่มีรายการใดใน [ข้อมูลบริบท] ตรงกับสิ่งที่ผู้ใช้ถามหาจริงๆ แม้แต่รายการเดียว -- ห้ามใช้ MATCH แค่เพราะบริบทมีรายการประเภทอื่นที่ "ใกล้เคียง" หรืออยู่ในขอนแก่นเหมือนกัน (เช่น ผู้ใช้ถามหา "น้ำตก" แต่บริบทมีแต่สะพานกับสวนน้ำ ซึ่งไม่ใช่น้ำตก เลยไม่นับว่าตรง ต้องใช้ {NO_MATCH_TAG} ห้ามหยิบสะพาน/สวนน้ำมาแนะนำแทน) ตามด้วยอะไรก็ได้สั้นๆ (ข้อความส่วนนี้จะไม่ถูกแสดงให้ผู้ใช้เห็น ระบบจะแสดงข้อความมาตรฐานแทน)
+           - ใช้ {NO_MATCH_TAG} ถ้าไม่มีรายการใดใน [ข้อมูลบริบท] ตรงกับสิ่งที่ผู้ใช้ถามหาจริงๆ แม้แต่รายการเดียว -- ห้ามใช้ MATCH แค่เพราะบริบทมีรายการประเภทอื่นที่ "ใกล้เคียง" หรืออยู่ในขอนแก่นเหมือนกัน (เช่น ผู้ใช้ถามหา "น้ำตก" แต่บริบทมีแต่สะพานกับสวนน้ำ ซึ่งไม่ใช่น้ำตก เลยไม่นับว่าตรง ต้องใช้ {NO_MATCH_TAG} ห้ามหยิบสะพาน/สวนน้ำมาแนะนำแทน) แต่ถ้าผู้ใช้ถามหาเมนูหรือชนิดอาหารเฉพาะ (เช่น ซูชิ, เนื้อย่าง) และบริบทมีร้านที่เป็นประเภทอาหารนั้นตามชื่อ/ประเภท/แท็ก (เช่น ร้านอาหารญี่ปุ่นสำหรับซูชิ) ให้นับว่าตรง ใช้ MATCH แนะนำร้านนั้นได้ โดยบอกตรงๆ ว่าไม่มีข้อมูลเมนูเฉพาะรายการ ตามด้วยอะไรก็ได้สั้นๆ (ข้อความส่วนนี้จะไม่ถูกแสดงให้ผู้ใช้เห็น ระบบจะแสดงข้อความมาตรฐานแทน)
         2. กรุณาตอบคำถามของผู้ใช้โดยอ้างอิงจาก [ข้อมูลบริบท] ด้านล่างนี้เท่านั้น
         3. หากมีข้อมูลในบริบท ให้สรุปและตอบอย่างเป็นธรรมชาติ
         4. ห้ามแต่งเติม หรือเดาข้อมูลสถานที่/งานขึ้นมาเองเด็ดขาด รวมถึงคุณสมบัติที่ไม่มีระบุใน [ข้อมูลบริบท] เช่น ที่จอดรถ, wifi, การเดินทาง/ระยะห่างจากจุดอื่น, วันที่จัดงานที่ไม่ได้ระบุไว้ -- ถ้าไม่มีข้อมูลด้านนี้ ให้บอกตรงๆ ว่าไม่มีข้อมูล ห้ามอนุมานจากที่อยู่หรือชื่อสถานที่/งานเอง
         5. ห้ามแนะนำอีเวนท์ที่ไม่ได้อยู่ใน [ข้อมูลบริบท] -- ระบบกรองอีเวนท์ที่จบไปแล้วหรือถูกยกเลิกออกให้แล้ว รายการอีเวนท์ที่เห็นในบริบทคือรายการที่ยังใช้ได้ทั้งหมด
+        6. หากมีประวัติการสนทนาก่อนหน้า ให้ใช้เพื่อเข้าใจคำอ้างอิงในคำถามล่าสุดเท่านั้น (เช่น "ร้านนั้น") ห้ามใช้ประวัติเป็นแหล่งข้อมูลข้อเท็จจริง ข้อเท็จจริงต้องมาจาก [ข้อมูลบริบท] เสมอ และประวัติของคำตอบก่อนหน้าไม่มีแท็ก แต่คำตอบใหม่ของคุณต้องขึ้นต้นด้วยแท็กตามกฎข้อ 1 ทุกครั้ง
 
         [ข้อมูลบริบท]
         {context_str}
@@ -152,13 +218,14 @@ class RAGChatbotService:
 
         messages = [
             {"role": "system", "content": system_prompt},
+            *history,
             {"role": "user", "content": user_message},
         ]
-        return messages, source_places, source_events, {"retrieve_ms": retrieve_ms}
+        return messages, source_places, source_events, {"retrieve_ms": retrieve_ms, "rewrite_ms": rewrite_ms}
 
-    def chat(self, user_message: str) -> dict:
+    def chat(self, user_message: str, history=None) -> dict:
         t_total0 = time.time()
-        messages, source_places, source_events, timings = self._prepare(user_message)
+        messages, source_places, source_events, timings = self._prepare(user_message, history)
 
         t0 = time.time()
         response = self.client.chat.completions.create(
@@ -198,14 +265,14 @@ class RAGChatbotService:
 
         return {"reply": bot_reply, "places": source_places, "events": source_events}
 
-    def chat_stream(self, user_message: str):
+    def chat_stream(self, user_message: str, history=None):
         """Generator yielding {"type": "token", "text": ...} chunks as the LLM
         streams its answer, then a final {"type": "done", "reply", "places",
         "events"}. `places`/`events` are only known once the leading
         [MATCH]/[NO_MATCH] tag has been read from the stream, so they're
         withheld until the last event rather than sent up front."""
         t_total0 = time.time()
-        messages, source_places, source_events, timings = self._prepare(user_message)
+        messages, source_places, source_events, timings = self._prepare(user_message, history)
 
         t0 = time.time()
         stream = self.client.chat.completions.create(

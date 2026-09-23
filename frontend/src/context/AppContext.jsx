@@ -477,6 +477,11 @@ export function AppProvider({ children }) {
   const sendChat = async (overrideText) => {
     const text = (overrideText ?? stateRef.current.chatInput).trim()
     if (!text) return
+    // Snapshot the conversation before the new turn is pushed; empty bot
+    // placeholders (interrupted streams) carry no content and are skipped.
+    const history = stateRef.current.chatMessages
+      .filter((m) => m.text)
+      .map((m) => ({ role: m.from === 'user' ? 'user' : 'assistant', content: m.text }))
     // Push the user message plus an empty bot placeholder that fills in as
     // tokens stream in -- always the last message in the array while streaming.
     setState((s) => ({ chatMessages: [...s.chatMessages, { from: 'user', text }, { from: 'bot', text: '', places: [], events: [] }], chatInput: '', chatTyping: true }))
@@ -487,6 +492,7 @@ export function AppProvider({ children }) {
     })
     try {
       const { places, events } = await sendChatMessage(text, {
+        history,
         onToken: (token) => {
           setState({ chatTyping: false })
           appendToLastBotMessage((last) => ({ text: last.text + token }))
