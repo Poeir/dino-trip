@@ -16,9 +16,23 @@ export async function resolveSessionUser(req, res) {
   if (!rawToken) return null
   const user = await db('sessions').join('users', 'users.id', 'sessions.user_id')
     .where('sessions.token_hash', hash(rawToken)).andWhere('sessions.expires_at', '>', new Date())
+    // A suspended or soft-deleted account is signed out on its very next
+    // request, even if its session row somehow survived.
+    .andWhere('users.status', 'active').whereNull('users.deleted_at')
     .select('users.*').first()
   if (!user) { clearSessionCookie(res); return null }
   return user
+}
+
+export async function revokeUserSessions(userId, trx = db) {
+  return trx('sessions').where('user_id', userId).delete()
+}
+
+// Signs the user out everywhere except the browser making this request.
+export async function revokeOtherSessions(userId, currentRawToken, trx = db) {
+  const query = trx('sessions').where('user_id', userId)
+  if (currentRawToken) query.whereNot('token_hash', hash(currentRawToken))
+  return query.delete()
 }
 
 export async function destroySession(rawToken) {

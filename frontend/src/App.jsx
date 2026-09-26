@@ -14,7 +14,11 @@ import EventsListPage from './pages/EventsListPage.jsx'
 import EventDetailPage from './pages/EventDetailPage.jsx'
 import TripFormPage from './pages/TripFormPage.jsx'
 import TripResultPage from './pages/TripResultPage.jsx'
+import MyTripsPage from './pages/MyTripsPage.jsx'
 import PointsPage from './pages/PointsPage.jsx'
+import ProfilePage from './pages/ProfilePage.jsx'
+import ConfirmEmailChangePage from './pages/ConfirmEmailChangePage.jsx'
+import LoadingSpinner from './components/LoadingSpinner.jsx'
 import ScanLandingPage from './pages/ScanLandingPage.jsx'
 import LoginPage from './pages/LoginPage.jsx'
 import SignupPage from './pages/SignupPage.jsx'
@@ -44,6 +48,24 @@ function RequireAdmin({ children }) {
   return state.adminLoggedIn ? children : <Navigate to="/admin/login" replace />
 }
 
+// Waits for the session check on load so a refresh on /profile doesn't bounce a
+// signed-in user to /login before /auth/me answers.
+function RequireAuth({ children }) {
+  const { state } = useApp()
+  if (!state.authChecked) return <LoadingSpinner size={36} label="กำลังตรวจสอบการเข้าสู่ระบบ..." />
+  return state.loggedIn ? children : <Navigate to="/login" replace />
+}
+
+// /login, /signup and /forgot-password mean nothing to someone already signed
+// in (the session is an httpOnly cookie that outlives the tab, so a bookmark,
+// back button or typed URL can land here while the header already shows the
+// account) -- send them on instead of showing a form that looks logged-out.
+function RedirectIfAuthed({ children }) {
+  const { state } = useApp()
+  if (!state.authChecked) return <LoadingSpinner size={36} label="กำลังตรวจสอบการเข้าสู่ระบบ..." />
+  return state.loggedIn ? <Navigate to="/" replace /> : children
+}
+
 function Shell() {
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#FFFDF6', backgroundImage: "url('./assets/background1.png')", backgroundSize: 'cover', backgroundPosition: 'top center', backgroundRepeat: 'no-repeat', backgroundAttachment: 'fixed' }}>
@@ -56,15 +78,19 @@ function Shell() {
           <Route path="/events" element={<EventsListPage />} />
           <Route path="/events/:id" element={<EventDetailPage />} />
           <Route path="/trip" element={<TripFormPage />} />
+          <Route path="/trips" element={<RequireAuth><MyTripsPage /></RequireAuth>} />
           <Route path="/trip/result" element={<TripResultPage />} />
+          <Route path="/trip/:id" element={<TripResultPage />} />
           <Route path="/points" element={<PointsPage />} />
+          <Route path="/profile" element={<RequireAuth><ProfilePage /></RequireAuth>} />
           <Route path="/scan/:qrId" element={<ScanLandingPage />} />
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/signup" element={<SignupPage />} />
-          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/login" element={<RedirectIfAuthed><LoginPage /></RedirectIfAuthed>} />
+          <Route path="/signup" element={<RedirectIfAuthed><SignupPage /></RedirectIfAuthed>} />
+          <Route path="/forgot-password" element={<RedirectIfAuthed><ForgotPasswordPage /></RedirectIfAuthed>} />
         </Route>
         <Route path="/admin/login" element={<AdminLoginPage />} />
         <Route path="/confirm" element={<ConfirmEmailPage />} />
+        <Route path="/confirm-email-change" element={<ConfirmEmailChangePage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/admin" element={<RequireAdmin><AdminDashboardPage /></RequireAdmin>} />
         <Route path="/admin/:tab" element={<RequireAdmin><AdminDashboardPage /></RequireAdmin>} />

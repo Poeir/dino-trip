@@ -6,6 +6,8 @@ import PageControls from '../components/PageControls.jsx'
 import { fetchPlaces } from '../lib/apiClient.js'
 import { usePagedList } from '../lib/usePagedList.js'
 import LoadingSpinner from '../components/LoadingSpinner.jsx'
+import EmptyState from '../components/EmptyState.jsx'
+import { placeCategoryIcon, MASCOT } from '../data/categoryImages.js'
 
 // >=1500 reviews reads as "popular" -- mirrors the badge PlacesTab/PlaceCard
 // used to compute in AppContext.jsx before this page moved to its own
@@ -76,11 +78,7 @@ export default function PlacesListPage() {
       </div>
       {paged.loading && placesView.length === 0 && <LoadingSpinner size={36} label="กำลังโหลดสถานที่..." />}
       {!paged.loading && placesView.length === 0 && (
-        <div style={{ textAlign: 'center', padding: '60px 20px', border: '1px dashed #C8E6C9', borderRadius: 18 }}>
-          <img src="./assets/dino-mascot-front.png" alt="" style={{ width: 64, height: 'auto', margin: '0 auto 14px', display: 'block', opacity: 0.8 }} onError={(e) => { e.currentTarget.style.display = 'none' }} />
-          <div style={{ fontWeight: 700, fontSize: 15, color: '#3c463f', marginBottom: 4 }}>ไม่พบสถานที่ในหมวดนี้</div>
-          <div style={{ fontSize: 13, color: '#8a938c' }}>ลองเลือกหมวดหมู่อื่น หรือกลับไปดู "ทั้งหมด"</div>
-        </div>
+        <EmptyState mascot={MASCOT.sad} tone="green" style={{ padding: '56px 20px' }} title="ไม่พบสถานที่ในหมวดนี้" desc={'ลองเลือกหมวดหมู่อื่น หรือกลับไปดู "ทั้งหมด"'} />
       )}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: 24 }}>
         {placesView.map((place) => (
@@ -95,7 +93,7 @@ export default function PlacesListPage() {
             >
               <HeartIcon size={15} color={place.isFavorite ? '#E53935' : '#8a938c'} box={false} />
             </button>
-            <ImageSlot src={place.img} shape="rect" style={{ width: '100%', height: 170, flexShrink: 0 }} placeholder="ภาพสถานที่" />
+            <ImageSlot src={place.img} shape="rect" style={{ width: '100%', height: 170, flexShrink: 0 }} placeholder="ภาพสถานที่" icon={placeCategoryIcon(place.category)} />
             <div style={{ padding: 16, flex: 1, overflow: 'hidden' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
                 <span style={{ fontSize: 11, fontWeight: 700, color: '#2E7D32', background: '#E8F5E9', padding: '3px 9px', borderRadius: 10 }}>{place.category}</span>

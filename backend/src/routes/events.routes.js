@@ -5,6 +5,7 @@ import { httpError } from '../middleware/errorHandler.js'
 import { rowToEvent, eventPayload } from '../lib/mappers.js'
 import { forwardToChatbotService } from '../lib/chatbotProxy.js'
 import { db } from '../lib/db.js'
+import { galleryCleanup } from '../lib/cloudinaryCleanup.js'
 import { createImageUploadMiddleware } from '../lib/imageUpload.js'
 import { uploadImageBuffer, deleteImage } from '../lib/cloudinary.js'
 
@@ -45,6 +46,7 @@ export const eventsRouter = crudRouter({
   // recomputes it.
   invalidateColumns: ['embedding'],
   enrichRows: attachEventPhotos,
+  beforeDelete: galleryCleanup('event_photos', 'event_id'),
   // ?search= (EventsTab/EventsListPage's search box).
   searchColumns: ['name'],
   // EventsTab's sort dropdown (name/status).

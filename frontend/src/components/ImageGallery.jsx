@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import ImageSlot from './ImageSlot.jsx'
 
-export default function ImageGallery({ images = [], height = 460, placeholder = '' }) {
+export default function ImageGallery({ images = [], height = 460, placeholder = '', icon = '', iconSize }) {
   const list = images.length ? images : [null]
   const [active, setActive] = useState(0)
   const current = list[Math.min(active, list.length - 1)]
@@ -9,7 +9,7 @@ export default function ImageGallery({ images = [], height = 460, placeholder = 
   return (
     <div>
       <div style={{ borderRadius: 16, overflow: 'hidden' }}>
-        <ImageSlot src={current} shape="rect" style={{ width: '100%', height }} placeholder={placeholder} />
+        <ImageSlot src={current} shape="rect" style={{ width: '100%', height }} placeholder={placeholder} icon={icon} iconSize={iconSize} />
       </div>
       {list.length > 1 && (
         <div style={{ display: 'flex', gap: 8, marginTop: 8, overflowX: 'auto' }}>

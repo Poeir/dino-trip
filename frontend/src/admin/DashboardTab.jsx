@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { useApp } from '../context/AppContext.jsx'
-import { triggerReindex, fetchReindexStatus, fetchReindexPending, fetchPlaces } from '../lib/apiClient.js'
+import { triggerReindex, fetchReindexStatus, fetchReindexPending, fetchPlaces, fetchAdminStats } from '../lib/apiClient.js'
+import LoadError from '../components/LoadError.jsx'
+import EmptyState from '../components/EmptyState.jsx'
+import { REWARD_ICON } from '../data/categoryImages.js'
+import TripStatsSection from './TripStatsSection.jsx'
 
 const POLL_MS = 2500
 
@@ -189,9 +193,74 @@ function ReindexCard() {
   )
 }
 
+function StatCard({ value, label, tone = 'normal' }) {
+  const warn = tone === 'warn'
+  return (
+    <div style={{ background: '#fff', border: `1px solid ${warn ? '#f0c6c6' : '#E7E3D2'}`, borderRadius: 16, padding: '16px 18px' }}>
+      <div style={{ fontSize: 24, fontWeight: 800, color: warn ? '#a33232' : '#1B5E20' }}>{value}</div>
+      <div style={{ fontSize: 13, color: '#6d7a72' }}>{label}</div>
+    </div>
+  )
+}
+
+const fmtDateTime = (iso) => new Date(iso).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })
+
+// Users, points and counter redemptions -- numbers that come from the API's
+// own aggregate query rather than the bulk-loaded lists the cards above use.
+function UsageSection({ stats, error, onRetry }) {
+  if (error) return <div style={{ marginTop: 22 }}><LoadError message="โหลดสถิติผู้ใช้ไม่สำเร็จ" onRetry={onRetry} /></div>
+  const n = (v) => (stats ? v : '–')
+  return (
+    <div style={{ marginTop: 22 }}>
+      {stats && stats.activeAdmins < 2 && (
+        <div style={{ background: '#FFF8E1', border: '1px solid #FFE082', borderRadius: 14, padding: '12px 16px', marginBottom: 16, fontSize: 13.5, color: '#7A5205', lineHeight: 1.6 }}>
+          ตอนนี้มี admin ที่ใช้งานได้ <b>{stats.activeAdmins} คน</b> ถ้าบัญชีนี้ใช้ไม่ได้จะไม่มีใครเข้าหน้า admin ได้ ควรเพิ่ม admin สำรองไว้ด้วยคำสั่ง <code>node scripts/create-admin.js อีเมล รหัสผ่าน</code> ในโฟลเดอร์ backend
+        </div>
+      )}
+      <h2 style={{ fontSize: 16, fontWeight: 800, color: '#1B5E20', margin: '0 0 12px' }}>ผู้ใช้และการแลกของรางวัล</h2>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(180px,1fr))', gap: 14, marginBottom: 16 }}>
+        <StatCard value={n(stats?.users.total)} label="ผู้ใช้ทั้งหมด" />
+        <StatCard value={n(stats?.users.newLast7Days)} label="สมัครใหม่ใน 7 วัน" />
+        <StatCard value={n(stats?.users.suspended)} label="ถูกระงับ" tone={stats?.users.suspended ? 'warn' : 'normal'} />
+        <StatCard value={n(stats?.users.unverified)} label="ยังไม่ยืนยันอีเมล" />
+        <StatCard value={n(stats?.scansLast7Days)} label="สแกน QR ใน 7 วัน" />
+        <StatCard value={n(stats?.points.outstanding)} label="พอยท์คงค้างในบัญชีผู้ใช้" />
+        <StatCard value={n(stats?.redemptionsLast30Days)} label="แลกของรางวัลใน 30 วัน" />
+      </div>
+      <div style={{ background: '#fff', border: '1px solid #E7E3D2', borderRadius: 16, padding: 18 }}>
+        <div style={{ fontWeight: 800, fontSize: 14.5, color: '#1B5E20', marginBottom: 10 }}>การแลกของรางวัลล่าสุด</div>
+        {!stats ? (
+          <div style={{ fontSize: 13, color: '#8a938c' }}>กำลังโหลด...</div>
+        ) : stats.recentRedemptions.length === 0 ? (
+          <EmptyState compact icon={REWARD_ICON} title="ยังไม่มีการแลกของรางวัล" />
+        ) : (
+          <div style={{ display: 'grid', gap: 8 }}>
+            {stats.recentRedemptions.map((r) => (
+              <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', fontSize: 13.5, opacity: r.status === 'cancelled' ? 0.6 : 1 }}>
+                <span><b>{r.userName}</b> แลก {r.rewardName} ({r.cost} พอยท์){r.status === 'cancelled' && <span style={{ color: '#a33232' }}> · ยกเลิกแล้ว</span>}</span>
+                <span style={{ color: '#6d7a72' }}>{fmtDateTime(r.at)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function DashboardTab() {
-  const { state } = useApp()
+  const { state, actions } = useApp()
   const [placesCount, setPlacesCount] = useState(null)
+  const [stats, setStats] = useState(null)
+  const [statsError, setStatsError] = useState(false)
+
+  const loadStats = () => {
+    setStatsError(false)
+    fetchAdminStats()
+      .then(setStats)
+      .catch((err) => { if (!actions.handleSessionExpired(err)) setStatsError(true) })
+  }
+  useEffect(() => { loadStats() }, [])
 
   // {limit:1, sort:'rating', dir:'desc'} takes crudRouter's cheap count()+
   // limit/offset path instead of the weighted-rating sort branch (which
@@ -242,7 +311,7 @@ export default function DashboardTab() {
               <span style={{ position: 'absolute', top: 1, left: 2.5, width: 5, height: 5, borderRadius: '50%', border: '1.5px solid #7A5205' }}></span>
             </span>
           </div>
-          <div style={{ fontSize: 26, fontWeight: 800, color: '#7A5205' }}>{state.userPoints}</div>
+          <div style={{ fontSize: 26, fontWeight: 800, color: '#7A5205' }}>{stats ? stats.points.distributed : '–'}</div>
           <div style={{ fontSize: 13, color: '#7A5205' }}>พอยท์ที่แจกไปแล้ว</div>
         </div>
         <div style={{ background: '#fff', border: '1px solid #E7E3D2', borderRadius: 16, padding: 20, animation: 'dc-fade-up 0.35s ease 0.2s both' }}>
@@ -265,6 +334,8 @@ export default function DashboardTab() {
           <div style={{ fontSize: 13, color: '#6d7a72' }}>จำนวนของรางวัล</div>
         </div>
       </div>
+      <UsageSection stats={stats} error={statsError} onRetry={loadStats} />
+      <TripStatsSection />
       <ReindexCard />
     </>
   )

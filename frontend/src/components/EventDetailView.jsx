@@ -1,4 +1,5 @@
 import ImageSlot from './ImageSlot.jsx'
+import { EVENT_ICON, MAP_ICON } from '../data/categoryImages.js'
 
 export default function EventDetailView({ event: ev, place, imageHeight = 460 }) {
   if (!ev || !ev.id) return null
@@ -15,7 +16,7 @@ export default function EventDetailView({ event: ev, place, imageHeight = 460 })
           <span style={{ display: 'inline-block', fontSize: 12, fontWeight: 700, color: '#E07B39', background: '#FDEEE3', padding: '4px 12px', borderRadius: 10, marginBottom: 10 }}>{ev.category}</span>
           <h1 style={{ fontSize: 24, fontWeight: 700, color: '#1B5E20', margin: '0 0 16px', lineHeight: 1.3 }}>{ev.name}</h1>
           <div style={{ borderRadius: 16, overflow: 'hidden' }}>
-            <ImageSlot src={ev.img} shape="rect" style={{ width: '100%', height: imageHeight }} placeholder="ภาพปกงาน" />
+            <ImageSlot src={ev.img} shape="rect" style={{ width: '100%', height: imageHeight }} placeholder="ภาพปกงาน" icon={EVENT_ICON} />
           </div>
           <button style={{ width: '100%', marginTop: 20, background: 'linear-gradient(135deg,#66BB6A,#388E3C)', color: '#fff', border: 'none', padding: '12px 26px', borderRadius: 22, fontWeight: 700, fontSize: 14.5, cursor: 'pointer' }}>ดูช่องทางซื้อบัตร</button>
         </div>
@@ -59,7 +60,7 @@ export default function EventDetailView({ event: ev, place, imageHeight = 460 })
               allowFullScreen
             />
           ) : (
-            <ImageSlot shape="rounded" radius={12} style={{ width: '100%', height: 160 }} placeholder="แผนที่สถานที่จัดงาน" />
+            <ImageSlot shape="rounded" radius={12} style={{ width: '100%', height: 160 }} placeholder="แผนที่สถานที่จัดงาน" icon={MAP_ICON} />
           )}
         </div>
       </div>

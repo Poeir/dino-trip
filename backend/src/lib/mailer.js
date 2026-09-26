@@ -118,3 +118,42 @@ export async function sendPasswordResetEmail(to, link) {
     text: `รีเซ็ตรหัสผ่านของคุณ - Dino\n\nกรุณาเปิดลิงก์นี้เพื่อตั้งรหัสผ่านใหม่:\n${link}\n\nลิงก์นี้จะหมดอายุใน 1 ชั่วโมง หากคุณไม่ได้เป็นผู้ขอรีเซ็ตรหัสผ่าน สามารถละเว้นอีเมลนี้ได้เลย\n\n--\nศูนย์ข้อมูลท่องเที่ยวขอนแก่น\nการท่องเที่ยวแห่งประเทศไทย (ททท.) สำนักงานขอนแก่น`,
   })
 }
+
+function emailChangeEmailHtml(link) {
+  return emailCardHtml({
+    heading: 'ยืนยันอีเมลใหม่ของคุณ',
+    bodyText: 'เราได้รับคำขอเปลี่ยนอีเมลของบัญชี Dino มาเป็นอีเมลนี้ กรุณากดปุ่มด้านล่างเพื่อยืนยัน อีเมลสำหรับเข้าสู่ระบบจะเปลี่ยนเมื่อคุณยืนยันแล้วเท่านั้น',
+    buttonText: 'ยืนยันอีเมลใหม่',
+    link,
+    footerText: 'ลิงก์นี้จะหมดอายุใน 24 ชั่วโมง หากคุณไม่ได้เป็นผู้ขอเปลี่ยนอีเมล สามารถละเว้นอีเมลฉบับนี้ได้เลย อีเมลเดิมของบัญชีจะไม่ถูกเปลี่ยนแปลง',
+  })
+}
+
+export async function sendEmailChangeEmail(to, link) {
+  await getTransporter().sendMail({
+    from: `"Dino" <${process.env.GMAIL_USER}>`,
+    to,
+    subject: 'ยืนยันอีเมลใหม่ของคุณ - Dino',
+    html: emailChangeEmailHtml(link),
+    text: `ยืนยันอีเมลใหม่ของคุณ - Dino\n\nกรุณาเปิดลิงก์นี้เพื่อยืนยันการเปลี่ยนอีเมลของบัญชี Dino:\n${link}\n\nลิงก์นี้จะหมดอายุใน 24 ชั่วโมง หากคุณไม่ได้เป็นผู้ขอเปลี่ยนอีเมล สามารถละเว้นอีเมลฉบับนี้ได้เลย\n\n--\nศูนย์ข้อมูลท่องเที่ยวขอนแก่น\nการท่องเที่ยวแห่งประเทศไทย (ททท.) สำนักงานขอนแก่น`,
+  })
+}
+
+// Sent to the CURRENT address when a change is requested, so an owner whose
+// session/password was misused finds out before the switch happens.
+export async function sendEmailChangeNotice(to, newEmail, resetLink) {
+  const html = emailCardHtml({
+    heading: 'มีคำขอเปลี่ยนอีเมลของบัญชีคุณ',
+    bodyText: `มีการขอเปลี่ยนอีเมลของบัญชี Dino นี้เป็น <b>${newEmail.replace(/[<>&"]/g, '')}</b> อีเมลจะยังไม่เปลี่ยนจนกว่าจะมีการยืนยันจากอีเมลใหม่ หากไม่ใช่คุณ ให้เปลี่ยนรหัสผ่านทันที`,
+    buttonText: 'ตั้งรหัสผ่านใหม่',
+    link: resetLink,
+    footerText: 'หากเป็นคุณที่ขอเปลี่ยนอีเมล สามารถละเว้นอีเมลฉบับนี้ได้',
+  })
+  await getTransporter().sendMail({
+    from: `"Dino" <${process.env.GMAIL_USER}>`,
+    to,
+    subject: 'มีคำขอเปลี่ยนอีเมลของบัญชีคุณ - Dino',
+    html,
+    text: `มีการขอเปลี่ยนอีเมลของบัญชี Dino นี้เป็น ${newEmail}\nอีเมลจะยังไม่เปลี่ยนจนกว่าจะมีการยืนยันจากอีเมลใหม่ หากไม่ใช่คุณ ให้เปลี่ยนรหัสผ่านทันที: ${resetLink}`,
+  })
+}

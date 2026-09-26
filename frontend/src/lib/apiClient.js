@@ -14,7 +14,7 @@ async function request(path, options) {
   })
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
-    throw new Error(body.error?.message || `API request failed: ${path} (${res.status})`)
+    throw Object.assign(new Error(body.error?.message || `API request failed: ${path} (${res.status})`), { status: res.status })
   }
   return res.status === 204 ? null : res.json()
 }
@@ -43,6 +43,9 @@ const apiDelete = (path) => request(path, { method: 'DELETE' })
 // joined) instead returns exactly those rows, unpaginated -- see
 // AppContext.jsx's post-trip-plan QR-points lookup.
 export const fetchPlaces = (params) => apiGet('/api/places', params)
+// Places with a live, scannable QR (active + unexpired), `qrPoints` being what
+// scanning really awards -- see qrs.routes.js's `/meta/places`.
+export const fetchScannablePlaces = () => apiGet('/api/qrs/meta/places')
 // Single place by id -- PlaceDetailPage/EventDetailPage/TripResultPage's
 // lookups and PlacePicker's "resolve the currently-selected value", all of
 // which used to page through AppContext's full bulk `state.places` array
@@ -93,11 +96,51 @@ export const fetchQrs = (params) => apiGet('/api/qrs', params)
 export const createQr = (payload) => apiPost('/api/qrs', payload)
 export const updateQr = (id, payload) => apiPut(`/api/qrs/${id}`, payload)
 export const deleteQr = (id) => apiDelete(`/api/qrs/${id}`)
+// Admin-only: [{ qrId, scans, pointsTotal }] and the latest redemptions.
+// Admin user management (backend/src/routes/adminUsers.routes.js). Every
+// change returns the updated list row.
+export const fetchAdminStats = () => apiGet('/api/admin/stats')
+// Trip-planning statistics for the last `days` (7 / 30 / 90 / 365).
+export const fetchAdminTripStats = (days) => apiGet('/api/admin/stats/trips', { days })
+// Every recorded trip plan (owned by a user, or `owner: null` = recorded for
+// statistics when the visitor wasn't logged in). Params: page, limit, search,
+// owner ('user' | 'anonymous'), issue ('1' = has a closed/removed place).
+export const fetchAdminTrips = (params) => apiGet('/api/admin/trips', params)
+export const fetchAdminTrip = (id) => apiGet(`/api/admin/trips/${id}`)
+export const deleteAdminTrip = (id, reason) => apiPost(`/api/admin/trips/${id}/delete`, { reason })
+export const fetchAdminUsers = (params) => apiGet('/api/admin/users', params)
+export const fetchAdminUser = (id) => apiGet(`/api/admin/users/${id}`)
+export const suspendUser = (id, reason) => apiPost(`/api/admin/users/${id}/suspend`, { reason })
+export const unsuspendUser = (id) => apiPost(`/api/admin/users/${id}/unsuspend`, {})
+export const deleteUser = (id, reason) => apiPost(`/api/admin/users/${id}/delete`, { reason })
+export const restoreUser = (id) => apiPost(`/api/admin/users/${id}/restore`, {})
+export const adjustUserPoints = (id, delta, reason) => apiPost(`/api/admin/users/${id}/points`, { delta, reason })
+export const revokeUserSessions = (id) => apiPost(`/api/admin/users/${id}/revoke-sessions`, {})
+export const resendUserVerification = (id) => apiPost(`/api/admin/users/${id}/resend-verification`, {})
+
+export const fetchQrStats = () => apiGet('/api/qrs/meta/stats')
+// Counter redemption (admin): history, redeem on a tourist's behalf, undo.
+export const fetchRedemptionHistory = (params) => apiGet('/api/admin/redemptions', params)
+export const redeemForUser = (userId, rewardId) => apiPost('/api/admin/redemptions', { userId, rewardId })
+export const cancelRedemption = (id, reason) => apiPost(`/api/admin/redemptions/${id}/cancel`, { reason })
 
 export const fetchRewards = (params) => apiGet('/api/rewards', params)
 export const createReward = (payload) => apiPost('/api/rewards', payload)
 export const updateReward = (id, payload) => apiPut(`/api/rewards/${id}`, payload)
 export const deleteReward = (id) => apiDelete(`/api/rewards/${id}`)
+// One image per reward; both return the full updated reward. multipart, so
+// bypasses request()'s forced JSON Content-Type (same as uploadPlacePhoto).
+export const uploadRewardImage = async (id, file) => {
+  const form = new FormData()
+  form.append('imageFile', file)
+  const res = await fetch(`${BASE_URL}/api/rewards/${id}/image`, { method: 'POST', body: form, credentials: 'include' })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(body.error?.message || `API request failed: /api/rewards/${id}/image (${res.status})`)
+  }
+  return res.json()
+}
+export const deleteRewardImage = (id) => apiDelete(`/api/rewards/${id}/image`)
 
 // Tourist auth -- session lives in httpOnly cookies the backend sets, never
 // in anything this client reads or stores itself. See auth.routes.js.
@@ -128,8 +171,24 @@ export const fetchMe = () => apiGet('/api/auth/me')
 // calls above. scanQr takes the qrId decoded from the QR's URL content --
 // the backend looks the points/place up itself, see qrs.routes.js.
 export const fetchPointsBalance = () => apiGet('/api/points/me')
-export const scanQr = (qrId) => apiPost(`/api/qrs/${qrId}/scan`, {})
-export const redeemReward = (rewardId) => apiPost('/api/points/redeem', { rewardId })
+// `position` ({ lat, lng }) is optional -- only places with coordinates need it.
+export const scanQr = (qrId, position) => apiPost(`/api/qrs/${qrId}/scan`, position ? { lat: position.lat, lng: position.lng } : {})
+
+// Saved trip plans (backend/src/routes/trips.routes.js). Everything except
+// createTrip needs a logged-in session; createTrip also accepts a visitor who
+// isn't logged in, but then it only records the plan for admin statistics and
+// returns `{ id: null }`.
+export const createTrip = (payload) => apiPost('/api/trips', payload)
+export const fetchTrip = (id) => apiGet(`/api/trips/${id}`)
+// The visitor's own trips, `{ data, total, ... }` like the other paginated lists
+// (usePagedList-compatible; `favorite: '1'` keeps only starred ones).
+export const fetchTrips = (params) => apiGet('/api/trips', params)
+// `fields` is { title } and/or { isFavorite }.
+export const updateTrip = (id, fields) => request(`/api/trips/${id}`, { method: 'PATCH', body: JSON.stringify(fields) })
+// `liked` is true (like), false (dislike) or null (clear).
+export const setTripItemLike = (tripId, itemId, liked) => request(`/api/trips/${tripId}/items/${itemId}`, { method: 'PATCH', body: JSON.stringify({ liked }) })
+export const deleteTrip = (id) => apiDelete(`/api/trips/${id}`)
+export const duplicateTrip = (id) => apiPost(`/api/trips/${id}/duplicate`)
 
 // Admin: manually (re)builds RAG embeddings for places/knowledge_base rows
 // created or edited since the last run -- see backend/src/routes/reindex.routes.js.
@@ -160,3 +219,37 @@ export const uploadPlacePhoto = async (id, file) => {
   return res.json()
 }
 export const deletePlacePhoto = (id, photoId) => apiDelete(`/api/places/${id}/photos/${photoId}`)
+
+// The signed-in user's own account (backend/src/routes/profile.routes.js).
+// multipart helper for the avatar upload -- bypasses request()'s forced JSON
+// Content-Type so the browser can set the multipart boundary itself.
+async function sendForm(method, path, form) {
+  const res = await fetch(`${BASE_URL}${path}`, { method, body: form, credentials: 'include' })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw Object.assign(new Error(body.error?.message || `API request failed: ${path} (${res.status})`), { status: res.status })
+  }
+  return res.json()
+}
+export const fetchProfile = () => apiGet('/api/profile')
+export const updateProfile = (fields) => request('/api/profile', { method: 'PATCH', body: JSON.stringify(fields) })
+// `avatar` is { preset } or { file, position: "X% Y%", scale }.
+export const updateProfileAvatar = (avatar) => {
+  const form = new FormData()
+  if (avatar.file) {
+    form.append('avatarFile', avatar.file)
+    form.append('avatarPosition', avatar.position)
+    form.append('avatarScale', String(avatar.scale))
+  } else {
+    form.append('avatarUrl', `preset:${avatar.preset}`)
+  }
+  return sendForm('PUT', '/api/profile/avatar', form)
+}
+export const removeProfileAvatar = () => request('/api/profile/avatar', { method: 'DELETE' })
+// `type` is 'scan' | 'redeem' | 'adjust' (omit for everything).
+export const fetchProfileHistory = (params) => apiGet('/api/profile/history', params)
+export const changePassword = (currentPassword, newPassword) => apiPost('/api/profile/password', { currentPassword, newPassword })
+export const requestEmailChange = (email, password) => apiPost('/api/profile/email', { email, password })
+export const cancelEmailChangeRequest = () => apiDelete('/api/profile/email')
+export const confirmEmailChange = (token) => apiPost('/api/profile/email/confirm', { token })
+export const deleteMyAccount = (password) => request('/api/profile', { method: 'DELETE', body: JSON.stringify({ password }) })

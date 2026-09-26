@@ -1,4 +1,5 @@
 import { useApp } from '../context/AppContext.jsx'
+import { MASCOT } from '../data/categoryImages.js'
 
 export default function WelcomeModal() {
   const { state, actions } = useApp()
@@ -8,7 +9,7 @@ export default function WelcomeModal() {
       <div style={{ background: '#fff', borderRadius: 24, maxWidth: 520, width: '100%', padding: 36, position: 'relative', animation: 'dc-pop 0.32s ease both', boxShadow: '0 30px 70px rgba(0,0,0,0.3)' }}>
         <button onClick={actions.closeWelcomeModal} style={{ position: 'absolute', top: 16, right: 16, background: '#F1F8E9', border: 'none', width: 32, height: 32, borderRadius: '50%', fontSize: 16, color: '#3c463f', cursor: 'pointer' }}>×</button>
         <div style={{ textAlign: 'center', marginBottom: 22 }}>
-          <img src="./assets/dino-mascot-front.png" alt="" style={{ width: 92, height: 'auto', margin: '0 auto 10px', display: 'block', animation: 'dc-float 3.4s ease-in-out infinite' }} onError={(e) => { e.currentTarget.style.display = 'none' }} />
+          <img src={MASCOT.wave} alt="" style={{ width: 130, height: 'auto', margin: '0 auto 8px', display: 'block', animation: 'dc-float 3.4s ease-in-out infinite' }} />
           <h2 data-font="culture" style={{ fontSize: 20, fontWeight: 800, color: '#1B5E20', margin: '0 0 4px' }}>สวัสดีครับ! ผม น้องไดโน พร้อมช่วยเหลือแล้วครับ</h2>
           <p style={{ fontSize: 13.5, color: '#6d7a72', margin: 0 }}>สามารถเริ่มฟังก์ชันพิเศษได้เลย</p>
         </div>

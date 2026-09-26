@@ -5,6 +5,7 @@ import LoadingSpinner from '../components/LoadingSpinner.jsx'
 import { CalendarIcon, PinIcon } from '../components/Icons.jsx'
 import { fetchPlaces } from '../lib/apiClient.js'
 import { haversineKm } from '../utils/geo.js'
+import { placeCategoryIcon, EVENT_ICON, MASCOT } from '../data/categoryImages.js'
 
 // `places` arrives rating-ranked from the API (?limit=20 still takes
 // crudRouter's weighted-sort path -- see places.routes.js). When we know the
@@ -73,7 +74,8 @@ export default function HomePage() {
                 <input value={state.searchQuery} onChange={actions.onSearchChange} placeholder="ค้นหาสถานที่ กิจกรรม..." style={{ flex: 1, border: 'none', outline: 'none', fontSize: 14.5, padding: '10px 0' }} />
                 <button style={{ background: 'linear-gradient(135deg,#66BB6A,#388E3C)', color: '#fff', border: 'none', borderRadius: 11, padding: '10px 22px', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>ค้นหา</button>
               </div>
-              <div style={{ display: 'flex', gap: 12, marginTop: 22 }}>
+              <div style={{ display: 'flex', gap: 12, marginTop: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+                <img src={MASCOT.point} alt="" style={{ width: 84, height: 84, objectFit: 'contain', flexShrink: 0, marginRight: -4, pointerEvents: 'none' }} />
                 <div onClick={actions.goTripForm} style={{ display: 'flex', alignItems: 'center', gap: 9, background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 14, padding: '10px 16px', cursor: 'pointer' }}>
                   <span style={{ width: 16, height: 16, background: '#FBC02D', flexShrink: 0, transform: 'rotate(45deg)', borderRadius: 3, position: 'relative' }}><span style={{ position: 'absolute', inset: 4, background: '#1B5E20', transform: 'rotate(0deg)', borderRadius: 2 }}></span></span>
                   <span style={{ color: '#fff', fontSize: 13, fontWeight: 700 }}>วางแผนทริป AI</span>
@@ -112,7 +114,7 @@ export default function HomePage() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(320px,1fr))', gap: 22 }}>
             {!state.dataLoading && derived.homeEvents.map((event) => (
               <div key={event.id} onClick={event.onOpen} style={{ display: 'flex', gap: 16, background: '#fff', border: '1px solid #E7E3D2', borderRadius: 16, overflow: 'hidden', cursor: 'pointer', transition: 'transform 0.22s ease,box-shadow 0.22s ease', animation: 'dc-fade-up 0.45s ease both' }}>
-                <ImageSlot src={event.img} shape="rect" style={{ width: 130, alignSelf: 'stretch', flexShrink: 0 }} placeholder="ภาพงาน" />
+                <ImageSlot src={event.img} shape="rect" style={{ width: 130, alignSelf: 'stretch', flexShrink: 0 }} placeholder="ภาพงาน" icon={EVENT_ICON} />
                 <div style={{ padding: '14px 14px 14px 0', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                   <span style={{ fontSize: 11, fontWeight: 700, color: '#E07B39', marginBottom: 12 }}>{event.category}</span>
                   <div style={{ fontWeight: 400, fontSize: 15, color: '#1f2a24', marginBottom: 6, lineHeight: 1.35 }}>{event.name}</div>
@@ -135,7 +137,7 @@ export default function HomePage() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: 24 }}>
             {!placesLoading && homePlaces.map((place) => (
               <div key={place.id} onClick={place.onOpen} style={{ background: '#fff', border: '1px solid #E7E3D2', borderRadius: 16, overflow: 'hidden', cursor: 'pointer', transition: 'transform 0.22s ease,box-shadow 0.22s ease', animation: 'dc-fade-up 0.45s ease both' }}>
-                <ImageSlot src={place.img} shape="rect" style={{ width: '100%', height: 160 }} placeholder="ภาพสถานที่" />
+                <ImageSlot src={place.img} shape="rect" style={{ width: '100%', height: 160 }} placeholder="ภาพสถานที่" icon={placeCategoryIcon(place.category)} />
                 <div style={{ padding: 16 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
                     <span style={{ fontSize: 11, fontWeight: 700, color: '#2E7D32', background: '#E8F5E9', padding: '3px 9px', borderRadius: 10 }}>{place.category}</span>
@@ -151,7 +153,7 @@ export default function HomePage() {
         </section>
       </main>
       <div data-role="mobile-cta-bar" style={{ display: 'none', position: 'fixed', bottom: 0, left: 0, right: 0, background: '#fff', borderTop: '1px solid #E7E3D2', padding: '12px 16px', zIndex: 45, boxShadow: '0 -6px 20px rgba(0,0,0,0.08)' }}>
-        {!state.loggedIn && <button onClick={actions.goSignup} style={{ width: '100%', background: 'linear-gradient(135deg,#66BB6A,#388E3C)', color: '#fff', border: 'none', padding: 13, borderRadius: 18, fontWeight: 800, fontSize: 14.5, cursor: 'pointer' }}>สมัครสมาชิกฟรี</button>}
+        {state.authChecked && !state.loggedIn && <button onClick={actions.goSignup} style={{ width: '100%', background: 'linear-gradient(135deg,#66BB6A,#388E3C)', color: '#fff', border: 'none', padding: 13, borderRadius: 18, fontWeight: 800, fontSize: 14.5, cursor: 'pointer' }}>สมัครสมาชิกฟรี</button>}
         {state.loggedIn && <button onClick={actions.goTripForm} style={{ width: '100%', background: 'linear-gradient(135deg,#66BB6A,#388E3C)', color: '#fff', border: 'none', padding: 13, borderRadius: 18, fontWeight: 800, fontSize: 14.5, cursor: 'pointer' }}>เริ่มวางแผนทริป AI</button>}
       </div>
     </>

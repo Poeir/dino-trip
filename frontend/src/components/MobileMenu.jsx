@@ -13,7 +13,14 @@ export default function MobileMenu() {
       <NavLink to="/events" onClick={actions.closeMobileMenu} style={mobileNavLinkStyle}>กิจกรรม &amp; เทศกาล</NavLink>
       <NavLink to="/trip" onClick={actions.closeMobileMenu} style={mobileNavLinkStyle}>วางแผนทริป AI</NavLink>
       <NavLink to="/points" onClick={actions.closeMobileMenu} style={mobileNavLinkStyle}>พอยท์สะสม</NavLink>
-      {!state.loggedIn && (
+      {state.loggedIn && (
+        <>
+          <NavLink to="/trips" onClick={actions.closeMobileMenu} style={mobileNavLinkStyle}>ทริปของฉัน</NavLink>
+          <NavLink to="/profile" onClick={actions.closeMobileMenu} style={mobileNavLinkStyle}>โปรไฟล์ของฉัน</NavLink>
+          <button onClick={() => { actions.closeMobileMenu(); actions.logout() }} style={{ ...mobileNavLinkStyle({ isActive: false }), background: 'none', border: 'none', borderBottom: '1px solid #F0EDE0', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit' }}>ออกจากระบบ</button>
+        </>
+      )}
+      {state.authChecked && !state.loggedIn && (
         <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
           <a href="#" onClick={(e) => { e.preventDefault(); actions.goLogin() }} style={{ flex: 1, textAlign: 'center', padding: 11, border: '1px solid #DCD8C6', borderRadius: 16, fontSize: 14, fontWeight: 700, color: '#1f2a24' }}>เข้าสู่ระบบ</a>
           <button onClick={actions.goSignup} style={{ flex: 1, background: 'linear-gradient(135deg,#66BB6A,#388E3C)', color: '#fff', border: 'none', padding: 11, borderRadius: 16, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>สมัครสมาชิก</button>

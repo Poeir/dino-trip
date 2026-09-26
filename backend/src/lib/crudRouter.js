@@ -56,8 +56,10 @@ function cacheKeyFor(table, query) {
   return `${table}?${keys.map((k) => `${k}=${query[k]}`).join('&')}`
 }
 
-export function crudRouter({ table, select, order, sortRows, toRow, toResponse, mutateAuth = [], invalidateColumns = [], enrichRows, searchColumns, filters, sortable }) {
+export function crudRouter({ table, select, order, sortRows, toRow, toResponse, mutateAuth = [], invalidateColumns = [], enrichRows, searchColumns, filters, sortable, uniqueViolationMessage, beforeDelete }) {
   const router = Router()
+  // Turns a Postgres unique_violation (23505) on create/edit into a readable 409.
+  const mapWriteError = (err) => (uniqueViolationMessage && err.code === '23505' ? httpError(409, uniqueViolationMessage) : err)
   const mapRow = toResponse || ((row) => row)
   const orderRules = order ? (Array.isArray(order) ? order : [order]) : []
   const columns = select ? select.split(',').map((s) => s.trim()) : '*'
@@ -194,7 +196,12 @@ export function crudRouter({ table, select, order, sortRows, toRow, toResponse, 
 
   router.post('/', mutateAuth, asyncHandler(async (req, res) => {
     const payload = { ...(toRow ? toRow(req.body) : req.body), ...invalidate }
-    const [row] = await db(table).insert(payload).returning(columns)
+    let row
+    try {
+      ;[row] = await db(table).insert(payload).returning(columns)
+    } catch (err) {
+      throw mapWriteError(err)
+    }
     const [enriched] = await enrich([row])
     invalidateCache(table)
     res.status(201).json(mapRow(enriched))
@@ -202,7 +209,12 @@ export function crudRouter({ table, select, order, sortRows, toRow, toResponse, 
 
   router.put('/:id', mutateAuth, asyncHandler(async (req, res) => {
     const payload = { ...(toRow ? toRow(req.body) : req.body), ...invalidate }
-    const [row] = await db(table).where('id', req.params.id).update(payload).returning(columns)
+    let row
+    try {
+      ;[row] = await db(table).where('id', req.params.id).update(payload).returning(columns)
+    } catch (err) {
+      throw mapWriteError(err)
+    }
     if (!row) throw httpError(404, 'ไม่พบข้อมูล')
     const [enriched] = await enrich([row])
     invalidateCache(table)
@@ -210,9 +222,13 @@ export function crudRouter({ table, select, order, sortRows, toRow, toResponse, 
   }))
 
   router.delete('/:id', mutateAuth, asyncHandler(async (req, res) => {
+    // Optional: (id) => cleanup | null, run before the row goes (so it can read
+    // what it needs) and its returned cleanup run only once the delete worked.
+    const cleanup = beforeDelete ? await beforeDelete(req.params.id) : null
     const count = await db(table).where('id', req.params.id).delete()
     if (!count) throw httpError(404, 'ไม่พบข้อมูล')
     invalidateCache(table)
+    if (cleanup) Promise.resolve().then(cleanup).catch((err) => console.error(`Cleanup after deleting from ${table} failed:`, err))
     res.status(204).end()
   }))
 

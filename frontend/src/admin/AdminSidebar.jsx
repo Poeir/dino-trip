@@ -22,6 +22,25 @@ function NavIcon({ nav }) {
       <span style={{ position: 'absolute', top: 1, left: 2.5, width: 5, height: 5, borderRadius: '50%', border: `1.5px solid ${nav.iconColor}` }}></span>
     </span>
   )
+  if (nav.isRedeem) return (
+    <span style={{ width: 14, height: 11, border: `2px solid ${nav.iconColor}`, borderRadius: 2, position: 'relative', display: 'inline-block', marginTop: 2 }}>
+      <span style={{ position: 'absolute', top: -2, left: 4, width: 2, height: 11, background: nav.iconColor }}></span>
+      <span style={{ position: 'absolute', top: 2, left: -1, width: 12, height: 2, background: nav.iconColor }}></span>
+    </span>
+  )
+  if (nav.isUsers) return (
+    <span style={{ position: 'relative', width: 14, height: 14, display: 'inline-block' }}>
+      <span style={{ position: 'absolute', top: 0, left: 4, width: 6, height: 6, borderRadius: '50%', background: nav.iconColor }}></span>
+      <span style={{ position: 'absolute', bottom: 0, left: 1, width: 12, height: 6, borderRadius: '6px 6px 2px 2px', background: nav.iconColor }}></span>
+    </span>
+  )
+  if (nav.isTrips) return (
+    <span style={{ position: 'relative', width: 14, height: 14, display: 'inline-block' }}>
+      <span style={{ position: 'absolute', top: 0, left: 0, width: 5, height: 5, borderRadius: '50%', border: `2px solid ${nav.iconColor}`, boxSizing: 'border-box' }}></span>
+      <span style={{ position: 'absolute', bottom: 0, right: 0, width: 5, height: 5, borderRadius: '50%', background: nav.iconColor }}></span>
+      <span style={{ position: 'absolute', top: 4, left: 5, width: 2, height: 7, background: nav.iconColor, transform: 'rotate(-40deg)', transformOrigin: 'top' }}></span>
+    </span>
+  )
   return null
 }
 
@@ -37,12 +56,12 @@ export default function AdminSidebar() {
       bg: active ? '#E8F5E9' : 'transparent', color: active ? '#1B5E20' : '#6d7a72',
       iconBg: active ? 'linear-gradient(135deg,#66BB6A,#2E7D32)' : '#F1F8E9',
       iconColor: active ? '#fff' : '#7d8a80',
-      isDashboard: t.icon === 'dashboard', isPlaces: t.icon === 'places', isEvents: t.icon === 'events', isKnowledge: t.icon === 'knowledge', isQr: t.icon === 'qr'
+      isDashboard: t.icon === 'dashboard', isPlaces: t.icon === 'places', isEvents: t.icon === 'events', isKnowledge: t.icon === 'knowledge', isQr: t.icon === 'qr', isRedeem: t.icon === 'redeem', isUsers: t.icon === 'users', isTrips: t.icon === 'trips'
     }
   })
 
   return (
-    <aside style={{ width: 238, background: '#FFFFFF', borderRight: '1px solid #E7E3D2', padding: '20px 0', flexShrink: 0, display: 'flex', flexDirection: 'column' }}>
+    <aside style={{ width: 238, background: '#FFFFFF', borderRight: '1px solid #E7E3D2', padding: '20px 0', flexShrink: 0, display: 'flex', flexDirection: 'column', position: 'sticky', top: 0, height: '100vh', alignSelf: 'flex-start', overflowY: 'auto', boxSizing: 'border-box' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 20px 20px', borderBottom: '1px solid #F0EDE0', marginBottom: 14 }}>
         <img src="./assets/dino-logo-mark.png" alt="" style={{ width: 34, height: 34, borderRadius: 10 }} />
         <div>

@@ -1,4 +1,5 @@
 import ImageSlot from './ImageSlot.jsx'
+import { placeCategoryIcon } from '../data/categoryImages.js'
 
 // The place-card look used across the admin (PlacesTab) and now the QR
 // place picker (QrTab) -- pulled out here so both render the exact same
@@ -19,7 +20,7 @@ export default function PlaceCard({ place, onClick, selected, dim, badge, childr
       }}
     >
       <div style={{ position: 'relative' }}>
-        <ImageSlot src={place.img} shape="rect" style={{ width: '100%', height: 110 }} placeholder="ภาพสถานที่" />
+        <ImageSlot src={place.img} shape="rect" style={{ width: '100%', height: 110 }} placeholder="ภาพสถานที่" icon={placeCategoryIcon(place.category)} />
         {badge && (
           <span style={{ position: 'absolute', top: 8, left: 8, background: '#3c463f', color: '#fff', fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 8 }}>{badge}</span>
         )}

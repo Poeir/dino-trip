@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Link, Navigate, useParams } from 'react-router-dom'
 import { useApp } from '../context/AppContext.jsx'
+import LoadingSpinner from '../components/LoadingSpinner.jsx'
 import ImageSlot from '../components/ImageSlot.jsx'
+import { placeCategoryIcon, MASCOT } from '../data/categoryImages.js'
 import DayRouteMap from '../components/DayRouteMap.jsx'
 import Modal from '../components/Modal.jsx'
 import PlaceDetailView from '../components/PlaceDetailView.jsx'
@@ -42,6 +44,16 @@ export default function TripResultPage() {
   const [selectedPlaceId, setSelectedPlaceId] = useState(null)
   const [selectedPlace, setSelectedPlace] = useState(null)
   const [summaryOpen, setSummaryOpen] = useState(false)
+  // /trip/:id opens a saved plan (refresh-safe, shareable within the same
+  // browser/account); /trip/result is the unsaved fallback.
+  const { id } = useParams()
+
+  useEffect(() => {
+    if (id && state.tripId !== id) actions.loadTrip(id)
+    // Only re-run when the URL id or the loaded plan changes -- `actions` is a
+    // fresh object every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, state.tripId])
 
   useEffect(() => {
     if (!selectedPlaceId) { setSelectedPlace(null); return }
@@ -50,6 +62,17 @@ export default function TripResultPage() {
     return () => { cancelled = true }
   }, [selectedPlaceId])
 
+  if (id && state.tripId !== id) {
+    if (state.tripLoadError) {
+      return (
+        <main style={{ maxWidth: 520, margin: '0 auto', padding: '80px 24px', textAlign: 'center' }}>
+          <p style={{ fontSize: 15, color: '#3c463f', marginBottom: 18 }}>{state.tripLoadError}</p>
+          <Link to="/trip" style={{ fontWeight: 800, color: '#2E7D32' }}>สร้างแผนใหม่</Link>
+        </main>
+      )
+    }
+    return <LoadingSpinner size={36} label="กำลังโหลดแผนทริป..." />
+  }
   if (!state.tripPlan) return <Navigate to="/trip" replace />
   const plan = derived.tripPlan
   const selectedPlaceView = selectedPlace
@@ -60,6 +83,11 @@ export default function TripResultPage() {
       <div data-role="trip-result-grid" style={{ display: 'grid', gridTemplateColumns: '340px 1fr', gap: 28, alignItems: 'start' }}>
 
         <div data-role="trip-result-summary" style={{ position: 'sticky', top: 88, display: 'flex', flexDirection: 'column', gap: 20 }}>
+          {!id && state.authChecked && !state.loggedIn && (
+            <div style={{ background: '#FFF8E1', border: '1px solid #FBC02D', borderRadius: 14, padding: '11px 14px', fontSize: 12.5, color: '#6d5f2a', lineHeight: 1.5 }}>
+              แผนนี้จะหายเมื่อปิดหน้านี้ <Link to="/login" style={{ fontWeight: 800, color: '#8a6d00' }}>เข้าสู่ระบบ</Link> ก่อนสร้างแผน เพื่อบันทึกไว้ในเมนู “ทริปของฉัน”
+            </div>
+          )}
           <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 26, background: 'linear-gradient(135deg,#66BB6A,#2E7D32 65%,#1B5E20)', padding: '30px 24px', boxShadow: '0 20px 48px rgba(27,94,32,0.28)', animation: 'dc-fade-up 0.45s ease both' }}>
             <div style={{ position: 'absolute', width: 180, height: 180, borderRadius: '50%', background: 'rgba(255,255,255,0.10)', top: -80, right: -60, filter: 'blur(2px)' }}></div>
             <div style={{ position: 'absolute', width: 120, height: 120, borderRadius: '50%', background: 'rgba(251,192,45,0.18)', bottom: -50, left: -40, filter: 'blur(2px)' }}></div>
@@ -67,7 +95,7 @@ export default function TripResultPage() {
               <span key={i} style={{ position: 'absolute', left: s.left, top: s.top, width: s.size, height: s.size, borderRadius: '50%', background: '#FBC02D', animation: `dc-particle-float ${s.duration} ease-in-out infinite`, animationDelay: s.delay, pointerEvents: 'none' }}></span>
             ))}
             <div style={{ position: 'relative' }}>
-              <img src="./assets/dino-mascot-front.png" alt="" style={{ width: 64, height: 'auto', animation: 'dc-float 3.4s ease-in-out infinite', filter: 'drop-shadow(0 8px 14px rgba(0,0,0,0.2))', marginBottom: 10 }} onError={(e) => { e.currentTarget.style.display = 'none' }} />
+              <img src={MASCOT.celebrate} alt="" style={{ width: 96, height: 'auto', animation: 'dc-float 3.4s ease-in-out infinite', filter: 'drop-shadow(0 8px 14px rgba(0,0,0,0.2))', marginBottom: 10 }} />
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(251,192,45,0.22)', border: '1px solid rgba(251,192,45,0.5)', color: '#FFF3C4', fontSize: 11, fontWeight: 800, padding: '4px 11px', borderRadius: 20, marginBottom: 10 }}>✦ AI จัดให้แบบเอ็กซ์คลูซีฟ</div>
               <h1 data-font="culture" style={{ color: '#fff', fontSize: 22, fontWeight: 900, margin: '0 0 6px' }}>ทริปของคุณพร้อมแล้ว!</h1>
               <p style={{ color: '#E8F5E9', fontSize: 13, margin: '0 0 20px' }}>น้องไดโนจัดเส้นทางตามความสนใจของคุณเรียบร้อย พร้อมออกเดินทางได้เลย</p>
@@ -155,7 +183,7 @@ export default function TripResultPage() {
                           <div style={{ fontSize: 10, color: '#8a938c', marginTop: 3 }}>{item.durationLabel}</div>
                         )}
                       </div>
-                      <ImageSlot src={item.place.img} shape="rounded" radius={12} style={{ width: 84, height: 84, flexShrink: 0 }} placeholder="ภาพ" />
+                      <ImageSlot src={item.place.img} shape="rounded" radius={12} style={{ width: 84, height: 84, flexShrink: 0 }} placeholder="ภาพ" icon={placeCategoryIcon(item.place.category)} />
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <span style={{ fontSize: 10.5, fontWeight: 700, color: '#2E7D32', background: '#E8F5E9', padding: '2px 9px', borderRadius: 10 }}>{item.place.category}</span>
                         <div style={{ fontWeight: 700, fontSize: 15.5, color: '#1f2a24', margin: '5px 0 3px' }}>{item.place.name}</div>

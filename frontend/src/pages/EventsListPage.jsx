@@ -5,6 +5,8 @@ import PageControls from '../components/PageControls.jsx'
 import { fetchEvents } from '../lib/apiClient.js'
 import { usePagedList } from '../lib/usePagedList.js'
 import LoadingSpinner from '../components/LoadingSpinner.jsx'
+import EmptyState from '../components/EmptyState.jsx'
+import { EVENT_ICON, MASCOT } from '../data/categoryImages.js'
 
 export default function EventsListPage() {
   const { state, actions } = useApp()
@@ -33,15 +35,12 @@ export default function EventsListPage() {
       />
       {paged.loading && paged.rows.length === 0 && <LoadingSpinner size={36} label="กำลังโหลดกิจกรรม..." />}
       {!paged.loading && paged.rows.length === 0 && (
-        <div style={{ textAlign: 'center', padding: '60px 20px', border: '1px dashed #C8E6C9', borderRadius: 18 }}>
-          <div style={{ fontWeight: 700, fontSize: 15, color: '#3c463f', marginBottom: 4 }}>ไม่พบกิจกรรมที่ตรงกับการค้นหา</div>
-          <div style={{ fontSize: 13, color: '#8a938c' }}>ลองค้นหาด้วยคำอื่น</div>
-        </div>
+        <EmptyState mascot={MASCOT.sad} tone="green" style={{ padding: '56px 20px' }} title="ไม่พบกิจกรรมที่ตรงกับการค้นหา" desc="ลองค้นหาด้วยคำอื่น" />
       )}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: 24 }}>
         {paged.rows.map((event) => (
           <div key={event.id} onClick={() => actions.openEvent(event.id)} style={{ display: 'flex', flexDirection: 'column', height: 320, background: '#fff', border: '1px solid #E7E3D2', borderRadius: 16, overflow: 'hidden', cursor: 'pointer', transition: 'transform 0.22s ease,box-shadow 0.22s ease', animation: 'dc-fade-up 0.4s ease both' }}>
-            <ImageSlot src={event.img} shape="rect" style={{ width: '100%', height: 170, flexShrink: 0 }} placeholder="ภาพงาน" />
+            <ImageSlot src={event.img} shape="rect" style={{ width: '100%', height: 170, flexShrink: 0 }} placeholder="ภาพงาน" icon={EVENT_ICON} />
             <div style={{ padding: 16, flex: 1, overflow: 'hidden' }}>
               <span style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#E07B39', marginBottom: 12 }}>{event.category}</span>
               <div style={{ fontWeight: 400, fontSize: 16, color: '#1f2a24', marginBottom: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{event.name}</div>

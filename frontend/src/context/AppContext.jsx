@@ -13,9 +13,11 @@ import {
   login as apiLogin, signup as apiSignup, confirmEmail as apiConfirmEmail,
   forgotPassword as apiForgotPassword, resetPassword as apiResetPassword,
   logout as apiLogout, fetchMe,
-  fetchPointsBalance, scanQr, redeemReward as apiRedeemReward,
+  fetchPointsBalance, scanQr,
+  createTrip, fetchTrip, setTripItemLike,
 } from '../lib/apiClient.js'
 import { sendChatMessage, requestTripPlan } from '../lib/chatbotService.js'
+import { getCurrentPosition, LOCATION_ERROR_MESSAGE } from '../lib/geolocation.js'
 
 const AppContext = createContext(null)
 
@@ -49,6 +51,11 @@ const isPasswordValid = (password) => PASSWORD_RULES.every((r) => r.test(passwor
 // setAvatarPosition below) -- object-position is a 0-100% pair.
 const clampPct = (n) => Math.max(0, Math.min(100, n))
 
+// chatbot-service's schedule mixes real places with two synthetic slots that
+// have no places row: the closing "return to the hotel" and "Free Time" filler.
+// Saving a trip (see planToTripPayload) needs to tell them apart.
+const slotKind = (status) => status === 'End of Day (Return to Hotel)' ? 'hotel' : status === 'Free Time' ? 'free_time' : 'place'
+
 // "HH:MM" -> minutes-since-midnight, for computing how long a trip-plan item
 // lasts (arrival_time/departure_time only arrive as display strings from the
 // API, not a duration field).
@@ -72,6 +79,8 @@ const initialState = {
   eventSearchQuery: '',
   activeCategory: 'ทั้งหมด',
   loggedIn: false,
+  // The signed-in user as the API returns it (id, email, displayName, avatarUrl, ...) -- what <Avatar> and the profile page read. userName below is kept for the existing greeting text.
+  currentUser: null,
   authChecked: false,
   userName: '',
   userPoints: 0,
@@ -110,6 +119,11 @@ const initialState = {
   tripStep: 0,
   tripPlanning: false,
   tripPlan: null,
+  // Id of the saved copy of `tripPlan` (null while it only exists in memory,
+  // e.g. when saving failed) -- TripResultPage's /trip/:id route loads by it.
+  tripId: null,
+  tripLoading: false,
+  tripLoadError: '',
   tripPlanNote: '',
   tripPlanRationale: '',
   feedbackText: '',
@@ -135,6 +149,7 @@ const initialState = {
   // pages reading places/events/etc. before then need to tell "still
   // loading" apart from "genuinely empty" (see LoadingSpinner.jsx usage).
   dataLoading: true,
+  dataLoadError: false,
   adminLoggedIn: false,
   formOpen: false,
   formType: null,
@@ -182,25 +197,52 @@ export function AppProvider({ children }) {
     })
   }
 
-  const showToast = (msg) => {
+  // Error messages are longer than confirmations, so callers pass a longer `ms`.
+  const showToast = (msg, ms = 2400) => {
     setState({ toastMsg: msg })
     clearTimeout(toastTimer.current)
-    toastTimer.current = setTimeout(() => setState({ toastMsg: '' }), 2400)
+    toastTimer.current = setTimeout(() => setState({ toastMsg: '' }), ms)
+  }
+  const ERROR_TOAST_MS = 5000
+
+  // Toast for a failed admin call: signs the admin out when the session ended,
+  // says so plainly when the server can't be reached, otherwise shows the
+  // server's own message. Returns true when it was a session problem.
+  const reportError = (prefix, err) => {
+    if (handleSessionExpired(err)) return true
+    const reason = err?.status === undefined ? 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาตรวจสอบอินเทอร์เน็ต' : err.message
+    showToast(prefix + reason, ERROR_TOAST_MS)
+    return false
+  }
+
+  // An admin API call answering 401/403 means the session expired (or the
+  // account isn't an admin): send them back to the admin login instead of
+  // leaving every button failing with the same message. Returns true if handled.
+  const handleSessionExpired = (err) => {
+    if (err?.status !== 401 && err?.status !== 403) return false
+    setState({ adminLoggedIn: false })
+    showToast('เซสชันหมดอายุหรือไม่มีสิทธิ์ผู้ดูแลระบบ กรุณาเข้าสู่ระบบใหม่', ERROR_TOAST_MS)
+    navigate('/admin/login')
+    return true
+  }
+
+  // Bulk data (events/KB/rewards/QRs). Also exposed as actions.reloadData so
+  // a screen that shows "load failed" can offer a retry.
+  const loadData = async () => {
+    setState({ dataLoading: true, dataLoadError: false })
+    try {
+      const [events, knowledgeBase, rewards, qrs] = await Promise.all([
+        fetchEvents(), fetchKnowledgeBase(), fetchRewards(), fetchQrs(),
+      ])
+      setState({ events, knowledgeBase, rewards, qrs, dataLoading: false })
+    } catch (err) {
+      console.error('Failed to load data from API:', err)
+      showToast('โหลดข้อมูลไม่สำเร็จ ตรวจสอบการเชื่อมต่อ API')
+      setState({ dataLoading: false, dataLoadError: true })
+    }
   }
 
   useEffect(() => {
-    async function loadData() {
-      try {
-        const [events, knowledgeBase, rewards, qrs] = await Promise.all([
-          fetchEvents(), fetchKnowledgeBase(), fetchRewards(), fetchQrs(),
-        ])
-        setState({ events, knowledgeBase, rewards, qrs, dataLoading: false })
-      } catch (err) {
-        console.error('Failed to load data from API:', err)
-        showToast('โหลดข้อมูลไม่สำเร็จ ตรวจสอบการเชื่อมต่อ API')
-        setState({ dataLoading: false })
-      }
-    }
     loadData()
 
     // Best-effort: ranking falls back to rating-only if the user denies/ignores
@@ -236,9 +278,11 @@ export function AppProvider({ children }) {
   // see auth.routes.js).
   useEffect(() => {
     fetchMe()
-      .then(({ user }) => {
-        setState({ loggedIn: !!user, userName: user?.displayName || '', authChecked: true, adminLoggedIn: user?.role === 'admin' })
-        if (user) fetchPointsBalance().then(({ balance }) => setState({ userPoints: balance })).catch(() => {})
+      .then(async ({ user }) => {
+        // Balance is fetched before authChecked flips so the header never shows
+        // a placeholder "0 พอยท์" that then jumps to the real number.
+        const balance = user ? await fetchPointsBalance().then((r) => r.balance).catch(() => 0) : 0
+        setState({ loggedIn: !!user, currentUser: user || null, userName: user?.displayName || '', userPoints: balance, authChecked: true, adminLoggedIn: user?.role === 'admin' })
       })
       .catch(() => setState({ authChecked: true }))
   }, [])
@@ -380,7 +424,7 @@ export function AppProvider({ children }) {
     setState({ authSubmitting: true, authError: '' })
     try {
       const { user } = await apiLogin(s.authForm.email, s.authForm.password)
-      setState({ authSubmitting: false, loggedIn: true, userName: user.displayName })
+      setState({ authSubmitting: false, loggedIn: true, currentUser: user, userName: user.displayName })
       fetchPointsBalance().then(({ balance }) => setState({ userPoints: balance })).catch(() => {})
       redirectAfterAuth()
     } catch (err) {
@@ -419,7 +463,7 @@ export function AppProvider({ children }) {
         setState({ authSubmitting: false, authPendingConfirmation: true })
         return
       }
-      setState({ authSubmitting: false, loggedIn: true, userName: result.user.displayName })
+      setState({ authSubmitting: false, loggedIn: true, currentUser: result.user, userName: result.user.displayName })
       redirectAfterAuth()
     } catch (err) {
       setState({ authSubmitting: false, authError: err.message })
@@ -430,7 +474,7 @@ export function AppProvider({ children }) {
   // decides how to render an expired/invalid link.
   const completeEmailConfirmation = async (token) => {
     const { user } = await apiConfirmEmail(token)
-    setState({ loggedIn: true, userName: user.displayName, authChecked: true })
+    setState({ loggedIn: true, currentUser: user, userName: user.displayName, authChecked: true })
     fetchPointsBalance().then(({ balance }) => setState({ userPoints: balance })).catch(() => {})
     redirectAfterAuth()
   }
@@ -458,7 +502,7 @@ export function AppProvider({ children }) {
     setState({ authSubmitting: true, authError: '' })
     try {
       const { user } = await apiResetPassword(token, f.password)
-      setState({ authSubmitting: false, loggedIn: true, userName: user.displayName })
+      setState({ authSubmitting: false, loggedIn: true, currentUser: user, userName: user.displayName })
       fetchPointsBalance().then(({ balance }) => setState({ userPoints: balance })).catch(() => {})
       redirectAfterAuth()
     } catch (err) {
@@ -467,9 +511,15 @@ export function AppProvider({ children }) {
   }
   const logout = async () => {
     await apiLogout().catch(() => {})
-    setState({ loggedIn: false, userName: '' })
+    setState({ loggedIn: false, currentUser: null, userName: '', userPoints: 0 })
     navigate('/')
   }
+
+  // Profile page: swap in the fresh user the API returned after an edit so the
+  // header avatar/greeting update without a reload.
+  const setCurrentUser = (user) => setState({ currentUser: user, userName: user?.displayName || '' })
+  // The account was deleted server-side (which also cleared the cookie).
+  const signedOutLocally = () => { setState({ loggedIn: false, currentUser: null, userName: '', userPoints: 0 }); navigate('/') }
 
   const toggleChat = () => setState((s) => ({ chatOpen: !s.chatOpen }))
   const setChatInput = (v) => setState({ chatInput: v })
@@ -577,13 +627,20 @@ export function AppProvider({ children }) {
       return {
         dayNum: day.day,
         date: dateObj.toISOString().slice(0, 10),
+        dayCostEstimate: day.day_cost_estimate,
+        dayTravelTimeTotal: day.day_travel_time_total,
         items: day.schedule.map((slot) => ({
           placeId: slot.place.id,
+          kind: slotKind(slot.status),
           time: slot.arrival_time,
           departureTime: slot.departure_time,
           status: slot.status,
           liked: null,
           distanceFromPrev: slot.distance_km || null,
+          travelTimeMin: slot.travel_time_min,
+          waitTimeMin: slot.wait_time_min,
+          isAnchor: slot.is_anchor,
+          mealRole: slot.meal_role,
           place: {
             id: slot.place.id, name: slot.place.name, category: slot.place.category, rating: slot.place.rating, address: slot.place.address, img: slot.place.img,
             location: (slot.place.lat != null && slot.place.lng != null) ? { lat: slot.place.lat, lng: slot.place.lng } : null,
@@ -599,6 +656,103 @@ export function AppProvider({ children }) {
     return { days, totalBudget: resp.total_cost_estimate, totalDistance: resp.total_distance_km, totalPoints }
   }
 
+  // Rebuilds the plan shape above from a saved trip (GET /api/trips/:id).
+  // Hotel / free-time slots have no places row, so they get the same synthetic
+  // ids chatbot-service gave them; a place deleted since planning falls back
+  // to the name saved with the trip.
+  const tripDetailToPlan = (detail) => {
+    const days = detail.days.map((d) => ({
+      dayNum: d.dayNo,
+      date: d.date,
+      dayCostEstimate: d.dayCostEstimate,
+      dayTravelTimeTotal: d.dayTravelTimeTotal,
+      items: d.items.map((it) => {
+        const placeId = it.kind === 'place' ? (it.placeId || `removed_${d.dayNo}_${it.position}`)
+          : it.kind === 'hotel' ? 'hotel_dummy' : `free_time_dummy_${d.dayNo}_${it.position}`
+        const location = it.lat != null && it.lng != null ? { lat: it.lat, lng: it.lng } : null
+        return {
+          itemId: it.id, placeId, kind: it.kind, time: it.arrivalTime, departureTime: it.departureTime, status: it.status, liked: it.liked,
+          distanceFromPrev: it.distanceKm || null, travelTimeMin: it.travelTimeMin, waitTimeMin: it.waitTimeMin, isAnchor: it.isAnchor, mealRole: it.mealRole,
+          place: it.place
+            ? { ...toTripPlace(it.place), hasQR: it.place.hasQR, qrPoints: it.place.qrPoints }
+            : { id: placeId, name: it.placeName, category: it.kind === 'hotel' ? 'ที่พัก' : null, rating: '-', address: '', img: null, location },
+        }
+      }),
+    }))
+    const totalPoints = days.flatMap((d) => d.items).reduce((sum, it) => sum + (it.place.hasQR ? it.place.qrPoints : 0), 0)
+    return { days, totalBudget: detail.totalCostEstimate, totalDistance: detail.totalDistanceKm, totalPoints }
+  }
+
+  // The request body sent to /trip/llm is what a saved trip keeps as its
+  // conditions; this maps it back onto the form (for the "เงื่อนไขที่เลือกไว้"
+  // recap and for re-running the same conditions).
+  const inputToTripForm = (input, current) => {
+    if (!input || !input.start_date) return current
+    const end = new Date(`${input.start_date}T00:00:00Z`)
+    end.setUTCDate(end.getUTCDate() + Math.max(0, (input.trip_duration_days || 1) - 1))
+    return {
+      ...current,
+      startDate: input.start_date,
+      endDate: end.toISOString().slice(0, 10),
+      interests: input.interests || [],
+      budget: input.budget_level || current.budget,
+      areaScope: input.area_scope || current.areaScope,
+      accommodation: (input.accommodation_name || input.accommodation_lat != null)
+        ? { name: input.accommodation_name || '', address: '', lat: input.accommodation_lat ?? null, lng: input.accommodation_lng ?? null }
+        : null,
+      mustGo: input.must_go || [],
+      pace: input.trip_pace || current.pace,
+      dailyStart: input.start_time || current.dailyStart,
+      dailyEnd: input.end_time || current.dailyEnd,
+    }
+  }
+
+  const planToTripPayload = (plan, input, note, planningRationale) => ({
+    input, note, planningRationale,
+    totalDistanceKm: plan.totalDistance,
+    totalCostEstimate: plan.totalBudget,
+    days: plan.days.map((d) => ({
+      date: d.date,
+      dayCostEstimate: d.dayCostEstimate,
+      dayTravelTimeTotal: d.dayTravelTimeTotal,
+      items: d.items.map((it) => ({
+        kind: it.kind,
+        placeId: it.kind === 'place' ? it.placeId : null,
+        placeName: it.place.name,
+        lat: it.place.location?.lat ?? null,
+        lng: it.place.location?.lng ?? null,
+        arrivalTime: it.time,
+        departureTime: it.departureTime || it.time,
+        travelTimeMin: it.travelTimeMin,
+        distanceKm: it.distanceFromPrev ?? 0,
+        status: it.status,
+        waitTimeMin: it.waitTimeMin,
+        isAnchor: it.isAnchor,
+        mealRole: it.mealRole,
+        liked: it.liked,
+      })),
+    })),
+  })
+
+  const loadTrip = async (id) => {
+    setState({ tripLoading: true, tripLoadError: '' })
+    try {
+      const detail = await fetchTrip(id)
+      setState((s) => ({
+        tripId: detail.id,
+        tripPlan: tripDetailToPlan(detail),
+        tripPlanNote: detail.note,
+        tripPlanRationale: detail.planningRationale,
+        tripForm: inputToTripForm(detail.input, s.tripForm),
+        tripLoading: false,
+        feedbackText: '',
+      }))
+    } catch (err) {
+      console.error('Loading saved trip failed:', err)
+      setState({ tripLoading: false, tripLoadError: err.status === 401 ? 'กรุณาเข้าสู่ระบบเพื่อดูแผนทริปที่บันทึกไว้' : err.status === 404 ? 'ไม่พบแผนทริปนี้ หรือคุณไม่มีสิทธิ์ดูแผนนี้' : 'โหลดแผนทริปไม่สำเร็จ ลองอีกครั้งนะครับ' })
+    }
+  }
+
   const submitTripForm = async () => {
     const f = stateRef.current.tripForm
     const dateErr = validateTripDates(f)
@@ -609,7 +763,7 @@ export function AppProvider({ children }) {
 
     setState({ tripFormError: '', tripPlanning: true })
     try {
-      const resp = await requestTripPlan({
+      const tripRequest = {
         trip_duration_days: days,
         start_date: f.startDate,
         accommodation_name: f.accommodation?.name || '',
@@ -622,7 +776,8 @@ export function AppProvider({ children }) {
         area_scope: f.areaScope,
         start_time: f.dailyStart,
         end_time: f.dailyEnd,
-      })
+      }
+      const resp = await requestTripPlan(tripRequest)
       if (!resp.itinerary || resp.itinerary.length === 0) {
         setState({ tripPlanning: false, tripFormError: resp.note || 'ไม่พบสถานที่ที่ตรงกับเงื่อนไข ลองปรับความสนใจหรืองบประมาณดูนะครับ' })
         return
@@ -646,21 +801,63 @@ export function AppProvider({ children }) {
           console.error('Fetching QR points for trip plan places failed (continuing without them):', err)
         }
       }
-      setState({ tripPlan: tripResponseToPlan(resp, f.startDate, qrPointsByPlaceId), tripPlanNote: resp.note, tripPlanRationale: resp.planning_rationale || '', tripPlanning: false, feedbackText: '' })
-      navigate('/trip/result')
+      let plan = tripResponseToPlan(resp, f.startDate, qrPointsByPlaceId)
+      // Save it right away -- generating costs an LLM run, and refreshing the
+      // page shouldn't throw that away. Logged-in users get a saved copy they
+      // can reopen; for a visitor who isn't logged in the backend only records
+      // the plan for statistics (`saved.id` is null), so they keep the in-memory
+      // plan at /trip/result. A failed save only costs the saved copy.
+      let tripId = null
+      try {
+        const saved = await createTrip(planToTripPayload(plan, tripRequest, resp.note, resp.planning_rationale || ''))
+        if (saved.id) {
+          tripId = saved.id
+          // Show the saved copy rather than the local one: its items carry the
+          // ids that likes are stored under, and it's exactly what reopening the
+          // trip later will render.
+          plan = tripDetailToPlan(saved)
+        }
+      } catch (err) {
+        console.error('Saving trip plan failed (showing it unsaved):', err)
+        // Only someone who expects a saved copy needs to hear that it failed.
+        if (stateRef.current.loggedIn) showToast(err.status === 409 || err.status === 429 ? err.message : 'บันทึกแผนทริปไม่สำเร็จ แต่ยังดูแผนนี้ได้ตามปกติ')
+      }
+      setState({ tripId, tripPlan: plan, tripPlanNote: resp.note, tripPlanRationale: resp.planning_rationale || '', tripPlanning: false, feedbackText: '' })
+      navigate(tripId ? `/trip/${tripId}` : '/trip/result')
     } catch (err) {
       console.error('Trip plan request failed:', err)
       setState({ tripPlanning: false, tripFormError: 'สร้างแผนทริปไม่สำเร็จ ลองอีกครั้งนะครับ' })
     }
   }
 
-  const setItemLike = (dayNum, placeId, val) => {
-    setState((s) => ({
-      tripPlan: {
-        ...s.tripPlan,
-        days: s.tripPlan.days.map((d) => d.dayNum !== dayNum ? d : { ...d, items: d.items.map((it) => it.placeId !== placeId ? it : { ...it, liked: it.liked === val ? null : val }) })
-      }
-    }))
+  const setLikeInPlan = (dayNum, placeId, liked) => setState((s) => ({
+    tripPlan: {
+      ...s.tripPlan,
+      days: s.tripPlan.days.map((d) => d.dayNum !== dayNum ? d : { ...d, items: d.items.map((it) => it.placeId !== placeId ? it : { ...it, liked }) })
+    }
+  }))
+
+  // Clicking the active button again clears the vote. The button reacts at
+  // once; for a saved trip the vote is stored too, and rolled back (with a
+  // toast) if that fails. Items without an itemId (e.g. one put in by
+  // regeneratePlan, which isn't synced yet) only change on screen.
+  const setItemLike = async (dayNum, placeId, val) => {
+    const { tripPlan, tripId } = stateRef.current
+    const item = tripPlan?.days.find((d) => d.dayNum === dayNum)?.items.find((it) => it.placeId === placeId)
+    if (!item) return
+    const previous = item.liked
+    const next = previous === val ? null : val
+    setLikeInPlan(dayNum, placeId, next)
+    if (!tripId || !item.itemId) return
+    try {
+      await setTripItemLike(tripId, item.itemId, next)
+    } catch (err) {
+      console.error('Saving like failed:', err)
+      // Only undo if nothing else has changed this item's vote in the meantime.
+      const current = stateRef.current.tripPlan?.days.find((d) => d.dayNum === dayNum)?.items.find((it) => it.placeId === placeId)
+      if (current && current.liked === next) setLikeInPlan(dayNum, placeId, previous)
+      showToast('บันทึกความชอบไม่สำเร็จ ลองอีกครั้งนะครับ')
+    }
   }
 
   // Shapes a fetched place row into the same trimmed `place` object
@@ -735,11 +932,28 @@ export function AppProvider({ children }) {
   // and ScanLandingPage (a physical QR opened in a plain browser/camera app).
   const claimScan = async (qrId) => {
     setState({ scanState: 'processing', scanError: '' })
+    // Asked for up front but not required: a place without coordinates never
+    // needs it, so a failure only matters if the server then says it does.
+    let position = null
+    let locationFailure = null
     try {
-      const { points, placeName, balance } = await scanQr(qrId)
+      position = await getCurrentPosition()
+    } catch (err) {
+      locationFailure = err.reason
+    }
+    try {
+      const { points, placeName, balance } = await scanQr(qrId, position)
       setState({ scanState: 'success', scanResultPoints: points, scanResultPlace: placeName, userPoints: balance })
     } catch (err) {
-      setState({ scanState: 'error', scanError: err.message })
+      let message = err.message
+      if (err.status === 401) {
+        // Session ended (expired, or an admin signed this account out): make
+        // the UI match instead of leaving the page looking logged in.
+        setState({ loggedIn: false, currentUser: null, userName: '', userPoints: 0 })
+        message = 'เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่'
+      } else if (err.status === 422 && locationFailure) message = LOCATION_ERROR_MESSAGE[locationFailure]
+      else if (err.status === undefined) message = 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่'
+      setState({ scanState: 'error', scanError: message })
     }
   }
 
@@ -756,18 +970,6 @@ export function AppProvider({ children }) {
   // message, cancelling out (backdrop click, Escape, ×) passes null.
   const handleScanCancelled = (message) => setState({ scanState: message ? 'error' : 'idle', scanError: message || '' })
   const resetScan = () => setState({ scanState: 'idle', scanError: '' })
-  const redeemReward = async (id) => {
-    const s = stateRef.current
-    const reward = s.rewards.find((r) => r.id === id)
-    if (!reward || s.userPoints < reward.cost) return
-    try {
-      const { balance } = await apiRedeemReward(id)
-      setState({ userPoints: balance })
-      showToast(`แลก "${reward.name}" สำเร็จ`)
-    } catch (err) {
-      showToast('แลกของรางวัลไม่สำเร็จ: ' + err.message)
-    }
-  }
 
   const adminLogin = async () => {
     const s = stateRef.current
@@ -797,7 +999,7 @@ export function AppProvider({ children }) {
       place: { name: '', category: 'คาเฟ่', rating: '4.5', reviews: '0', price: '', address: '', lat: '', lng: '', hours: '', phone: '', desc: '', amenities: '', tags: '', hasQR: false, qrPoints: '0', img: '', isActive: true },
       event: { name: '', category: '', dateRange: '', venueName: '', admission: '', organizer: '', suitableFor: '', desc: '', status: 'upcoming', img: '', eventStartDate: '', eventEndDate: '', placeId: '' },
       kb: { title: '', category: 'transport', content: '', isPinned: false, isActive: true },
-      qr: { placeId: '', points: '10' },
+      qr: { placeId: '', points: '10', isActive: true, expiresAt: '', radiusM: '200' },
       reward: { name: '', cost: '50' }
     }
     setState({ formOpen: true, formType: type, formData: defaults[type], editingId: null })
@@ -829,18 +1031,20 @@ export function AppProvider({ children }) {
   const saveForm = async () => {
     const { formType, formData, editingId } = stateRef.current
     const { create, update, listKey } = resourceApi[formType]
-    const errorLabels = { place: 'บันทึกสถานที่ไม่สำเร็จ: ', event: 'บันทึกอีเวนท์ไม่สำเร็จ: ', kb: 'บันทึกฐานความรู้ไม่สำเร็จ: ', qr: 'สร้าง QR ไม่สำเร็จ: ', reward: 'บันทึกของรางวัลไม่สำเร็จ: ' }
+    const errorLabels = { place: 'บันทึกสถานที่ไม่สำเร็จ: ', event: 'บันทึกอีเวนท์ไม่สำเร็จ: ', kb: 'บันทึกฐานความรู้ไม่สำเร็จ: ', qr: 'บันทึก QR ไม่สำเร็จ: ', reward: 'บันทึกของรางวัลไม่สำเร็จ: ' }
 
     let item
     try {
       item = editingId ? await update(editingId, formData) : await create(formData)
     } catch (err) {
-      showToast(errorLabels[formType] + err.message)
+      if (handleSessionExpired(err)) return
+      const reason = err.status === undefined ? 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาตรวจสอบอินเทอร์เน็ต' : err.message
+      showToast(errorLabels[formType] + reason, ERROR_TOAST_MS)
       return
     }
     setState((s) => ({ [listKey]: editingId ? s[listKey].map((x) => x.id === editingId ? item : x) : [...s[listKey], item] }))
 
-    const labels = { place: 'บันทึกสถานที่แล้ว', event: 'บันทึกอีเวนท์แล้ว', kb: 'บันทึกฐานความรู้แล้ว', qr: 'สร้าง QR แล้ว', reward: 'บันทึกของรางวัลแล้ว' }
+    const labels = { place: 'บันทึกสถานที่แล้ว', event: 'บันทึกอีเวนท์แล้ว', kb: 'บันทึกฐานความรู้แล้ว', qr: 'บันทึก QR แล้ว', reward: 'บันทึกของรางวัลแล้ว' }
     cancelForm()
     showToast(labels[formType] || 'บันทึกแล้ว')
     return item
@@ -851,13 +1055,23 @@ export function AppProvider({ children }) {
     events: s.events.some((e) => e.id === item.id) ? s.events.map((e) => e.id === item.id ? item : e) : [...s.events, item],
   }))
 
+  const applyQrUpdate = (item) => setState((s) => ({ qrs: s.qrs.map((q) => q.id === item.id ? item : q) }))
+
+  const applyRewardUpdate = (item) => setState((s) => ({
+    rewards: s.rewards.some((r) => r.id === item.id) ? s.rewards.map((r) => r.id === item.id ? item : r) : [...s.rewards, item],
+  }))
+
   const deleteItem = async (type, id) => {
-    if (!window.confirm('ยืนยันการลบข้อมูลนี้หรือไม่?')) return
+    const confirmMessage = type === 'qr'
+      ? 'ลบ QR นี้ใช่หรือไม่?\n\nป้าย QR ที่พิมพ์ไปแล้วจะสแกนไม่ได้ และประวัติการสแกนของ QR นี้จะถูกลบด้วย (ถ้าแค่ต้องการหยุดชั่วคราว ให้ใช้ "ปิดใช้งาน" แทน)'
+      : 'ยืนยันการลบข้อมูลนี้หรือไม่?'
+    if (!window.confirm(confirmMessage)) return
     const { remove, listKey } = resourceApi[type]
     try {
       await remove(id)
     } catch (err) {
-      showToast('ลบไม่สำเร็จ: ' + err.message)
+      if (handleSessionExpired(err)) return
+      showToast('ลบไม่สำเร็จ: ' + (err.status === undefined ? 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาตรวจสอบอินเทอร์เน็ต' : err.message), ERROR_TOAST_MS)
       return
     }
     setState((s) => ({ [listKey]: s[listKey].filter((x) => x.id !== id) }))
@@ -887,14 +1101,14 @@ export function AppProvider({ children }) {
     selectPersonaAvatarPreset, clearPersonaAvatar, onAuthAvatarFileChange, openAvatarReposition,
     setAvatarCropPosition, setAvatarCropScale, cancelAvatarCrop, confirmAvatarCrop,
     onResetPasswordChange, onResetConfirmPasswordChange,
-    onAuthConsentChange, submitLogin, submitSignup, completeEmailConfirmation, submitForgotPassword, submitResetPassword, logout,
+    onAuthConsentChange, submitLogin, submitSignup, completeEmailConfirmation, submitForgotPassword, submitResetPassword, logout, setCurrentUser, signedOutLocally,
     toggleChat, onChatInputChange, sendChat,
     onStartDateChange, onEndDateChange, onAccommodationLocationChange, onAccommodationSelect, useCurrentLocationForAccommodation, setTripDatePreset,
     onMustGoQueryChange, addMustGo, removeMustGo, onMustGoKeyDown,
     setPace, onDailyStartChange, onDailyEndChange,
-    onFeedbackChange, toggleInterest, setBudget, setAreaScope, submitTripForm, setItemLike, swapItem, regeneratePlan,
-    startScan, handleQrDetected, handleScanCancelled, claimScan, resetScan, redeemReward,
-    adminLogin, adminLogout, openCreateForm, openEditForm, updateFormField, cancelForm, applyEventUpdate,
+    onFeedbackChange, toggleInterest, setBudget, setAreaScope, submitTripForm, loadTrip, setItemLike, swapItem, regeneratePlan,
+    startScan, handleQrDetected, handleScanCancelled, claimScan, resetScan,
+    adminLogin, adminLogout, openCreateForm, openEditForm, updateFormField, cancelForm, applyEventUpdate, applyRewardUpdate, applyQrUpdate, handleSessionExpired, reportError, reloadData: loadData,
     saveForm, deleteItem, onNewPlace, onNewEvent, onNewKb, onNewQr, onNewReward,
     ...fieldHandlers,
   }
@@ -1048,9 +1262,12 @@ export function AppProvider({ children }) {
     }))
   } : { days: [], totalBudget: 0, totalDistance: 0, totalPoints: 0 }
 
+  // Redeeming happens at the counter (an admin deducts the points), so the
+  // tourist-facing view only needs to say whether a reward is within reach.
   const rewardsView = s.rewards.map((r) => {
-    const canRedeem = s.userPoints >= r.cost
-    return { ...r, onRedeem: () => redeemReward(r.id), disabled: !canRedeem, btnBg: canRedeem ? '#2E7D32' : '#eee', btnColor: canRedeem ? '#fff' : '#999' }
+    const soldOut = r.stock === 0
+    const shortBy = Math.max(0, r.cost - s.userPoints)
+    return { ...r, soldOut, shortBy, status: soldOut ? 'soldOut' : shortBy > 0 ? 'needMore' : 'ready' }
   })
   // Admin tabs for places/events/knowledgeBase/rewards now fetch their own
   // server-paginated page (see usePagedList.js) instead of reading a

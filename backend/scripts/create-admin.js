@@ -2,7 +2,9 @@ import 'dotenv/config'
 import bcrypt from 'bcryptjs'
 import { db } from '../src/lib/db.js'
 
-const [, , email, password] = process.argv
+const [, , rawEmail, password] = process.argv
+// Emails are stored lower-cased (users_email_normalized_check).
+const email = rawEmail?.trim().toLowerCase()
 if (!email || !password) {
   console.error('Usage: node scripts/create-admin.js <email> <password>')
   process.exit(1)

@@ -4,6 +4,8 @@ import Modal from '../components/Modal.jsx'
 import Field from '../components/Field.jsx'
 import PageControls from '../components/PageControls.jsx'
 import LoadingSpinner from '../components/LoadingSpinner.jsx'
+import LoadError from '../components/LoadError.jsx'
+import EmptyState from '../components/EmptyState.jsx'
 import { fetchKnowledgeBase } from '../lib/apiClient.js'
 import { usePagedList } from '../lib/usePagedList.js'
 
@@ -72,7 +74,11 @@ export default function KnowledgeTab() {
         <span style={{ fontSize: 12.5, color: '#8a938c' }}>{paged.loading ? 'กำลังโหลด...' : `พบ ${paged.total} รายการ`}</span>
       </div>
       {paged.loading && kbView.length === 0 && <LoadingSpinner size={32} label="กำลังโหลดฐานความรู้..." />}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(240px,1fr))', gap: 16, opacity: paged.loading ? 0.5 : 1, transition: 'opacity 0.15s ease', pointerEvents: paged.loading ? 'none' : 'auto' }}>
+      {paged.error && <LoadError message="โหลดรายการฐานความรู้ไม่สำเร็จ" onRetry={paged.refetch} />}
+      {!paged.loading && !paged.error && kbView.length === 0 && (
+        <EmptyState title="ไม่พบฐานความรู้ที่ตรงกับเงื่อนไข" />
+      )}
+      <div style={{ display: paged.error ? 'none' : 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(240px,1fr))', gap: 16, opacity: paged.loading ? 0.5 : 1, transition: 'opacity 0.15s ease', pointerEvents: paged.loading ? 'none' : 'auto' }}>
         {kbView.map((k) => (
           <div key={k.id} style={{ background: '#fff', border: '1px solid #E7E3D2', borderRadius: 14, padding: 16 }}>
             <div style={{ width: 36, height: 36, borderRadius: 10, background: '#E8F5E9', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>

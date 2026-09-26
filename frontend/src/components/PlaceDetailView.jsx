@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useApp } from '../context/AppContext.jsx'
 import ImageSlot from './ImageSlot.jsx'
 import ImageGallery from './ImageGallery.jsx'
+import { MASCOT, MAP_ICON } from '../data/categoryImages.js'
 import { ChecklistIcon, StarIcon, PinIcon, ClockIcon, PhoneIcon, RouteIcon, PencilIcon, ShareArrowIcon, HeartIcon, AmenityIcon, SparkleAIIcon, groupAmenities } from './Icons.jsx'
 
 const mockReviews = [
@@ -68,6 +69,8 @@ export default function PlaceDetailView({ place: p, imageHeight = 460 }) {
             images={p.images && p.images.length ? p.images : (p.img ? [p.img] : [])}
             height={imageHeight}
             placeholder="แกลเลอรีภาพสถานที่"
+            icon={MASCOT.camera}
+            iconSize={220}
           />
           <div style={{ display: 'flex', gap: 10, marginTop: 20, flexWrap: 'wrap' }}>
             {p.mapsUrl && <a href={p.mapsUrl} target="_blank" rel="noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 7, background: 'linear-gradient(135deg,#66BB6A,#388E3C)', color: '#fff', border: 'none', padding: '10px 18px', borderRadius: 20, fontSize: 13.5, fontWeight: 700, cursor: 'pointer' }}><RouteIcon size={16} color="#fff" box={false} />เปิดเส้นทาง Google Maps</a>}
@@ -163,7 +166,7 @@ export default function PlaceDetailView({ place: p, imageHeight = 460 }) {
                   allowFullScreen
                 />
               ) : (
-                <ImageSlot shape="rounded" radius={10} style={{ width: '100%', height: 360 }} placeholder="แผนที่ Google Maps" />
+                <ImageSlot shape="rounded" radius={10} style={{ width: '100%', height: 360 }} placeholder="แผนที่ Google Maps" icon={MAP_ICON} />
               )}
             </div>
             <div style={{ border: '1px solid #E7E3D2', borderRadius: 14, padding: 18, display: 'flex', gap: 24, flexWrap: 'wrap' }}>

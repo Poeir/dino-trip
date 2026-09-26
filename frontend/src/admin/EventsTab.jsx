@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 import { useApp } from '../context/AppContext.jsx'
 import { extractEventFromText, createEvent, updateEvent, fetchEvents, fetchEventPhotos, uploadEventPhoto, deleteEventPhoto, createPlace, fetchPlaceNames } from '../lib/apiClient.js'
 import ImageSlot from '../components/ImageSlot.jsx'
+import EmptyState from '../components/EmptyState.jsx'
+import { EVENT_ICON } from '../data/categoryImages.js'
 import Modal from '../components/Modal.jsx'
 import Field from '../components/Field.jsx'
 import SectionHeading from '../components/SectionHeading.jsx'
@@ -11,6 +13,7 @@ import PlacePicker from '../components/PlacePicker.jsx'
 import EventDateComposer from '../components/EventDateComposer.jsx'
 import PageControls from '../components/PageControls.jsx'
 import LoadingSpinner from '../components/LoadingSpinner.jsx'
+import LoadError from '../components/LoadError.jsx'
 import { usePagedList } from '../lib/usePagedList.js'
 
 // EventsTab's own sort dropdown -> crudRouter.js's ?sort=/?dir=.
@@ -134,7 +137,7 @@ export default function EventsTab() {
       setPhotoError('')
       setExistingPhotos([])
       if (state.editingId) {
-        fetchEventPhotos(state.editingId).then(setExistingPhotos).catch(() => setExistingPhotos([]))
+        fetchEventPhotos(state.editingId).then(setExistingPhotos).catch((err) => { setExistingPhotos([]); actions.reportError('โหลดรูปของอีเวนท์ไม่สำเร็จ: ', err) })
       }
       initialFormRef.current = JSON.stringify(f)
     }
@@ -213,7 +216,7 @@ export default function EventsTab() {
       setExistingPhotos((prev) => prev.filter((p) => p.id !== photoId))
       actions.showToast('ลบรูปแล้ว')
     } catch (err) {
-      actions.showToast('ลบรูปไม่สำเร็จ: ' + err.message)
+      actions.reportError('ลบรูปไม่สำเร็จ: ', err)
     } finally {
       setRemovingPhotoId(null)
     }
@@ -233,9 +236,10 @@ export default function EventsTab() {
       try {
         saved = state.editingId ? await updateEvent(state.editingId, f) : await createEvent(f)
       } catch (err) {
-        actions.showToast('บันทึกอีเวนท์ไม่สำเร็จ: ' + err.message)
+        actions.reportError('บันทึกอีเวนท์ไม่สำเร็จ: ', err)
         return
       }
+      let photoFailed = false
       if (pendingFiles.length) {
         setGalleryBusy(true)
         let uploadedCount = 0
@@ -249,7 +253,8 @@ export default function EventsTab() {
             uploadedCount++
           }
         } catch (err) {
-          actions.showToast(`บันทึกอีเวนท์แล้ว แต่อัปโหลดรูปสำเร็จแค่ ${uploadedCount}/${pendingFiles.length}: ${err.message}`)
+          photoFailed = true
+          actions.reportError(`บันทึกอีเวนท์แล้ว แต่อัปโหลดรูปสำเร็จแค่ ${uploadedCount}/${pendingFiles.length} (เปิดฟอร์มแก้ไขเพื่ออัปโหลดที่เหลือ): `, err)
         } finally {
           setGalleryBusy(false)
           setGalleryBusyText('')
@@ -257,7 +262,7 @@ export default function EventsTab() {
       }
       actions.applyEventUpdate(saved)
       paged.refetch()
-      actions.showToast(pendingFiles.length ? 'บันทึกอีเวนท์และรูปแล้ว' : 'บันทึกอีเวนท์แล้ว')
+      if (!photoFailed) actions.showToast(pendingFiles.length ? 'บันทึกอีเวนท์และรูปแล้ว' : 'บันทึกอีเวนท์แล้ว')
       actions.cancelForm()
     } finally {
       setSaving(false)
@@ -272,7 +277,7 @@ export default function EventsTab() {
       const extracted = await extractEventFromText(pasteText)
       EXTRACT_FIELDS.forEach((field) => actions.updateFormField(field, extracted[field] || ''))
     } catch (err) {
-      setExtractError(err.message)
+      if (!actions.handleSessionExpired(err)) setExtractError(err.status === undefined ? 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาตรวจสอบอินเทอร์เน็ต' : err.message)
     } finally {
       setExtracting(false)
     }
@@ -437,10 +442,14 @@ export default function EventsTab() {
         <span style={{ fontSize: 12.5, color: '#8a938c' }}>{paged.loading ? 'กำลังโหลด...' : `พบ ${paged.total} รายการ`}</span>
       </div>
       {paged.loading && eventsAdminView.length === 0 && <LoadingSpinner size={32} label="กำลังโหลดอีเวนท์..." />}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))', gap: 16, opacity: paged.loading ? 0.5 : 1, transition: 'opacity 0.15s ease', pointerEvents: paged.loading ? 'none' : 'auto' }}>
+      {paged.error && <LoadError message="โหลดรายการอีเวนท์ไม่สำเร็จ" onRetry={paged.refetch} />}
+      {!paged.loading && !paged.error && eventsAdminView.length === 0 && (
+        <EmptyState icon={EVENT_ICON} title="ไม่พบอีเวนท์ที่ตรงกับเงื่อนไข" />
+      )}
+      <div style={{ display: paged.error ? 'none' : 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))', gap: 16, opacity: paged.loading ? 0.5 : 1, transition: 'opacity 0.15s ease', pointerEvents: paged.loading ? 'none' : 'auto' }}>
         {eventsAdminView.map((e) => (
           <div key={e.id} style={{ background: '#fff', border: '1px solid #E7E3D2', borderRadius: 14, overflow: 'hidden' }}>
-            <ImageSlot src={e.img} shape="rect" style={{ width: '100%', height: 110 }} placeholder="ภาพงาน" />
+            <ImageSlot src={e.img} shape="rect" style={{ width: '100%', height: 110 }} placeholder="ภาพงาน" icon={EVENT_ICON} />
             <div style={{ padding: 14 }}>
               <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 3 }}>{e.name}</div>
               <div style={{ fontSize: 12.5, color: '#6d7a72', marginBottom: 4 }}>{e.dateRange} · {e.status}</div>

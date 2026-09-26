@@ -5,6 +5,9 @@ import PlacesTab from '../admin/PlacesTab.jsx'
 import EventsTab from '../admin/EventsTab.jsx'
 import KnowledgeTab from '../admin/KnowledgeTab.jsx'
 import QrTab from '../admin/QrTab.jsx'
+import UsersTab from '../admin/UsersTab.jsx'
+import RedeemTab from '../admin/RedeemTab.jsx'
+import TripsTab from '../admin/TripsTab.jsx'
 import Toast from '../components/Toast.jsx'
 import { adminTabs } from '../data/seed.js'
 
@@ -28,6 +31,9 @@ export default function AdminDashboardPage() {
           {tab === 'events' && <EventsTab />}
           {tab === 'knowledge' && <KnowledgeTab />}
           {tab === 'qr' && <QrTab />}
+          {tab === 'redeem' && <RedeemTab />}
+          {tab === 'users' && <UsersTab />}
+          {tab === 'trips' && <TripsTab />}
         </div>
       </main>
       <Toast />

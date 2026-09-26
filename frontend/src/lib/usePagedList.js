@@ -35,6 +35,7 @@ export function usePagedList(fetchFn, { pageSize = 20, extraParams } = {}) {
   const [rows, setRows] = useState([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
   const [refreshTick, setRefreshTick] = useState(0)
   const requestId = useRef(0)
   const extraKey = JSON.stringify(extraParams)
@@ -50,18 +51,20 @@ export function usePagedList(fetchFn, { pageSize = 20, extraParams } = {}) {
   useEffect(() => {
     const id = ++requestId.current
     setLoading(true)
+    setError(null)
     fetchFn({ page, limit: pageSize, search: debouncedQuery || undefined, ...extraParams })
       .then(({ data, total: t }) => {
         if (id !== requestId.current) return // a newer request already landed
         setRows(data)
         setTotal(t)
       })
+      .catch((err) => { if (id === requestId.current) setError(err) })
       .finally(() => { if (id === requestId.current) setLoading(false) })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, debouncedQuery, extraKey, pageSize, refreshTick])
 
   return {
-    rows, total, page, setPage, pageSize, loading,
+    rows, total, page, setPage, pageSize, loading, error,
     query, setQuery,
     totalPages: Math.max(1, Math.ceil(total / pageSize)),
     refetch: () => setRefreshTick((t) => t + 1),

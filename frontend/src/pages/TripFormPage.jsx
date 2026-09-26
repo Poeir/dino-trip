@@ -1,5 +1,6 @@
 import { useApp } from '../context/AppContext.jsx'
 import { CalendarIcon, HeartIcon, WalletIcon, ClockIcon, PinIcon } from '../components/Icons.jsx'
+import { MASCOT } from '../data/categoryImages.js'
 import TripLoadingPage from './TripLoadingPage.jsx'
 import LocationPicker from '../components/LocationPicker.jsx'
 
@@ -12,10 +13,12 @@ export default function TripFormPage() {
 
   return (
     <main style={{ maxWidth: 720, margin: '0 auto', padding: '48px 24px 70px' }}>
-      <div style={{ textAlign: 'center', marginBottom: 34, animation: 'dc-fade-up 0.4s ease both' }}>
-        <img src="./assets/dino-mascot-front.png" alt="" style={{ width: 76, height: 'auto', margin: '0 auto 14px', display: 'block', animation: 'dc-float 3.4s ease-in-out infinite' }} onError={(e) => { e.currentTarget.style.display = 'none' }} />
-        <h1 data-font="culture" style={{ fontSize: 26, fontWeight: 900, color: '#1B5E20', margin: '0 0 6px' }}>วางแผนทริปด้วย AI</h1>
-        <p style={{ color: '#8a938c', fontSize: 14, margin: 0 }}>แค่ 4 ขั้นตอน น้องไดโนจัดทริปในฝันให้คุณ</p>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14, marginBottom: 30, animation: 'dc-fade-up 0.4s ease both' }}>
+        <img src={MASCOT.map} alt="" style={{ width: 84, height: 84, objectFit: 'contain', flexShrink: 0, animation: 'dc-float 3.4s ease-in-out infinite' }} />
+        <div>
+          <h1 data-font="culture" style={{ fontSize: 26, fontWeight: 900, color: '#1B5E20', margin: '0 0 6px' }}>วางแผนทริปด้วย AI</h1>
+          <p style={{ color: '#8a938c', fontSize: 14, margin: 0 }}>แค่ 4 ขั้นตอน น้องไดโนจัดทริปในฝันให้คุณ</p>
+        </div>
       </div>
 
       <div data-role="trip-stepper" style={{ position: 'relative', maxWidth: 520, margin: '0 auto 40px', animation: 'dc-fade-up 0.4s ease 0.05s both' }}>

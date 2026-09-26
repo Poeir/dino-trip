@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router-dom'
+import UserMenu from './UserMenu.jsx'
 import { useApp } from '../context/AppContext.jsx'
 
 const navLinkStyle = ({ isActive }) => ({ fontSize: 15, color: isActive ? '#1B5E20' : '#1f2a24', fontWeight: isActive ? '800' : '600', position: 'relative', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 6 })
@@ -24,19 +25,22 @@ export default function Header() {
         <NavLink to="/trip" style={navLinkStyle}>
           {({ isActive }) => (<>วางแผนทริป AI<span style={{ background: 'linear-gradient(135deg,#f9a825,#FBC02D)', color: '#1B5E20', fontSize: 10, fontWeight: 800, padding: '2px 6px', borderRadius: 8 }}>ใหม่</span><span style={underline(isActive)}></span></>)}
         </NavLink>
+        {state.loggedIn && (
+          <NavLink to="/trips" style={navLinkStyle}>
+            {({ isActive }) => (<>ทริปของฉัน<span style={underline(isActive)}></span></>)}
+          </NavLink>
+        )}
         <NavLink to="/points" style={navLinkStyle}>
           {({ isActive }) => (<>พอยท์สะสม<span style={underline(isActive)}></span></>)}
         </NavLink>
       </nav>
       <div data-role="desktop-nav" style={{ display: 'flex', alignItems: 'center', gap: 14, justifySelf: 'end' }}>
-        {state.loggedIn ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#E8F5E9', padding: '6px 12px', borderRadius: 20 }}>
-              <span style={{ fontSize: 13, fontWeight: 700, color: '#1B5E20' }}>{state.userPoints} พอยท์</span>
-            </div>
-            <span style={{ fontSize: 14, color: '#6d7a72' }}>สวัสดี, {state.userName}</span>
-            <button onClick={actions.logout} style={{ background: 'none', border: 'none', color: '#6d7a72', fontSize: 13, cursor: 'pointer', textDecoration: 'underline' }}>ออกจากระบบ</button>
-          </div>
+        {!state.authChecked ? (
+          // Session check still in flight: reserve the space instead of flashing
+          // the logged-out buttons for a moment.
+          <div style={{ width: 230, height: 36 }} aria-hidden="true"></div>
+        ) : state.loggedIn ? (
+          <UserMenu />
         ) : (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <a href="#" onClick={(e) => { e.preventDefault(); actions.goLogin() }} style={{ fontSize: 14, fontWeight: 600, color: '#1f2a24' }}>เข้าสู่ระบบ</a>

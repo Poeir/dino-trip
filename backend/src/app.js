@@ -9,7 +9,13 @@ import { qrsRouter } from './routes/qrs.routes.js'
 import { rewardsRouter } from './routes/rewards.routes.js'
 import { authRouter } from './routes/auth.routes.js'
 import { pointsRouter } from './routes/points.routes.js'
+import { tripsRouter } from './routes/trips.routes.js'
+import { profileRouter } from './routes/profile.routes.js'
 import { usersRouter } from './routes/users.routes.js'
+import { adminUsersRouter } from './routes/adminUsers.routes.js'
+import { adminRedemptionsRouter } from './routes/adminRedemptions.routes.js'
+import { adminStatsRouter } from './routes/adminStats.routes.js'
+import { adminTripsRouter } from './routes/adminTrips.routes.js'
 import { reindexRouter } from './routes/reindex.routes.js'
 import { notFoundHandler, errorHandler } from './middleware/errorHandler.js'
 
@@ -32,7 +38,13 @@ app.use('/api/knowledge-base', knowledgeBaseRouter)
 app.use('/api/qrs', qrsRouter)
 app.use('/api/rewards', rewardsRouter)
 app.use('/api/points', pointsRouter)
+app.use('/api/trips', tripsRouter)
+app.use('/api/profile', profileRouter)
 app.use('/api/users', usersRouter)
+app.use('/api/admin/users', adminUsersRouter)
+app.use('/api/admin/redemptions', adminRedemptionsRouter)
+app.use('/api/admin/stats', adminStatsRouter)
+app.use('/api/admin/trips', adminTripsRouter)
 app.use('/api/reindex', reindexRouter)
 
 app.use(notFoundHandler)

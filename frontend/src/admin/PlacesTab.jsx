@@ -12,6 +12,9 @@ import HoursComposer from '../components/HoursComposer.jsx'
 import PlacePhotoGallery, { MAX_PHOTOS } from '../components/PlacePhotoGallery.jsx'
 import PageControls from '../components/PageControls.jsx'
 import LoadingSpinner from '../components/LoadingSpinner.jsx'
+import LoadError from '../components/LoadError.jsx'
+import EmptyState from '../components/EmptyState.jsx'
+import { MAP_ICON } from '../data/categoryImages.js'
 import { AMENITY_OPTIONS, TAG_OPTIONS } from '../data/placeVocabulary.js'
 import { createPlace, updatePlace, fetchPlaces, fetchPlacePhotos, uploadPlacePhoto, deletePlacePhoto } from '../lib/apiClient.js'
 import { usePagedList } from '../lib/usePagedList.js'
@@ -62,7 +65,7 @@ export default function PlacesTab() {
     setPhotoError('')
     setExistingPhotos([])
     if (state.editingId) {
-      fetchPlacePhotos(state.editingId).then(setExistingPhotos).catch(() => setExistingPhotos([]))
+      fetchPlacePhotos(state.editingId).then(setExistingPhotos).catch((err) => { setExistingPhotos([]); actions.reportError('โหลดรูปของสถานที่ไม่สำเร็จ: ', err) })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [derived.isPlaceFormOpen])
@@ -120,7 +123,7 @@ export default function PlacesTab() {
       setExistingPhotos((prev) => prev.filter((p) => p.id !== photoId))
       actions.showToast('ลบรูปแล้ว')
     } catch (err) {
-      actions.showToast('ลบรูปไม่สำเร็จ: ' + err.message)
+      actions.reportError('ลบรูปไม่สำเร็จ: ', err)
     } finally {
       setRemovingPhotoId(null)
     }
@@ -141,9 +144,10 @@ export default function PlacesTab() {
       try {
         saved = state.editingId ? await updatePlace(state.editingId, f) : await createPlace(f)
       } catch (err) {
-        actions.showToast('บันทึกสถานที่ไม่สำเร็จ: ' + err.message)
+        actions.reportError('บันทึกสถานที่ไม่สำเร็จ: ', err)
         return
       }
+      let photoFailed = false
       if (pendingFiles.length) {
         setGalleryBusy(true)
         let uploadedCount = 0
@@ -157,14 +161,15 @@ export default function PlacesTab() {
             uploadedCount++
           }
         } catch (err) {
-          actions.showToast(`บันทึกสถานที่แล้ว แต่อัปโหลดรูปสำเร็จแค่ ${uploadedCount}/${pendingFiles.length}: ${err.message}`)
+          photoFailed = true
+          actions.reportError(`บันทึกสถานที่แล้ว แต่อัปโหลดรูปสำเร็จแค่ ${uploadedCount}/${pendingFiles.length} (เปิดฟอร์มแก้ไขเพื่ออัปโหลดที่เหลือ): `, err)
         } finally {
           setGalleryBusy(false)
           setGalleryBusyText('')
         }
       }
       paged.refetch()
-      actions.showToast(pendingFiles.length ? 'บันทึกสถานที่และรูปแล้ว' : 'บันทึกสถานที่แล้ว')
+      if (!photoFailed) actions.showToast(pendingFiles.length ? 'บันทึกสถานที่และรูปแล้ว' : 'บันทึกสถานที่แล้ว')
       actions.cancelForm()
     } finally {
       setSaving(false)
@@ -329,7 +334,11 @@ export default function PlacesTab() {
         <span style={{ fontSize: 12.5, color: '#8a938c' }}>{paged.loading ? 'กำลังโหลด...' : `พบ ${paged.total} รายการ`}</span>
       </div>
       {paged.loading && placesView.length === 0 && <LoadingSpinner size={32} label="กำลังโหลดสถานที่..." />}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))', gap: 16, opacity: paged.loading ? 0.5 : 1, transition: 'opacity 0.15s ease', pointerEvents: paged.loading ? 'none' : 'auto' }}>
+      {paged.error && <LoadError message="โหลดรายการสถานที่ไม่สำเร็จ" onRetry={paged.refetch} />}
+      {!paged.loading && !paged.error && placesView.length === 0 && (
+        <EmptyState icon={MAP_ICON} title="ไม่พบสถานที่ที่ตรงกับเงื่อนไข" />
+      )}
+      <div style={{ display: paged.error ? 'none' : 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))', gap: 16, opacity: paged.loading ? 0.5 : 1, transition: 'opacity 0.15s ease', pointerEvents: paged.loading ? 'none' : 'auto' }}>
         {placesView.map((p) => (
           <PlaceCard key={p.id} place={p} dim={!p.isActive} badge={!p.isActive ? 'ซ่อนอยู่' : null}>
             <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>

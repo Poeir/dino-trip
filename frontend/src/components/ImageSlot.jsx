@@ -9,7 +9,9 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000'
 // rather than using them as-is.
 const resolveSrc = (src) => (src?.startsWith('/api/') ? `${API_BASE_URL}${src}` : src)
 
-export default function ImageSlot({ src: rawSrc, shape = 'rounded', radius = 12, style = {}, placeholder = '', loading = false }) {
+// `icon` (optional) is an illustration shown in the empty/broken state; see
+// data/categoryImages.js. Omit it and the placeholder is text-only as before.
+export default function ImageSlot({ src: rawSrc, shape = 'rounded', radius = 12, style = {}, placeholder = '', icon = '', iconSize = 84, loading = false }) {
   const src = resolveSrc(rawSrc)
   // Tracks *which* src failed, not just a bare boolean -- otherwise once one
   // image 404s, a later src change on the same mounted instance (e.g. the
@@ -43,9 +45,17 @@ export default function ImageSlot({ src: rawSrc, shape = 'rounded', radius = 12,
   if (failed || !src) {
     return (
       <div style={boxStyle}>
-        <span style={{ fontSize: 12.5, fontWeight: 700, color: '#2E7D32', textAlign: 'center', padding: 8 }}>
-          {placeholder}
-        </span>
+        {icon ? (
+          <img
+            src={icon}
+            alt={placeholder}
+            style={{ maxWidth: '55%', maxHeight: '65%', width: iconSize, height: 'auto', objectFit: 'contain', opacity: 0.95 }}
+          />
+        ) : (
+          <span style={{ fontSize: 12.5, fontWeight: 700, color: '#2E7D32', textAlign: 'center', padding: 8 }}>
+            {placeholder}
+          </span>
+        )}
         {spinnerOverlay}
       </div>
     )
