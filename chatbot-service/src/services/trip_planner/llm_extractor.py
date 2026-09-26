@@ -212,6 +212,37 @@ class LLMTripPlanner:
                       "(see rule 8) per day, so fewer picks are dropped like this.")
         return "\n".join(lines)
 
+    def _build_post_schedule_feedback(self, final_itinerary: List[DailyItinerary]) -> str:
+        """Checks the itinerary route_scheduler actually materialized, not
+        just what got dropped along the way (_build_drop_feedback only sees
+        explicit drops): a day with nothing real to visit, and a day still
+        without any "ร้านอาหาร". Feeds the same regenerate loop.
+
+        "Real stop" excludes the "Free Time" placeholder (category None) and
+        the return-to-hotel leg (category "ที่พัก"): materialize_day_schedule
+        always appends that leg, even for a completely empty route, so
+        day.schedule is never actually empty.
+
+        The missing-restaurant note is only raised when the candidate pool
+        has a restaurant a regenerate round could pick -- a pool with none
+        is an orchestrator/retrieval sizing problem the LLM can't fix."""
+        has_restaurant_candidate = any(loc.category == "ร้านอาหาร" for loc in self.candidates)
+        lines = []
+        for day in final_itinerary:
+            real = [s for s in day.schedule if s.place.category not in (None, "ที่พัก")]
+            if not real:
+                lines.append(
+                    f"- Day {day.day}: completely empty -- none of that day's picks could be scheduled. "
+                    "Pick places that are open and geographically close together for this day."
+                )
+            elif has_restaurant_candidate and not any(s.place.category == "ร้านอาหาร" for s in real):
+                lines.append(
+                    f"- Day {day.day}: has no \"ร้านอาหาร\" (restaurant) scheduled. Include at least one restaurant."
+                )
+        if not lines:
+            return ""
+        return "\n".join(["[SCHEDULING NOTE - DAYS THAT NEED FIXING]", *lines])
+
     def _enforce_category_cap(
         self, day_assignments: Dict[int, List[Place]], category: str, max_per_day: int,
         used_ids: Set[str], trip_start_date, trip_duration_days: int,
@@ -266,6 +297,61 @@ class LLMTripPlanner:
                     logger.info(
                         "trip planner: dropping %s, every day already has %d %s scheduled",
                         place.name, max_per_day, category,
+                    )
+        return dropped
+
+    def _enforce_pace_cap(
+        self, day_assignments: Dict[int, List[Place]], max_per_day: int,
+        used_ids: Set[str], trip_start_date, trip_duration_days: int,
+    ) -> List[Tuple[int, Place]]:
+        """Trims each day's attractions (everything but "ร้านอาหาร", see
+        route_scheduler.attraction_count) down to `max_per_day`, the pace's
+        cap from pace_stop_range -- the prompt's pace text alone doesn't stop
+        the LLM from over-assigning. Same relocate-or-drop policy as
+        _enforce_category_cap: an excess pick moves to another day that's
+        under the cap and not closed, and is only dropped (returned to the
+        unused pool for backfill) when no day has room. Lowest-rated optional
+        picks go first; must-go picks are never trimmed, even if they alone
+        exceed the cap."""
+        dropped: List[Tuple[int, Place]] = []
+
+        for day_num in range(1, trip_duration_days + 1):
+            places = day_assignments.get(day_num, [])
+            excess = route_scheduler.attraction_count(places) - max_per_day
+            if excess <= 0:
+                continue
+            trimmable = sorted(
+                (p for p in places if p.category != "ร้านอาหาร" and p.id not in self.must_go_ids),
+                key=lambda p: p.rating or 0.0,
+            )
+            for place in trimmable[:excess]:
+                day_assignments[day_num].remove(place)
+                relocated = False
+                for other_day in range(1, trip_duration_days + 1):
+                    if other_day == day_num:
+                        continue
+                    other_places = day_assignments.setdefault(other_day, [])
+                    if route_scheduler.attraction_count(other_places) >= max_per_day:
+                        continue
+                    other_date = trip_start_date + timedelta(days=other_day - 1)
+                    noon = datetime(other_date.year, other_date.month, other_date.day, 12, 0)
+                    if route_scheduler.check_is_open(place, noon)["status"] == "Closed Today":
+                        continue
+                    if not route_scheduler._category_cap_ok(other_places, place):
+                        continue
+                    other_places.append(place)
+                    relocated = True
+                    logger.info(
+                        "trip planner: relocated %s from day %d to day %d (pace cap)",
+                        place.name, day_num, other_day,
+                    )
+                    break
+                if not relocated:
+                    used_ids.discard(place.id)
+                    dropped.append((day_num, place))
+                    logger.info(
+                        "trip planner: dropping %s, day %d is over the pace cap of %d attractions",
+                        place.name, day_num, max_per_day,
                     )
         return dropped
 
@@ -446,7 +532,17 @@ class LLMTripPlanner:
             day_assignments, "คาเฟ่", MAX_CAFES_PER_DAY,
             used_ids, trip_start_date, user_input.trip_duration_days,
         )
+        stop_min, stop_max = route_scheduler.pace_stop_range(
+            user_input.trip_pace, start_time_of_day, end_time_of_day,
+        )
+        pace_cap_drops = self._enforce_pace_cap(
+            day_assignments, stop_max, used_ids, trip_start_date, user_input.trip_duration_days,
+        )
         dropped_by_day: Dict[int, List[Tuple[Place, str]]] = {}
+        for day_num, place in pace_cap_drops:
+            dropped_by_day.setdefault(day_num, []).append((
+                place, f"day already had {stop_max} attractions, the max for {user_input.trip_pace} pace in this time window",
+            ))
         for day_num, place in restaurant_cap_drops:
             reason = f"day already had {MAX_RESTAURANTS_PER_DAY} \"ร้านอาหาร\" scheduled"
             if place.id in self.must_go_ids:
@@ -466,6 +562,12 @@ class LLMTripPlanner:
         # STRICT RULE #6 in the prompt above only assigns lunch/dinner when
         # a day has two, which still applies correctly since the LLM's own
         # picks are untouched here.
+        # Tracked separately from self.must_go_ids (not merged into it, or
+        # last_dropped_must_go would report an auto-injected restaurant to
+        # the user as something they asked for) and unioned into
+        # order_day_stops' priority tier below, so the injected restaurant
+        # isn't silently dropped like any other optional pick.
+        meal_fallback_ids: Set[str] = set()
         for day_num in range(1, user_input.trip_duration_days + 1):
             day_places = day_assignments.setdefault(day_num, [])
             if any(p.category == "ร้านอาหาร" for p in day_places):
@@ -477,6 +579,7 @@ class LLMTripPlanner:
             if restaurant:
                 day_places.append(restaurant)
                 used_ids.add(restaurant.id)
+                meal_fallback_ids.add(restaurant.id)
 
         # Candidates the LLM had access to but didn't pick for any day --
         # available for backfill_underfilled_trip (below) to top up a day
@@ -516,7 +619,7 @@ class LLMTripPlanner:
             ordered = route_scheduler.order_day_stops(
                 day_places, self.start_point, day_date,
                 start_time_of_day, end_time_of_day, user_input.trip_pace, meal_roles,
-                must_go_ids=self.must_go_ids,
+                must_go_ids=self.must_go_ids | meal_fallback_ids,
             )
             routes[day_num] = ordered
             ordered_ids = {p.id for p in ordered}
@@ -530,6 +633,7 @@ class LLMTripPlanner:
         routes = route_scheduler.backfill_underfilled_trip(
             routes, day_dates, meal_roles, self.start_point,
             start_time_of_day, end_time_of_day, user_input.trip_pace, backfill_pool,
+            stop_range=(stop_min, stop_max),
         )
         drop_feedback = self._build_drop_feedback(dropped_by_day)
 
@@ -541,12 +645,16 @@ class LLMTripPlanner:
             schedule, day_cost, day_travel = route_scheduler.materialize_day_schedule(
                 route, anchor_ids, meal_roles, self.start_point,
                 day_date, start_time_of_day, end_time_of_day, user_input.trip_pace,
-                gap_filler_pool=backfill_pool,
+                gap_filler_pool=backfill_pool, max_attractions=stop_max,
             )
             final_itinerary.append(DailyItinerary(
                 day=day_num, date=day_date.strftime("%Y-%m-%d"), schedule=schedule,
                 day_cost_estimate=day_cost, day_travel_time_total=day_travel,
             ))
+
+        post_schedule_feedback = self._build_post_schedule_feedback(final_itinerary)
+        if post_schedule_feedback:
+            drop_feedback = f"{drop_feedback}\n{post_schedule_feedback}" if drop_feedback else post_schedule_feedback
 
         scheduled_ids = {slot.place.id for day in final_itinerary for slot in day.schedule}
         self.last_dropped_must_go = [

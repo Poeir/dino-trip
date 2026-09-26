@@ -4,26 +4,11 @@ from itertools import zip_longest
 from src.core.db import find_place_by_name
 from src.services.rag.retriever import PlaceRetriever
 from .models import Place, TripInput, TripSummary, DaySummary
-from .route_scheduler import TYPE_DURATION_MAP
+from . import route_scheduler
 
 # Khon Kaen city center -- fallback location if the named accommodation isn't
 # found in `places` at all (same fallback the old project used).
 DEFAULT_HOTEL_LOCATION = {"lat": 16.4322, "lng": 102.8236}
-
-# Average of route_scheduler.TYPE_DURATION_MAP's per-category base visit
-# durations -- used below to size how many candidates the LLM is offered per
-# day. Kept derived from the real per-category durations route_scheduler
-# actually schedules with (same +30/-15 pace adjustment get_visit_duration()
-# applies), instead of a number picked independently of what scheduling uses
-# -- that mismatch previously let e.g. a "relaxed" 9-hour day get only 3
-# candidate slots (int(9/2.5)) when real per-stop time (visit + travel) only
-# fits ~5, so even a full quota of LLM picks left hours of the day empty.
-_AVG_BASE_VISIT_MIN = sum(TYPE_DURATION_MAP.values()) / len(TYPE_DURATION_MAP)
-
-# Typical in-city hop between two candidate places, in minutes -- Khon
-# Kaen-scale distances between same-trip candidates are rarely more than
-# 5-8km apart, which is 10-16 min at route_scheduler's ASSUMED_SPEED_KMH.
-_AVG_TRAVEL_MIN = 15
 
 # Keyed by the frontend's actual budgetList strings (ประหยัด/ปานกลาง/หรูหรา)
 # rather than translating to English tiers first -- this app is Thai-first,
@@ -95,24 +80,17 @@ class TripBuilderService:
 
         start_dt = datetime.strptime(user_input.start_time, "%H:%M")
         end_dt = datetime.strptime(user_input.end_time, "%H:%M")
-        total_trip_hours = (end_dt - start_dt).seconds / 3600
 
-        # Mirrors get_visit_duration()'s pace adjustment so the per-stop
-        # estimate used to size the candidate quota matches what scheduling
-        # actually applies (see _AVG_BASE_VISIT_MIN above).
-        if user_input.trip_pace == "relaxed":
-            avg_stop_min = _AVG_BASE_VISIT_MIN + 30 + _AVG_TRAVEL_MIN
-            min_places_per_day = 3
-        elif user_input.trip_pace == "packed":
-            avg_stop_min = max(30, _AVG_BASE_VISIT_MIN - 15) + _AVG_TRAVEL_MIN
-            min_places_per_day = 5
-        else:
-            avg_stop_min = _AVG_BASE_VISIT_MIN + _AVG_TRAVEL_MIN
-            min_places_per_day = 4
-
-        # Round up, not down -- undercounting here is what previously
-        # starved the LLM's candidate pool below what a full day needs.
-        places_per_day = max(min_places_per_day, math.ceil(total_trip_hours * 60 / avg_stop_min))
+        # Per-day slots: the pace's attraction max for this window (see
+        # route_scheduler.pace_stop_range -- the same range llm_extractor
+        # enforces afterwards), plus room for the day's restaurants, which
+        # don't count toward that range. Rounded up on purpose: undercounting
+        # here is what previously starved the LLM's candidate pool below what
+        # a full day needs.
+        _, max_attractions = route_scheduler.pace_stop_range(
+            user_input.trip_pace, start_dt.time(), end_dt.time(),
+        )
+        places_per_day = max_attractions + 2
 
         total_slots = places_per_day * user_input.trip_duration_days
         remaining_slots = total_slots - len(must_go_list)
@@ -220,12 +198,20 @@ class TripBuilderService:
         return accommodation, must_go_list + interest_list, missing_must_go, {p.id for p in must_go_list}
 
     def get_dynamic_instructions(self, user_input: TripInput):
+        start = datetime.strptime(user_input.start_time, "%H:%M").time()
+        end = datetime.strptime(user_input.end_time, "%H:%M").time()
+        lo, hi = route_scheduler.pace_stop_range(user_input.trip_pace, start, end)
+        count = f"{lo}" if lo == hi else f"{lo}-{hi}"
         pace_instruction = {
-            "relaxed": "- PACE (Relaxed): Schedule a slow-paced trip. Leave plenty of free time between activities. If there is a time gap > 45 mins, explicitly add '☕ พักผ่อนตามอัธยาศัย'. Do NOT pack too many places into one day.",
-            "packed": "- PACE (Packed): Schedule a fast-paced trip. Maximize the number of places visited. Minimize idle time and schedule activities back-to-back.",
+            "relaxed": "- PACE (Relaxed): Schedule a slow-paced trip. Leave plenty of free time between activities. If there is a time gap > 45 mins, explicitly add '☕ พักผ่อนตามอัธยาศัย'.",
+            "packed": "- PACE (Packed): Schedule a fast-paced trip. Minimize idle time and schedule activities back-to-back.",
         }.get(
             user_input.trip_pace,
             "- PACE (Standard): Balance activity time and rest. A moderate schedule is fine.",
+        )
+        pace_instruction += (
+            f" Plan {count} attractions per day (cafes count, restaurants do not) -- "
+            f"never more than {hi}."
         )
 
         # These only guide WHICH places to pick -- a deterministic scheduler
