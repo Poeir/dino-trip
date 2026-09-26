@@ -56,15 +56,13 @@ class TestGetVisitDuration:
         p = make_place(category="ไม่รู้จัก", name="Mystery Place")
         assert rs.get_visit_duration(p, "standard") == 60
 
-    def test_relaxed_pace_adds_30(self):
-        p = make_place(category="คาเฟ่", name="Cafe")
-        assert rs.get_visit_duration(p, "relaxed") == 45 + 30
-
-    def test_packed_pace_subtracts_15_but_floors_at_30(self):
-        p = make_place(category="วัด", name="Temple")  # base 45 -> 30
-        assert rs.get_visit_duration(p, "packed") == 30
-        p2 = make_place(category="คาเฟ่", name="Cafe")  # base 45 -> 30
-        assert rs.get_visit_duration(p2, "packed") == 30
+    @pytest.mark.parametrize("pace", ["relaxed", "standard", "packed"])
+    def test_pace_does_not_change_duration(self, pace):
+        # Pace controls how many attractions a day gets (pace_stop_range),
+        # not how long each one takes.
+        assert rs.get_visit_duration(make_place(category="วัด", name="Temple"), pace) == 45
+        assert rs.get_visit_duration(make_place(category="คาเฟ่", name="Cafe"), pace) == 45
+        assert rs.get_visit_duration(make_place(category="ตลาด", name="Market"), pace) == 120
 
     def test_buffet_keyword_overrides_category(self):
         # A "ร้านอาหาร" (normally 60 min) that's actually a buffet place should
@@ -72,6 +70,42 @@ class TestGetVisitDuration:
         p = make_place(category="ร้านอาหาร", name="หมูกระทะเด็ด")
         assert rs.get_visit_duration(p, "standard") == 120
         assert rs.get_visit_duration(p, "packed") == 120
+
+
+class TestPaceStopRange:
+    @pytest.mark.parametrize("pace,start,end,expected", [
+        ("relaxed", time(9, 0), time(18, 0), (3, 4)),
+        ("standard", time(9, 0), time(18, 0), (4, 5)),
+        ("packed", time(9, 0), time(18, 0), (6, 7)),
+        ("relaxed", time(9, 0), time(14, 0), (1, 2)),
+        ("packed", time(9, 0), time(14, 0), (3, 4)),
+        ("relaxed", time(9, 0), time(22, 0), (4, 5)),
+    ])
+    def test_range_scales_with_window(self, pace, start, end, expected):
+        assert rs.pace_stop_range(pace, start, end) == expected
+
+    def test_wider_window_never_gives_fewer_stops(self):
+        for pace in ("relaxed", "standard", "packed"):
+            narrow = rs.pace_stop_range(pace, time(9, 0), time(13, 0))
+            wide = rs.pace_stop_range(pace, time(9, 0), time(21, 0))
+            assert wide[1] >= narrow[1]
+
+    def test_faster_pace_never_gives_fewer_stops(self):
+        r = rs.pace_stop_range("relaxed", time(9, 0), time(18, 0))
+        s = rs.pace_stop_range("standard", time(9, 0), time(18, 0))
+        k = rs.pace_stop_range("packed", time(9, 0), time(18, 0))
+        assert r[1] <= s[1] <= k[1]
+
+    def test_tiny_window_still_allows_one_and_huge_window_is_capped(self):
+        assert rs.pace_stop_range("relaxed", time(9, 0), time(9, 30))[0] == 1
+        assert rs.pace_stop_range("packed", time(6, 0), time(23, 59))[1] == rs.MAX_STOPS_PER_DAY
+
+    def test_restaurants_do_not_count_but_cafes_do(self):
+        places = [
+            make_place(id="a", category="วัด"), make_place(id="b", category="คาเฟ่"),
+            make_place(id="c", category="ร้านอาหาร"),
+        ]
+        assert rs.attraction_count(places) == 2
 
 
 class TestIsEveningPlace:

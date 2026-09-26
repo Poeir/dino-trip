@@ -145,17 +145,59 @@ def travel_minutes(dist_km: float) -> int:
 
 
 def get_visit_duration(loc: Place, pace: str) -> int:
+    """Time spent at `loc`, by category only. `pace` is accepted (and still
+    threaded through every scheduling function) but no longer changes the
+    duration -- pace now controls how MANY attractions a day gets instead
+    (see pace_stop_range), so a wat is 45 minutes whether the trip is
+    relaxed or packed."""
     name_lower = loc.name.lower()
     if any(kw in name_lower for kw in BUFFET_KEYWORDS):
         return 120
 
-    base_duration = TYPE_DURATION_MAP.get(loc.category, 60)
+    return TYPE_DURATION_MAP.get(loc.category, 60)
 
-    if pace == "relaxed":
-        return base_duration + 30
-    elif pace == "packed":
-        return max(30, base_duration - 15)
-    return base_duration
+
+# Average minutes per attraction INCLUDING travel to it, per pace -- divides
+# a day's usable time into a target number of attractions (pace_stop_range).
+# Estimates for sizing only; the real time at each stop still comes from
+# get_visit_duration's per-category durations.
+PACE_MINUTES_PER_STOP = {"relaxed": 150, "standard": 105, "packed": 75}
+# Time reserved for one restaurant meal when the day's window covers it --
+# restaurants are excluded from the attraction count, so their time is
+# subtracted from the day instead.
+MEAL_BREAK_MINUTES = 60
+_LUNCH_WINDOW = (time(12, 0), time(13, 0))    # window must start by / end after these
+_DINNER_WINDOW = (time(18, 0), time(19, 0))
+# Restaurants don't count toward a pace's attraction range.
+_NON_ATTRACTION_CATEGORIES = ("ร้านอาหาร",)
+
+
+def attraction_count(places: List[Place]) -> int:
+    """Places that count toward a pace's per-day range: everything except
+    restaurants (cafes do count)."""
+    return sum(1 for p in places if p.category not in _NON_ATTRACTION_CATEGORIES)
+
+
+def pace_stop_range(pace: str, start_time_of_day: time, end_time_of_day: time) -> Tuple[int, int]:
+    """(min, max) attractions for one day at `pace`, scaled to the day's
+    window: usable minutes (window minus a meal break for each of lunch /
+    dinner the window covers) divided by PACE_MINUTES_PER_STOP[pace], floor
+    to ceil, never below 1 and never above MAX_STOPS_PER_DAY. A narrow window
+    therefore gets a small range and a wide one a bigger range instead of one
+    fixed number that only suits a 09:00-18:00 day."""
+    window_min = (
+        datetime.combine(date.min, end_time_of_day) - datetime.combine(date.min, start_time_of_day)
+    ).total_seconds() / 60
+    meals = 0
+    if start_time_of_day <= _LUNCH_WINDOW[0] and end_time_of_day >= _LUNCH_WINDOW[1]:
+        meals += 1
+    if start_time_of_day <= _DINNER_WINDOW[0] and end_time_of_day >= _DINNER_WINDOW[1]:
+        meals += 1
+    usable = max(0.0, window_min - meals * MEAL_BREAK_MINUTES)
+    raw = usable / PACE_MINUTES_PER_STOP.get(pace, PACE_MINUTES_PER_STOP["standard"])
+    lo = max(1, math.floor(raw))
+    hi = max(lo, math.ceil(raw))
+    return min(lo, MAX_STOPS_PER_DAY), min(hi, MAX_STOPS_PER_DAY)
 
 
 def is_evening_place(loc: Place) -> bool:
@@ -744,6 +786,7 @@ def backfill_underfilled_trip(
     routes: Dict[int, List[Place]], day_dates: Dict[int, date], meal_roles: Dict[str, str],
     hotel: Place, start_time_of_day: time, end_time_of_day: time, pace: str,
     backfill_pool: List[Place],
+    stop_range: Optional[Tuple[int, int]] = None,
 ) -> Dict[int, List[Place]]:
     """Cross-day counterpart of backfill_underfilled_day: each round finds
     the single day with the largest idle gap across the WHOLE trip (not
@@ -760,7 +803,12 @@ def backfill_underfilled_trip(
     `routes` is a day_num -> route dict of already-ordered
     (order_day_stops) routes, one per day, not yet materialized into a
     schedule. Returns a same-shape dict; `backfill_pool` is mutated as
-    usual."""
+    usual.
+
+    `stop_range` is pace_stop_range's (min, max) attractions per day. A day
+    below the min is backfilled regardless of how small its gaps are (the
+    pace's floor), and a day already at the max is never topped up, even to
+    close a large gap (the pace's cap). None keeps the gap-only behavior."""
     if not backfill_pool:
         return routes
 
@@ -773,15 +821,20 @@ def backfill_underfilled_trip(
     stuck_days = set()
 
     while True:
-        best_day, best_gap = None, 0.0
+        best_day, best_gap, best_below_min = None, 0.0, False
         for day_num, route in routes.items():
             if day_num in stuck_days or len(route) >= MAX_STOPS_PER_DAY:
                 continue
+            count = attraction_count(route)
+            if stop_range and count >= stop_range[1]:
+                continue  # pace cap reached
+            below_min = bool(stop_range) and count < stop_range[0]
             stops = _simulate_day_walk(route, hotel, day_dates[day_num], start_dts[day_num], end_dts[day_num], pace)
             gap = _largest_gap_minutes(stops, start_dts[day_num], end_dts[day_num])
-            if gap > best_gap:
-                best_day, best_gap = day_num, gap
-        if best_day is None or best_gap < UNDERFILLED_GAP_MINUTES:
+            # Days under the pace floor outrank days that merely have a gap.
+            if best_day is None or (below_min, gap) > (best_below_min, best_gap):
+                best_day, best_gap, best_below_min = day_num, gap, below_min
+        if best_day is None or (best_gap < UNDERFILLED_GAP_MINUTES and not best_below_min):
             break
 
         route = routes[best_day]
@@ -942,6 +995,7 @@ def materialize_day_schedule(
     route: List[Place], anchor_ids: set, meal_roles: Dict[str, str], hotel: Place,
     day_date: date, start_time_of_day: time, end_time_of_day: time, pace: str,
     gap_filler_pool: Optional[List[Place]] = None,
+    max_attractions: Optional[int] = None,
 ) -> Tuple[List[TimeSlot], float, int]:
     """Walk the already-ordered `route` and build the final TimeSlot list:
     real arrival/departure/wait times, per-stop fuel + place cost, and a
@@ -955,7 +1009,11 @@ def materialize_day_schedule(
     "shared pool consumed as we go" convention as backfill_underfilled_*)
     -- an actual detour reads as a normal part of the day, unlike a "free
     time" placeholder materializing out of nowhere. Only when nothing in
-    the pool fits does this fall back to that placeholder block."""
+    the pool fits does this fall back to that placeholder block.
+
+    `max_attractions` (pace_stop_range's max) stops gap-filler stops from
+    pushing the day past the pace's attraction cap; the placeholder block
+    is used instead."""
     schedule: List[TimeSlot] = []
     current_loc = hotel
     current_dt = datetime.combine(day_date, start_time_of_day)
@@ -1008,7 +1066,10 @@ def materialize_day_schedule(
             # still leave most of a long gap looking unaccounted for.
             # Naturally bounded: each iteration removes its pick from
             # gap_filler_pool, so this can't loop more than the pool's size.
-            while gap_minutes > 45 and gap_filler_pool:
+            while (
+                gap_minutes > 45 and gap_filler_pool
+                and (max_attractions is None or attraction_count(day_places_so_far) < max_attractions)
+            ):
                 filler = _find_gap_filler(gap_filler_pool, current_loc, place, current_dt, gap_minutes, pace, day_places_so_far)
                 if not filler:
                     break

@@ -9,7 +9,7 @@ scheduler (parsing, dedup, day-reassignment, meal_role passthrough).
 import pytest
 
 from src.services.trip_planner.llm_extractor import MAX_JUDGE_ATTEMPTS, LLMTripPlanner
-from src.services.trip_planner.models import JudgeVerdict, Place, TripInput
+from src.services.trip_planner.models import DailyItinerary, JudgeVerdict, Place, TimeSlot, TripInput
 
 
 @pytest.fixture
@@ -477,3 +477,173 @@ class TestMustGoProtection:
         restaurant_ids = {s.place.id for s in result[0].schedule if s.place.category == "ร้านอาหาร"}
         assert "rmust" in restaurant_ids
         assert len(restaurant_ids) == 2
+
+
+class TestPaceAttractionRange:
+    """trip_pace now sets a per-day attraction range scaled to the time
+    window (route_scheduler.pace_stop_range): the max is enforced on the
+    LLM's picks, the min is topped up from unused candidates, restaurants
+    don't count and cafes do."""
+
+    def _wats(self, n, **overrides):
+        # Tightly clustered so geography never decides what fits.
+        return [
+            make_place(
+                id=f"w{i}", name=f"Wat{i}", category="สถานที่ท่องเที่ยว", rating=3.0 + i * 0.1,
+                lat=16.44 + i * 0.001, lng=102.84, hours_periods=None, **overrides,
+            )
+            for i in range(n)
+        ]
+
+    def _run(self, planner, llm_places, pace, start="09:00", end="18:00"):
+        force_passing_judge(planner)
+        planner._call_llm_for_itinerary = lambda prompt: {
+            "itinerary": [{"day": 1, "places": [{"place_id": pid} for pid in llm_places]}]
+        }
+        user_input = TripInput(
+            trip_duration_days=1, start_date="2026-08-03", accommodation_name="Hotel",
+            start_time=start, end_time=end, trip_pace=pace,
+        )
+        result, _ = planner.solve_route_with_llm(user_input, "", "")
+        return [s.place for s in result[0].schedule if s.place.category not in (None, "ที่พัก")]
+
+    def test_relaxed_day_is_capped_even_if_llm_over_assigns(self):
+        wats = self._wats(7)
+        planner = LLMTripPlanner(candidates=wats, start_point=HOTEL)
+        stops = self._run(planner, [w.id for w in wats], "relaxed")
+        assert len([p for p in stops if p.category != "ร้านอาหาร"]) <= 4  # relaxed 09-18 -> 3-4
+
+    def test_must_go_places_are_never_trimmed_by_the_cap(self):
+        wats = self._wats(6)
+        planner = LLMTripPlanner(candidates=wats, start_point=HOTEL, must_go_ids={"w0"})  # lowest rated
+        stops = self._run(planner, [w.id for w in wats], "relaxed")
+        assert "w0" in {p.id for p in stops}
+
+    def test_packed_day_is_topped_up_to_its_minimum_from_unused_candidates(self):
+        wats = self._wats(10)
+        planner = LLMTripPlanner(candidates=wats, start_point=HOTEL)
+        stops = self._run(planner, ["w9"], "packed")  # LLM under-selects: 1 pick
+        assert len([p for p in stops if p.category != "ร้านอาหาร"]) >= 6  # packed 09-18 -> 6-7
+
+    def test_floor_applies_even_when_no_idle_gap_is_large(self):
+        # 3 stops leave under UNDERFILLED_GAP_MINUTES idle, so gap-based
+        # backfill alone would stop -- only the pace floor adds more.
+        wats = self._wats(10)
+        planner = LLMTripPlanner(candidates=wats, start_point=HOTEL)
+        stops = self._run(planner, ["w7", "w8", "w9"], "packed", "09:00", "15:00")
+        assert len(stops) >= 3
+        lo, _ = route_scheduler_range("packed", "09:00", "15:00")
+        assert len(stops) >= lo
+
+    def test_relaxed_day_is_not_padded_up_to_packed_levels(self):
+        wats = self._wats(10)
+        planner = LLMTripPlanner(candidates=wats, start_point=HOTEL)
+        stops = self._run(planner, ["w9"], "relaxed")
+        assert len([p for p in stops if p.category != "ร้านอาหาร"]) <= 4
+
+    def test_narrow_window_gets_a_smaller_cap_than_a_wide_one(self):
+        wats = self._wats(9)
+        narrow = self._run(LLMTripPlanner(candidates=list(wats), start_point=HOTEL), [w.id for w in wats], "standard", "09:00", "13:00")
+        wide = self._run(LLMTripPlanner(candidates=list(wats), start_point=HOTEL), [w.id for w in wats], "standard", "09:00", "21:00")
+        assert len(narrow) < len(wide)
+
+    def test_restaurants_do_not_use_up_the_attraction_cap(self):
+        wats = self._wats(4)
+        rest = make_place(id="r1", name="R1", category="ร้านอาหาร", lat=16.445, lng=102.84, hours_periods=None)
+        planner = LLMTripPlanner(candidates=wats + [rest], start_point=HOTEL)
+        stops = self._run(planner, [w.id for w in wats] + ["r1"], "relaxed")
+        assert "r1" in {p.id for p in stops}
+        assert len([p for p in stops if p.category != "ร้านอาหาร"]) == 4
+
+
+def route_scheduler_range(pace, start, end):
+    from datetime import datetime as _dt
+    from src.services.trip_planner import route_scheduler as _rs
+    return _rs.pace_stop_range(pace, _dt.strptime(start, "%H:%M").time(), _dt.strptime(end, "%H:%M").time())
+
+
+HOTEL_PLACE = Place(id="hotel", name="Hotel", category="ที่พัก", lat=16.44, lng=102.84)
+
+
+class TestGuaranteedRestaurantPerDay:
+    """The zero-restaurant fallback tops up a day the LLM left without a
+    "ร้านอาหาร"; the injected restaurant must survive order_day_stops'
+    competition (priority), and _build_post_schedule_feedback catches it when
+    even priority isn't enough."""
+
+    def test_injected_restaurant_gets_priority_over_a_cheaper_optional_place(self):
+        cheap = make_place(id="cheap", name="Cheap", category="สถานที่ท่องเที่ยว", lat=16.4401, lng=102.8401, hours_periods=None)
+        restaurant = make_place(id="rest1", name="Restaurant1", category="ร้านอาหาร", lat=16.455, lng=102.855, hours_periods=None)
+        planner = LLMTripPlanner(candidates=[cheap, restaurant], start_point=HOTEL_PLACE)
+        force_passing_judge(planner)
+        planner._call_llm_for_itinerary = lambda prompt: {"itinerary": [{"day": 1, "places": [{"place_id": "cheap"}]}]}
+        user_input = TripInput(
+            trip_duration_days=1, start_date="2026-08-03", accommodation_name="Hotel",
+            start_time="09:00", end_time="10:15", trip_pace="standard",
+        )
+        result, _ = planner.solve_route_with_llm(user_input, "", "")
+        assert "Restaurant1" in [s.place.name for s in result[0].schedule]
+
+    def test_day_with_a_restaurant_already_picked_is_left_alone(self):
+        r1 = make_place(id="r1", name="R1", category="ร้านอาหาร", lat=16.44, lng=102.84, hours_periods=None)
+        spare = make_place(id="spare", name="SpareRestaurant", category="ร้านอาหาร", lat=16.44, lng=102.84, hours_periods=None)
+        planner = LLMTripPlanner(candidates=[r1, spare], start_point=HOTEL_PLACE)
+        force_passing_judge(planner)
+        planner._call_llm_for_itinerary = lambda prompt: {"itinerary": [{"day": 1, "places": [{"place_id": "r1"}]}]}
+        user_input = TripInput(
+            trip_duration_days=1, start_date="2026-08-03", accommodation_name="Hotel",
+            start_time="09:00", end_time="20:00",
+        )
+        result, _ = planner.solve_route_with_llm(user_input, "", "")
+        names = {s.place.name for s in result[0].schedule}
+        assert "R1" in names
+        assert "SpareRestaurant" not in names
+
+
+class TestBuildPostScheduleFeedback:
+    def _hotel_leg(self):
+        return TimeSlot(
+            place=HOTEL_PLACE, arrival_time="18:00", departure_time="18:00",
+            travel_time_min=0, distance_km=0.0, status="End of Day (Return to Hotel)",
+        )
+
+    def _free_time_slot(self):
+        dummy = make_place(id="free1", name="Free Time", category=None, rating=0.0)
+        return TimeSlot(
+            place=dummy, arrival_time="09:00", departure_time="12:00",
+            travel_time_min=0, distance_km=0.0, status="Free Time",
+        )
+
+    def _real_slot(self, place):
+        return TimeSlot(place=place, arrival_time="09:00", departure_time="10:00", travel_time_min=0, distance_km=0.0)
+
+    def _day(self, *slots):
+        return DailyItinerary(day=1, date="2026-08-03", schedule=list(slots), day_cost_estimate=0.0, day_travel_time_total=0)
+
+    def test_day_with_only_a_hotel_leg_is_flagged_as_completely_empty(self):
+        feedback = LLMTripPlanner(candidates=[])._build_post_schedule_feedback([self._day(self._hotel_leg())])
+        assert "Day 1" in feedback and "completely empty" in feedback
+
+    def test_day_with_only_a_free_time_placeholder_is_flagged_as_completely_empty(self):
+        feedback = LLMTripPlanner(candidates=[])._build_post_schedule_feedback(
+            [self._day(self._free_time_slot(), self._hotel_leg())])
+        assert "completely empty" in feedback
+
+    def test_day_with_a_real_stop_but_no_restaurant_is_flagged_when_a_restaurant_candidate_exists(self):
+        cafe = make_place(id="c1", name="Cafe1", category="คาเฟ่")
+        rest = make_place(id="r1", name="R1", category="ร้านอาหาร")
+        feedback = LLMTripPlanner(candidates=[cafe, rest])._build_post_schedule_feedback(
+            [self._day(self._real_slot(cafe), self._hotel_leg())])
+        assert "restaurant" in feedback.lower()
+
+    def test_day_missing_a_restaurant_is_not_flagged_when_no_restaurant_candidate_exists_at_all(self):
+        cafe = make_place(id="c1", name="Cafe1", category="คาเฟ่")
+        feedback = LLMTripPlanner(candidates=[cafe])._build_post_schedule_feedback(
+            [self._day(self._real_slot(cafe), self._hotel_leg())])
+        assert feedback == ""
+
+    def test_day_with_a_restaurant_among_real_stops_is_not_flagged(self):
+        rest = make_place(id="r1", name="R1", category="ร้านอาหาร")
+        feedback = LLMTripPlanner(candidates=[rest])._build_post_schedule_feedback(
+            [self._day(self._real_slot(rest), self._hotel_leg())])
+        assert feedback == ""

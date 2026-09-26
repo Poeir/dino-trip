@@ -1,7 +1,9 @@
 // Imports backend/data/places.json (raw Google Places API dump, produced by
-// `npm run fetch:places`) -> Supabase `places` table, source='google'.
+// `npm run fetch:places`) -> Postgres `places` table (via DATABASE_URL), source='google'.
 // Upserts on google_place_id, so re-running with a freshly fetched dump is
-// safe to repeat.
+// safe to repeat. A place already in the DB only gets its Google-sourced,
+// time-varying fields refreshed (see mergeColumns below) -- curated fields
+// (LLM-written description, tags, category, QR, is_active, photos) are kept.
 //
 // Usage: cd backend && npm run import:places
 
@@ -9,21 +11,17 @@ import 'dotenv/config'
 import { readFileSync, existsSync, readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
-import { createClient } from '@supabase/supabase-js'
+import { db } from '../src/lib/db.js'
 import { uploadImageBuffer } from '../src/lib/cloudinary.js'
+import { mapCategory } from './place-category.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const PHOTOS_DIR = join(__dirname, '..', 'data', 'photos')
 
-const SUPABASE_URL = process.env.SUPABASE_URL
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
-
-if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-  console.error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY. Copy backend/.env.example to backend/.env and fill them in.')
+if (!process.env.DATABASE_URL) {
+  console.error('Missing DATABASE_URL. Copy backend/.env.example to backend/.env and fill it in.')
   process.exit(1)
 }
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
 // Uploads the photos fetch-places.js already downloaded for this place (if
 // any) to Cloudinary, so `images` points at URLs we control instead of
@@ -70,89 +68,6 @@ const qrPointsByName = {
   'สวนนันทนา ขอนแก่น': 10,
   'บึงหนองโคตร': 10,
   'บึงแก่นนคร (เมืองขอนแก่น)': 15,
-}
-
-function isCafeName(name) {
-  return /คาเฟ่|cafe|coffee/i.test(name)
-}
-
-// Google's Table A has 200+ place types (developers.google.com/maps/documentation/places/web-service/place-types)
-// that don't map 1:1 onto our 8 fixed categories. This routes every type
-// fetch-places.js's search scope can plausibly surface (restaurant,
-// cafe+bakery, tourist_attraction+museum+park, place_of_worship, lodging) to
-// the closest category. Anything not listed here -- overwhelmingly the
-// Food and Drink header's many *_restaurant/bar/pub subtypes -- is correctly
-// left to fall through to the 'ร้านอาหาร' default below.
-const CATEGORY_BY_TYPE = {
-  // Places of Worship
-  place_of_worship: 'วัด', buddhist_temple: 'วัด', hindu_temple: 'วัด',
-  mosque: 'วัด', church: 'วัด', shinto_shrine: 'วัด', synagogue: 'วัด',
-
-  // Culture -- Google's own "Culture" header, mapped as one group instead of
-  // re-split by our own judgment call (a castle/monument/historical_place is
-  // exactly as much "พิพิธภัณฑ์" to Google as an actual museum building is).
-  museum: 'พิพิธภัณฑ์', art_museum: 'พิพิธภัณฑ์', art_gallery: 'พิพิธภัณฑ์',
-  art_studio: 'พิพิธภัณฑ์', auditorium: 'พิพิธภัณฑ์', castle: 'พิพิธภัณฑ์',
-  cultural_landmark: 'พิพิธภัณฑ์', fountain: 'พิพิธภัณฑ์', historical_place: 'พิพิธภัณฑ์',
-  history_museum: 'พิพิธภัณฑ์', monument: 'พิพิธภัณฑ์', performing_arts_theater: 'พิพิธภัณฑ์',
-  sculpture: 'พิพิธภัณฑ์',
-
-  // Green space / parks. `national_park` gets its own category, not
-  // "สวนสาธารณะ" -- an อุทยานแห่งชาติ (with waterfalls, hiking, wildlife) reads
-  // to a Thai visitor as a destination, not a city park.
-  park: 'สวนสาธารณะ', state_park: 'สวนสาธารณะ',
-  city_park: 'สวนสาธารณะ', garden: 'สวนสาธารณะ', botanical_garden: 'สวนสาธารณะ',
-  playground: 'สวนสาธารณะ', picnic_ground: 'สวนสาธารณะ', dog_park: 'สวนสาธารณะ',
-  cycling_park: 'สวนสาธารณะ',
-
-  national_park: 'อุทยานแห่งชาติ',
-
-  // Everything else scenic/notable -- Entertainment and Recreation /
-  // Natural Features / Services headers that aren't a park or Culture.
-  // `historical_landmark` stays here (not in พิพิธภัณฑ์ above) because
-  // Google files it under Entertainment and Recreation, not Culture.
-  tourist_attraction: 'สถานที่ท่องเที่ยว', scenic_spot: 'สถานที่ท่องเที่ยว',
-  beach: 'สถานที่ท่องเที่ยว', island: 'สถานที่ท่องเที่ยว', lake: 'สถานที่ท่องเที่ยว',
-  mountain_peak: 'สถานที่ท่องเที่ยว', river: 'สถานที่ท่องเที่ยว', woods: 'สถานที่ท่องเที่ยว',
-  nature_preserve: 'สถานที่ท่องเที่ยว', wildlife_refuge: 'สถานที่ท่องเที่ยว',
-  wildlife_park: 'สถานที่ท่องเที่ยว', zoo: 'สถานที่ท่องเที่ยว', aquarium: 'สถานที่ท่องเที่ยว',
-  hiking_area: 'สถานที่ท่องเที่ยว', amusement_park: 'สถานที่ท่องเที่ยว', water_park: 'สถานที่ท่องเที่ยว',
-  historical_landmark: 'สถานที่ท่องเที่ยว', cultural_center: 'สถานที่ท่องเที่ยว',
-  planetarium: 'สถานที่ท่องเที่ยว', plaza: 'สถานที่ท่องเที่ยว',
-  visitor_center: 'สถานที่ท่องเที่ยว', tourist_information_center: 'สถานที่ท่องเที่ยว',
-  marina: 'สถานที่ท่องเที่ยว', vineyard: 'สถานที่ท่องเที่ยว', observation_deck: 'สถานที่ท่องเที่ยว',
-  ferris_wheel: 'สถานที่ท่องเที่ยว', bridge: 'สถานที่ท่องเที่ยว',
-
-  // Shopping -- only the touristy/market types. Supermarkets/convenience
-  // stores etc. are out of fetch-places.js's search scope, left unmapped.
-  market: 'ตลาด', flea_market: 'ตลาด', farmers_market: 'ตลาด', shopping_mall: 'ตลาด',
-
-  // Lodging
-  hotel: 'ที่พัก', resort_hotel: 'ที่พัก', motel: 'ที่พัก', hostel: 'ที่พัก',
-  inn: 'ที่พัก', guest_house: 'ที่พัก', bed_and_breakfast: 'ที่พัก', cottage: 'ที่พัก',
-  farmstay: 'ที่พัก', extended_stay_hotel: 'ที่พัก', lodging: 'ที่พัก',
-  campground: 'ที่พัก', rv_park: 'ที่พัก', camping_cabin: 'ที่พัก',
-  private_guest_room: 'ที่พัก', mobile_home_park: 'ที่พัก',
-  japanese_inn: 'ที่พัก', budget_japanese_inn: 'ที่พัก',
-
-  // Food and Drink -- cafe-shaped subtypes that aren't literally "restaurant"
-  cafe: 'คาเฟ่', coffee_shop: 'คาเฟ่', coffee_stand: 'คาเฟ่', coffee_roastery: 'คาเฟ่',
-  cat_cafe: 'คาเฟ่', dog_cafe: 'คาเฟ่', bakery: 'คาเฟ่', cake_shop: 'คาเฟ่',
-  pastry_shop: 'คาเฟ่', dessert_shop: 'คาเฟ่', dessert_restaurant: 'คาเฟ่',
-  ice_cream_shop: 'คาเฟ่', donut_shop: 'คาเฟ่', candy_store: 'คาเฟ่',
-  chocolate_shop: 'คาเฟ่', chocolate_factory: 'คาเฟ่', confectionery: 'คาเฟ่',
-  juice_shop: 'คาเฟ่', tea_house: 'คาเฟ่', bagel_shop: 'คาเฟ่', acai_shop: 'คาเฟ่',
-}
-
-function mapCategory(p, name) {
-  if (CATEGORY_BY_TYPE[p.primaryType]) return CATEGORY_BY_TYPE[p.primaryType]
-  // primaryType is often a generic/wrong Google guess (e.g. an apartment-style
-  // hostel typed `apartment_building`) even though the fuller `types` list
-  // usually still carries the correct type (`lodging`) somewhere in it.
-  for (const t of p.types || []) {
-    if (CATEGORY_BY_TYPE[t]) return CATEGORY_BY_TYPE[t]
-  }
-  return isCafeName(name) ? 'คาเฟ่' : 'ร้านอาหาร'
 }
 
 function mapPrice(p, category) {
@@ -337,12 +252,15 @@ function mapReviews(p) {
     .filter((r) => r.text)
 }
 
-async function toRow(p) {
+async function toRow(p, hasPhotos) {
   const name = p.displayName?.text || 'ไม่ทราบชื่อสถานที่'
   const category = mapCategory(p, name)
   const qrPoints = qrPointsByName[name] || 0
-  const images = await uploadPhotos(p.id)
-  const img = images[0] || '/assets/picture01.jpg'
+  // Already on Cloudinary -> the upsert keeps the existing images anyway, so
+  // don't re-upload (stale data/photos/<id> dirs from earlier runs would
+  // otherwise duplicate every gallery on Cloudinary).
+  const images = hasPhotos.has(p.id) ? [] : await uploadPhotos(p.id)
+  const img = images[0] || FALLBACK_IMG
   return {
     source: 'google',
     google_place_id: p.id,
@@ -355,7 +273,9 @@ async function toRow(p) {
     address: cleanAddress(p.formattedAddress),
     district: mapDistrict(p.addressComponents),
     hours: summarizeHours(p.regularOpeningHours),
-    hours_periods: p.regularOpeningHours?.periods || null,
+    // jsonb columns are stringified explicitly -- node-postgres would otherwise
+    // serialize a JS array as a Postgres array literal, which jsonb rejects.
+    hours_periods: p.regularOpeningHours?.periods ? JSON.stringify(p.regularOpeningHours.periods) : null,
     phone: p.internationalPhoneNumber || null,
     website: p.websiteUri || null,
     maps_url: p.googleMapsUri || null,
@@ -366,18 +286,61 @@ async function toRow(p) {
     tags: mapTags(category, p.goodForChildren, p.types, name),
     has_qr: qrPoints > 0,
     qr_points: qrPoints,
-    reviews: mapReviews(p),
+    reviews: JSON.stringify(mapReviews(p)),
     img,
     images: images.length ? images : [img],
     business_status: p.businessStatus || null,
-    raw_data: p,
+    // No category match (a dam typed `government_office`, a farm, ...) -> keep
+    // it out of search/trip planning until an admin sets a category and
+    // activates it. Only applies on insert: is_active isn't in mergeColumns.
+    is_active: !!category,
+    raw_data: JSON.stringify(p),
   }
+}
+
+const FALLBACK_IMG = '/assets/picture01.jpg'
+
+// Refreshed from Google on every re-import: these drift over time (ratings,
+// reviews, hours, closures) and nobody edits them by hand.
+const REFRESH_COLUMNS = [
+  'name', 'rating', 'review_count', 'price_level', 'price', 'address', 'district',
+  'hours', 'hours_periods', 'phone', 'website', 'maps_url', 'lat', 'lng',
+  'amenities', 'reviews', 'business_status', 'raw_data',
+]
+
+// ON CONFLICT DO UPDATE set-list. Anything not listed here (has_qr,
+// qr_points, is_active, source, ...) is left exactly as it is in the DB.
+function mergeColumns() {
+  const merge = {}
+  for (const col of REFRESH_COLUMNS) merge[col] = db.raw('excluded.??', [col])
+  // Kept once set -- description may be LLM-written by
+  // chatbot-service/scripts/generate_descriptions.py, tags/category may be
+  // hand-corrected in the admin tab.
+  merge.description = db.raw('coalesce(places.description, excluded.description)')
+  merge.category = db.raw('coalesce(places.category, excluded.category)')
+  merge.tags = db.raw('case when coalesce(cardinality(places.tags), 0) = 0 then excluded.tags else places.tags end')
+  // Photos: only replace the placeholder, never real existing photos.
+  const noPhoto = `(places.img is null or places.img = '${FALLBACK_IMG}')`
+  merge.img = db.raw(`case when ${noPhoto} then excluded.img else places.img end`)
+  merge.images = db.raw(`case when ${noPhoto} then excluded.images else places.images end`)
+  // chatbot-service's embedder re-embeds rows whose embedding is null. Only
+  // clear it when a column that feeds the embedding text (name, category,
+  // tags, description, amenities -- see embedder.py place_text) changed.
+  merge.embedding = db.raw(`case when places.name is distinct from excluded.name
+    or places.amenities is distinct from excluded.amenities
+    or places.description is null or places.category is null
+    or coalesce(cardinality(places.tags), 0) = 0
+    then null else places.embedding end`)
+  return merge
 }
 
 async function main() {
   const jsonPath = join(__dirname, '..', 'data', 'places.json')
   const raw = JSON.parse(readFileSync(jsonPath, 'utf-8'))
-  const rows = await Promise.all(raw.map(toRow))
+  const existing = await db('places').select('google_place_id', 'img').whereIn('google_place_id', raw.map((p) => p.id))
+  const hasPhotos = new Set(existing.filter((r) => r.img?.includes('res.cloudinary.com')).map((r) => r.google_place_id))
+  console.log(`${existing.length} of ${raw.length} already in DB (will be refreshed), ${raw.length - existing.length} new.`)
+  const rows = await Promise.all(raw.map((p) => toRow(p, hasPhotos)))
 
   const needsReview = rows.filter((r) => !r.category)
   console.log(`Importing ${rows.length} places (${needsReview.length} need manual category review)...`)
@@ -388,23 +351,25 @@ async function main() {
   const data = []
   for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
     const chunk = rows.slice(i, i + CHUNK_SIZE)
-    const { data: d, error } = await supabase
-      .from('places')
-      .upsert(chunk, { onConflict: 'google_place_id' })
-      .select('id, name, category')
-    if (error) {
-      console.error(`Chunk ${i}-${i + chunk.length} failed: ${error.message}`)
+    try {
+      const d = await db('places')
+        .insert(chunk)
+        .onConflict('google_place_id')
+        .merge(mergeColumns())
+        .returning(['id', 'name', 'category'])
+      data.push(...d)
+    } catch (err) {
+      console.error(`Chunk ${i}-${i + chunk.length} failed: ${err.message}`)
       console.error('Places in this chunk:', chunk.map((r) => r.name).join(', '))
-      continue
     }
-    data.push(...d)
   }
 
   console.log(`Done. Upserted ${data.length} places.`)
   if (needsReview.length) {
-    console.log('Review these in the admin Places tab (no clean category mapping found):')
+    console.log('Review these in the admin Places tab (no clean category mapping found, inserted inactive):')
     needsReview.forEach((r) => console.log(` - ${r.name}`))
   }
+  await db.destroy()
 }
 
 main()

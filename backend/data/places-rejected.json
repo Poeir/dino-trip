@@ -1,0 +1,1283 @@
+[
+  {
+    "id": "ChIJdwUdY4WLIjERmrs7z3mEBh8",
+    "name": "Era isan - อีร่า อีสาน ขอนแก่น",
+    "query": "ร้านอาหารอีสาน",
+    "district": "เมือง",
+    "reason": "รีวิว 19 < 20"
+  },
+  {
+    "id": "ChIJ3RMZwKeLIjERguwIElv2VmM",
+    "name": "ร้านอาหารอิสาน ย่าน ม.ขอนแก่น",
+    "query": "ร้านอาหารอีสาน",
+    "district": "เมือง",
+    "reason": "รีวิว 16 < 20"
+  },
+  {
+    "id": "ChIJl86a-sGLIjERxhXNQn7IGgc",
+    "name": "ป่าล้อมเมือง ร้านอาหารป่า-อาหารอีสาน",
+    "query": "ร้านอาหารอีสาน",
+    "district": "เมือง",
+    "reason": "รีวิว 10 < 20"
+  },
+  {
+    "id": "ChIJjyo_pJlhIjERJRa5W_ChDgM",
+    "name": "ข้นอีสาน",
+    "query": "ร้านอาหารอีสาน",
+    "district": "เมือง",
+    "reason": "รีวิว 16 < 20"
+  },
+  {
+    "id": "ChIJ8_EnLgCLIjERr2ggRIhCvgU",
+    "name": "ครัวอีสานเกรดA",
+    "query": "ร้านอาหารอีสาน",
+    "district": "เมือง",
+    "reason": "รีวิว 5 < 20"
+  },
+  {
+    "id": "ChIJPSWJhOONIjERJqRn1nIMzhw",
+    "name": "ครัวแซบอีสาน",
+    "query": "ร้านอาหารอีสาน",
+    "district": "เมือง",
+    "reason": "รีวิว 13 < 20"
+  },
+  {
+    "id": "ChIJk-yqMZCLIjERY4_K-BtDiIw",
+    "name": "ร้านข้าวมันไก่ไหหลำ ขอนแก่น",
+    "query": "ร้านอาหารอีสาน",
+    "district": "เมือง",
+    "reason": "รีวิว 15 < 20"
+  },
+  {
+    "id": "ChIJoZaDUk5hIjERuy_PbmKK3dY",
+    "name": "ครัวอีสานหน้าตชด.สาขาสอง",
+    "query": "ร้านอาหารอีสาน",
+    "district": "เมือง",
+    "reason": "รีวิว 7 < 20"
+  },
+  {
+    "id": "ChIJkQnhrM5jIjERB7A6z7lD0Go",
+    "name": "ครัวอีสาน",
+    "query": "ร้านอาหารอีสาน",
+    "district": "เมือง",
+    "reason": "รีวิว 5 < 20"
+  },
+  {
+    "id": "ChIJHW-9KY-LIjERd7M4pM4DckA",
+    "name": "123 Hana Dul Set ปิ้งย่างเกาหลี ขอนแก่น",
+    "query": "หมูกระทะ ปิ้งย่าง",
+    "district": "เมือง",
+    "reason": "รีวิว 14 < 20"
+  },
+  {
+    "id": "ChIJL6nkKgCLIjERrBDQLDfAzOM",
+    "name": "ร้านฮักหมูกระทะสาขา9",
+    "query": "หมูกระทะ ปิ้งย่าง",
+    "district": "เมือง",
+    "reason": "รีวิว 6 < 20"
+  },
+  {
+    "id": "ChIJ47m6TFhhIjERjQucdubdafk",
+    "name": "หมูกระเทย แคมป์ปิ้ง ขอนเเก่น",
+    "query": "หมูกระทะ ปิ้งย่าง",
+    "district": "เมือง",
+    "reason": "รีวิว 11 < 20"
+  },
+  {
+    "id": "ChIJZ2XuGDeLIjERq20_bgzBWfo",
+    "name": "ร้านปิ้งย่าง",
+    "query": "หมูกระทะ ปิ้งย่าง",
+    "district": "เมือง",
+    "reason": "รีวิว 8 < 20"
+  },
+  {
+    "id": "ChIJ7cq8l1thIjER1rYqCaWw-0k",
+    "name": "ลุงแซม อิ่มอร่อย หมูกระทะชั่งกิโลvsย่างให้ คำไฮ",
+    "query": "หมูกระทะ ปิ้งย่าง",
+    "district": "เมือง",
+    "reason": "รีวิว 1 < 20"
+  },
+  {
+    "id": "ChIJ7WrG13NhIjER3rIrBqAYak0",
+    "name": "ม.หมู-อ่ะ-ทะ",
+    "query": "หมูกระทะ ปิ้งย่าง",
+    "district": "เมือง",
+    "reason": "รีวิว 7 < 20"
+  },
+  {
+    "id": "ChIJA0XAfgWJIjERuHNQ7vmGe0U",
+    "name": "ร้านมีโอหมูย่างเกาหลี(สาขา1)",
+    "query": "หมูกระทะ ปิ้งย่าง",
+    "district": "เมือง",
+    "reason": "รีวิว 13 < 20"
+  },
+  {
+    "id": "ChIJx98-jwKLIjERmMi2Rp9RsCM",
+    "name": "See You Camp - Khon kaen",
+    "query": "หมูกระทะ ปิ้งย่าง",
+    "district": "เมือง",
+    "reason": "รีวิว 1 < 20"
+  },
+  {
+    "id": "ChIJ3dDof1-JIjERHuXGNROKZhE",
+    "name": "เจนหมูกระทะโนนทัน",
+    "query": "หมูกระทะ ปิ้งย่าง",
+    "district": "เมือง",
+    "reason": "รีวิว 9 < 20"
+  },
+  {
+    "id": "ChIJg_79cfmLIjERIzTdKdRm6WQ",
+    "name": "KO หมูกระทะชั่งกิโล",
+    "query": "หมูกระทะ ปิ้งย่าง",
+    "district": "เมือง",
+    "reason": "รีวิว 8 < 20"
+  },
+  {
+    "id": "ChIJDS33u3OLIjER5SdoqwyzQl4",
+    "name": "เฮียแจ๊คย่างให้",
+    "query": "หมูกระทะ ปิ้งย่าง",
+    "district": "เมือง",
+    "reason": "รีวิว 5 < 20"
+  },
+  {
+    "id": "ChIJAVoEwR-LIjERWuqaML9vk3Q",
+    "name": "แฟรนไชส์ย่างให้ ศรีจันทร์ 15",
+    "query": "หมูกระทะ ปิ้งย่าง",
+    "district": "เมือง",
+    "reason": "รีวิว 2 < 20"
+  },
+  {
+    "id": "ChIJ49TFF0aJIjERm3F8wRMqshE",
+    "name": "ร้านไก่ย่างวิเชียรบุรี",
+    "query": "ส้มตำ ไก่ย่าง",
+    "district": "เมือง",
+    "reason": "รีวิว 8 < 20"
+  },
+  {
+    "id": "ChIJy3pqGI-LIjERtKzmzir0LEE",
+    "name": "จิราพรไก่ย่าง",
+    "query": "ส้มตำ ไก่ย่าง",
+    "district": "เมือง",
+    "reason": "รีวิว 14 < 20"
+  },
+  {
+    "id": "ChIJccmjdMGLIjERc8wNE7t7q2M",
+    "name": "ส้มตำไก่ย่าง วิเชียรบุรี ต้นมะขาม",
+    "query": "ส้มตำ ไก่ย่าง",
+    "district": "เมือง",
+    "reason": "รีวิว 3 < 20"
+  },
+  {
+    "id": "ChIJjVDp-JOJIjER8yk-Adj904k",
+    "name": "นิชกานต์ไก่ย่าง (สาขาเคหะ)",
+    "query": "ส้มตำ ไก่ย่าง",
+    "district": "เมือง",
+    "reason": "รีวิว 2 < 20"
+  },
+  {
+    "id": "ChIJZw_rbU-JIjERVFhyCXzASmM",
+    "name": "ร้านตำแซ่บ “แซ่บนัวหัวสัก”",
+    "query": "ส้มตำ ไก่ย่าง",
+    "district": "เมือง",
+    "reason": "รีวิว 17 < 20"
+  },
+  {
+    "id": "ChIJ9c8YOoGJIjER9UK9JVMm74k",
+    "name": "เจ๊นุ้ย ส้มตำ",
+    "query": "ส้มตำ ไก่ย่าง",
+    "district": "เมือง",
+    "reason": "รีวิว 13 < 20"
+  },
+  {
+    "id": "ChIJo5L0anNhIjERhHxjMP4mKsA",
+    "name": "ร้านเทิงแซบเทิงนัว ส้มตำไก่ย่างเขาสวนกวาง",
+    "query": "ส้มตำ ไก่ย่าง",
+    "district": "เมือง",
+    "reason": "รีวิว 1 < 20"
+  },
+  {
+    "id": "ChIJybqPKwCLIjERIZ_W0-HVIyw",
+    "name": "ตำไก่ปี๊บ",
+    "query": "ส้มตำ ไก่ย่าง",
+    "district": "เมือง",
+    "reason": "รีวิว 3 < 20"
+  },
+  {
+    "id": "ChIJPwjad92LIjERGS1tr59A9WE",
+    "name": "ตำไปเลย",
+    "query": "ส้มตำ ไก่ย่าง",
+    "district": "เมือง",
+    "reason": "รีวิว 9 < 20"
+  },
+  {
+    "id": "ChIJDyAMC2yLIjERXWASw51jNr8",
+    "name": "ไก่ย่างวิเชียรบุรี",
+    "query": "ส้มตำ ไก่ย่าง",
+    "district": "เมือง",
+    "reason": "รีวิว 12 < 20"
+  },
+  {
+    "id": "ChIJH_RrI92LIjER-jRrPCvHj6o",
+    "name": "ทองไก่ย่าง ส้มตำ (เจ้าเก่า)",
+    "query": "ส้มตำ ไก่ย่าง",
+    "district": "เมือง",
+    "reason": "รีวิว 9 < 20"
+  },
+  {
+    "id": "ChIJ1_MvvyWKIjERaYk6ExWbsaQ",
+    "name": "Vip ส้มตำ Club",
+    "query": "ส้มตำ ไก่ย่าง",
+    "district": "เมือง",
+    "reason": "รีวิว 1 < 20"
+  },
+  {
+    "id": "ChIJtxWoU-WJIjERqxw9wrvy1I8",
+    "name": "เยาวราชก๋วยเตี๋ยวแคะ ขอนแก่น",
+    "query": "ก๋วยเตี๋ยว",
+    "district": "เมือง",
+    "reason": "รีวิว 17 < 20"
+  },
+  {
+    "id": "ChIJkWHXxA-LIjERXG3EhNA7G0M",
+    "name": "ก๋วยเตี๋ยวเรือชามไม้ สาขาหอกาญฯ วิทยาลัยขอนแก่น",
+    "query": "ก๋วยเตี๋ยว",
+    "district": "เมือง",
+    "reason": "รีวิว 6 < 20"
+  },
+  {
+    "id": "ChIJV_tr4D6LIjERZ0mi3ZrslM0",
+    "name": "อโยธยา ก๋วยเตี๋ยวเรือ",
+    "query": "ก๋วยเตี๋ยว",
+    "district": "เมือง",
+    "reason": "รีวิว 4 < 20"
+  },
+  {
+    "id": "ChIJjTZkntyLIjERkgGa7PF3JMw",
+    "name": "ก๋วยเตี๋ยวเรืออนุสาวรีย์ชัย หลังมข.",
+    "query": "ก๋วยเตี๋ยว",
+    "district": "เมือง",
+    "reason": "รีวิว 17 < 20"
+  },
+  {
+    "id": "ChIJfdN-JACLIjERUUFXtR_DD-k",
+    "name": "ร้านก๋วยเตี๋ยวเรือ รสเจ็บ ขอนแก่น",
+    "query": "ก๋วยเตี๋ยว",
+    "district": "เมือง",
+    "reason": "รีวิว 3 < 20"
+  },
+  {
+    "id": "ChIJ9YQZ756LIjERuq3bMLdFMVM",
+    "name": "เอี่ยม อร่อย สมัยใหม่ ก๋วยเตี๋ยวเรือสูตรอนุสาวรีย์ชัยฯ สาขากังสดาล",
+    "query": "ก๋วยเตี๋ยว",
+    "district": "เมือง",
+    "reason": "รีวิว 7 < 20"
+  },
+  {
+    "id": "ChIJfW38E1mLIjER1EtX6jBdM_M",
+    "name": "ร้านก๋วยเตี๋ยวไก่มะระขอนแก่น",
+    "query": "ก๋วยเตี๋ยว",
+    "district": "เมือง",
+    "reason": "รีวิว 8 < 20"
+  },
+  {
+    "id": "ChIJCznUWACLIjERNkGRqSdAjDY",
+    "name": "คุณสำรวยก๋วยเตี๋ยวหมู (ก๋วยเตี๋ยว)",
+    "query": "ก๋วยเตี๋ยว",
+    "district": "เมือง",
+    "reason": "รีวิว 14 < 20"
+  },
+  {
+    "id": "ChIJ16pmGhyLIjERutVRy5Now5Q",
+    "name": "ก๋วยเตี๋ยวเรือตราไก่88 ขอนแก่น",
+    "query": "ก๋วยเตี๋ยว",
+    "district": "เมือง",
+    "reason": "รีวิว 11 < 20"
+  },
+  {
+    "id": "ChIJNcJcE2KLIjERDWHmGo-oUYE",
+    "name": "ก๋วยเตี๋ยวปลาด็อกเตอร์ สาขาขอนแก่น",
+    "query": "ก๋วยเตี๋ยว",
+    "district": "เมือง",
+    "reason": "รีวิว 4 < 20"
+  },
+  {
+    "id": "ChIJszrIJZeJIjERe00UXonLdKk",
+    "name": "เล็ก​ ชิดวัด​ ก๋วยเตี๋ยว​ กระเพา​เนื้อเปื่อย",
+    "query": "ก๋วยเตี๋ยว",
+    "district": "เมือง",
+    "reason": "รีวิว 4 < 20"
+  },
+  {
+    "id": "ChIJb5Niu7uLIjERigkwjWN7lLE",
+    "name": "ก๋วยเตี๋ยวตายาย สาขา 3 ขอนแก่น",
+    "query": "ก๋วยเตี๋ยว",
+    "district": "เมือง",
+    "reason": "รีวิว 3 < 20"
+  },
+  {
+    "id": "ChIJk2GIKAVhIjERd3UZfl_mpzE",
+    "name": "ก๋วยเตี๋ยวเรืออยุธยาแซ่บ 7 ดาว ขอนแก่น สาขา4",
+    "query": "ก๋วยเตี๋ยว",
+    "district": "เมือง",
+    "reason": "รีวิว 14 < 20"
+  },
+  {
+    "id": "ChIJreOVxT6LIjERxu_uAjGaK8g",
+    "name": "ออน ซอน เด้ ก๋วยเตี๋ยวเรือ",
+    "query": "ก๋วยเตี๋ยว",
+    "district": "เมือง",
+    "reason": "รีวิว 12 < 20"
+  },
+  {
+    "id": "ChIJfenEFMqLIjER8yQE5No6QI0",
+    "name": "ก๋วยเตี๋ยวอิ่มสุข หลัง มข.",
+    "query": "ก๋วยเตี๋ยว",
+    "district": "เมือง",
+    "reason": "รีวิว 3 < 20"
+  },
+  {
+    "id": "ChIJc4Dha5qJIjERfle8jp7akAQ",
+    "name": "ก๋วยเตี๋ยวหมูยิ้ม ขอนแก่น",
+    "query": "ก๋วยเตี๋ยว",
+    "district": "เมือง",
+    "reason": "รีวิว 9 < 20"
+  },
+  {
+    "id": "ChIJBUTeZACLIjER1JZeTFra9NI",
+    "name": "บ้านมารี ปังญวน",
+    "query": "อาหารเวียดนาม",
+    "district": "เมือง",
+    "reason": "รีวิว 1 < 20"
+  },
+  {
+    "id": "ChIJBaPKLAqLIjERp2HwVhvJZEY",
+    "name": "วีที แหนมเนือง สาขาหลัง มข. \"The Red Roof\"",
+    "query": "อาหารเวียดนาม",
+    "district": "เมือง",
+    "reason": "รีวิว 19 < 20"
+  },
+  {
+    "id": "ChIJhTaLTACLIjER3jX-XTDkJIM",
+    "name": "ลาวญวน เซ็นทรัลขอนแก่น",
+    "query": "อาหารเวียดนาม",
+    "district": "เมือง",
+    "reason": "รีวิว 12 < 20"
+  },
+  {
+    "id": "ChIJ2Sw-ujuKIjERlujTBqnraio",
+    "name": "Sorrento Restaurant @ Roma Hotel",
+    "query": "อาหารเวียดนาม",
+    "district": "เมือง",
+    "reason": "รีวิว 5 < 20"
+  },
+  {
+    "id": "ChIJFxj0gamLIjERZiIndy8IjXY",
+    "name": "บูม ก๋วยจั๊บญวน",
+    "query": "อาหารเวียดนาม",
+    "district": "เมือง",
+    "reason": "รีวิว 7 < 20"
+  },
+  {
+    "id": "ChIJRyf7Aa2LIjERCUo4H9X3ghw",
+    "name": "Phovanc",
+    "query": "อาหารเวียดนาม",
+    "district": "เมือง",
+    "reason": "รีวิว 1 < 20"
+  },
+  {
+    "id": "ChIJByFLjrGLIjERwk6f-s6p2Oc",
+    "name": "ข้าวเปียกลานชัยขอนแก่น",
+    "query": "อาหารเวียดนาม",
+    "district": "เมือง",
+    "reason": "รีวิว 1 < 20"
+  },
+  {
+    "id": "ChIJhfNnKo6LIjERTBp0aSO_mZo",
+    "name": "ร้านน้องเจย์ด้า",
+    "query": "อาหารเวียดนาม",
+    "district": "เมือง",
+    "reason": "รีวิว 1 < 20"
+  },
+  {
+    "id": "ChIJrzNfOwCLIjER-4yr_H_mKxw",
+    "name": "ไดโนเกี๊ยว(Dino gyōza) by ครัวญี่ปุ่น",
+    "query": "อาหารญี่ปุ่น",
+    "district": "เมือง",
+    "reason": "รีวิว 1 < 20"
+  },
+  {
+    "id": "ChIJ76tImg1hIjERsUI_RcDd78A",
+    "name": "Kyodai Izakaya Khonkaen เคียวได อิซากายะ ขอนแก่น",
+    "query": "อาหารญี่ปุ่น",
+    "district": "เมือง",
+    "reason": "รีวิว 9 < 20"
+  },
+  {
+    "id": "ChIJPzntZjqLIjERDOHiMhgXq6U",
+    "name": "Shabu Baru Mini เซ็นทรัล ขอนแก่น แคมปัส",
+    "query": "อาหารญี่ปุ่น",
+    "district": "เมือง",
+    "reason": "รีวิว 2 < 20"
+  },
+  {
+    "id": "ChIJAeG5uMeLIjER1vNd28CaOYM",
+    "name": "[ คันคัตสึ ซูชิ - KANKATSU SUSHI ] สาขาเซ็นทรัลขอนแก่นแคมปัส ชั้น 2",
+    "query": "อาหารญี่ปุ่น",
+    "district": "เมือง",
+    "reason": "รีวิว 1 < 20"
+  },
+  {
+    "id": "ChIJr7jgXWKJIjER9ThjAD0Z37o",
+    "name": "YAKIDE",
+    "query": "อาหารญี่ปุ่น",
+    "district": "เมือง",
+    "reason": "รีวิว 9 < 20"
+  },
+  {
+    "id": "ChIJ-aLFfDiLIjERiAur0DRn2Rw",
+    "name": "Sa Ke Po Ke สา-เกะ โปเก้ (Sushi chey chey) บ้านเป็ด",
+    "query": "อาหารญี่ปุ่น",
+    "district": "เมือง",
+    "reason": "รีวิว 2 < 20"
+  },
+  {
+    "id": "ChIJH4BcAkyJIjERU-TLP_u1E2w",
+    "name": "Fuji matcha cafe",
+    "query": "อาหารญี่ปุ่น",
+    "district": "เมือง",
+    "reason": "รีวิว 18 < 20"
+  },
+  {
+    "id": "ChIJNQiOGeGLIjERLaIbjlCQO9A",
+    "name": "อีสานชาบูขอนแก่น",
+    "query": "อาหารญี่ปุ่น",
+    "district": "เมือง",
+    "reason": "รีวิว 19 < 20"
+  },
+  {
+    "id": "ChIJxaxizO6LIjER-MAmBuS1bBQ",
+    "name": "Miyoi ミヨイ- มิโยอิ ขอนแก่นหลัง มข.",
+    "query": "อาหารญี่ปุ่น",
+    "district": "เมือง",
+    "reason": "รีวิว 16 < 20"
+  },
+  {
+    "id": "ChIJeag6ORaLIjERIm_r-8GZPxc",
+    "name": "Okasan-โอก้าซัง(ร้านอาหารญี่ปุ่น)",
+    "query": "อาหารญี่ปุ่น",
+    "district": "เมือง",
+    "reason": "รีวิว 2 < 20"
+  },
+  {
+    "id": "ChIJkc8EACKLIjER2cKlKRlvPsw",
+    "name": "เจ้าสัวดีดีซูชิ สาขาตลาดต้นตาล",
+    "query": "อาหารญี่ปุ่น",
+    "district": "เมือง",
+    "reason": "รีวิว 1 < 20"
+  },
+  {
+    "id": "ChIJV39id7CLIjERaXl_MHD4wsA",
+    "name": "ร้านอาหารญี่ปุ่นโอโต้ซัง",
+    "query": "อาหารญี่ปุ่น",
+    "district": "เมือง",
+    "reason": "รีวิว 2 < 20"
+  },
+  {
+    "id": "ChIJcZylkG-LIjERGSOQBH1ldyY",
+    "name": "Akiko & Rabbit on ice",
+    "query": "อาหารญี่ปุ่น",
+    "district": "เมือง",
+    "reason": "รีวิว 4 < 20"
+  },
+  {
+    "id": "ChIJNw2opg-LIjER3Xue2qFwQOY",
+    "name": "Gindi Sushi สาขาคอมเพล็กซ์ มหาวิทยาลัยขอนแก่น",
+    "query": "อาหารญี่ปุ่น",
+    "district": "เมือง",
+    "reason": "รีวิว 2 < 20"
+  },
+  {
+    "id": "ChIJoxPCKACLIjERCL3vw-Wis3Y",
+    "name": "โอกะ ร้านอาหารญี่ปุ่น",
+    "query": "อาหารญี่ปุ่น",
+    "district": "เมือง",
+    "reason": "รีวิว 1 < 20"
+  },
+  {
+    "id": "ChIJeaPhDACLIjERZsTRrffzhqQ",
+    "name": "แซ่เล้าชาบูบุฟเฟ่ ขอนแก่นตลาดจอมพล",
+    "query": "บุฟเฟต์",
+    "district": "เมือง",
+    "reason": "รีวิว 7 < 20"
+  },
+  {
+    "id": "ChIJFYPvGgCLIjER_E8OMKYmXTQ",
+    "name": "ลุงโยอิ่มไม่อั่นขอนแก่น59",
+    "query": "บุฟเฟต์",
+    "district": "เมือง",
+    "reason": "รีวิว 3 < 20"
+  },
+  {
+    "id": "ChIJzRmUWACLIjEReUL9zIxuTfg",
+    "name": "ขนมจีนบุฟเฟ่ต์ยอดสุข",
+    "query": "บุฟเฟต์",
+    "district": "เมือง",
+    "reason": "รีวิว 9 < 20"
+  },
+  {
+    "id": "ChIJ6YQEKwCLIjER1FQjsGDdObY",
+    "name": "มาม่าฟ้าไทย - เซ็นทรัลขอนแก่น",
+    "query": "ร้านอาหารไทย",
+    "district": "เมือง",
+    "reason": "รีวิว 1 < 20"
+  },
+  {
+    "id": "ChIJvadoYABjIjERt7v_IenNpvQ",
+    "name": "Garden Land ขอนแก่น",
+    "query": "ร้านอาหารไทย",
+    "district": "เมือง",
+    "reason": "รีวิว 1 < 20"
+  },
+  {
+    "id": "ChIJ56ICwQmJIjERFwnBYbLXZAI",
+    "name": "ครัวไทยสั่งได้ - หมู่บ้านกันยารัตน์ริมบึง",
+    "query": "ร้านอาหารไทย",
+    "district": "เมือง",
+    "reason": "รีวิว 2 < 20"
+  },
+  {
+    "id": "ChIJ7dILFaljIjERQpnnTJE3xRc",
+    "name": "ร้านไทครัว",
+    "query": "ร้านอาหารไทย",
+    "district": "เมือง",
+    "reason": "รีวิว 7 < 20"
+  },
+  {
+    "id": "ChIJE-cncuWJIjERa8zCyR2x56U",
+    "name": "ข้าวต้มแห้งอาปู่ สาขาขอนแก่น",
+    "query": "ร้านอาหารไทย",
+    "district": "เมือง",
+    "reason": "รีวิว 1 < 20"
+  },
+  {
+    "id": "ChIJGYqTt52LIjER6T21X97cP4M",
+    "name": "ครัวในบ้าน by trinity",
+    "query": "ร้านอาหารไทย",
+    "district": "เมือง",
+    "reason": "รีวิว 19 < 20"
+  },
+  {
+    "id": "ChIJmZgFmxuLIjERT7D46h9vjeM",
+    "name": "JJSโจ๊กก๋วยจั๊บต้มเส้น - หน้าเซเว่น รพ.ศูนย์ขอนแก่น",
+    "query": "อาหารเช้า โจ๊ก ติ่มซำ",
+    "district": "เมือง",
+    "reason": "รีวิว 12 < 20"
+  },
+  {
+    "id": "ChIJfzrNC9uLIjERqZfJvUuA1Fw",
+    "name": "โจ๊ก จั๊บ ต้มเส้น",
+    "query": "อาหารเช้า โจ๊ก ติ่มซำ",
+    "district": "เมือง",
+    "reason": "รีวิว 11 < 20"
+  },
+  {
+    "id": "ChIJJ9BtKwCLIjERVWkmyWi4Y4w",
+    "name": "Teak Coffee Bar Café & Bakery",
+    "query": "คาเฟ่",
+    "district": "เมือง",
+    "reason": "รีวิว 15 < 20"
+  },
+  {
+    "id": "ChIJL8-eRwCLIjERzBrFR58RV1E",
+    "name": "AT SOON CAFE",
+    "query": "คาเฟ่",
+    "district": "เมือง",
+    "reason": "รีวิว 14 < 20"
+  },
+  {
+    "id": "ChIJxV0HK8lhIjERXNvjRXmFka4",
+    "name": "Manit Cafe (คาเฟ่ใน KRM Plastic Surgery Hospital (โรงพยาบาลเฉพาะทางศัลยกรรมตกแต่งขนาดเล็กเคอาร์เอ็ม ขอนแก่น)",
+    "query": "คาเฟ่",
+    "district": "เมือง",
+    "reason": "รีวิว 15 < 20"
+  },
+  {
+    "id": "ChIJaeu96UCLIjER06EIfDGEKHk",
+    "name": "9DIAMONDBAKERY",
+    "query": "ร้านเบเกอรี่ ของหวาน",
+    "district": "เมือง",
+    "reason": "รีวิว 15 < 20"
+  },
+  {
+    "id": "ChIJ6Z2TWACLIjERE_RO11BkWIA",
+    "name": "Shawty’s Cafe and Bakery",
+    "query": "ร้านเบเกอรี่ ของหวาน",
+    "district": "เมือง",
+    "reason": "รีวิว 4 < 20"
+  },
+  {
+    "id": "ChIJOxZUZQCLIjEROQh9deIWYnA",
+    "name": "Zane Bakery สาขาขอนแก่น",
+    "query": "ร้านเบเกอรี่ ของหวาน",
+    "district": "เมือง",
+    "reason": "รีวิว 12 < 20"
+  },
+  {
+    "id": "ChIJjys6l5WLIjERYfTZdo3QMrM",
+    "name": "AT Dessert & Mini Cafe",
+    "query": "ร้านเบเกอรี่ ของหวาน",
+    "district": "เมือง",
+    "reason": "รีวิว 6 < 20"
+  },
+  {
+    "id": "ChIJ2UUHGgCJIjERdME2F-b3dNk",
+    "name": "เค้กรอยยิ้ม Cake Roy Yim",
+    "query": "ร้านเบเกอรี่ ของหวาน",
+    "district": "เมือง",
+    "reason": "รีวิว 5 < 20"
+  },
+  {
+    "id": "ChIJs8RolNxhIjERKn4MEYTdcfg",
+    "name": "AJ Daily Cake&Bake",
+    "query": "ร้านเบเกอรี่ ของหวาน",
+    "district": "เมือง",
+    "reason": "รีวิว 15 < 20"
+  },
+  {
+    "id": "ChIJx-5llNyLIjER9XfloVZq23I",
+    "name": "Bonjour บองชู เซ็นทรัลพลาซา ขอนแก่น",
+    "query": "ร้านเบเกอรี่ ของหวาน",
+    "district": "เมือง",
+    "reason": "รีวิว 10 < 20"
+  },
+  {
+    "id": "ChIJFYuhtJCKIjER_VHIm3Gusms",
+    "name": "IBaked&Coffee หลัง ม.ขอนแก่น",
+    "query": "ร้านเบเกอรี่ ของหวาน",
+    "district": "เมือง",
+    "reason": "รีวิว 13 < 20"
+  },
+  {
+    "id": "ChIJFWhWUQCLIjERba_oA91QWhM",
+    "name": "Tokyo Diff ขนมโตเกียวคุณเล็ก",
+    "query": "ร้านเบเกอรี่ ของหวาน",
+    "district": "เมือง",
+    "reason": "รีวิว 1 < 20"
+  },
+  {
+    "id": "ChIJS3EUNACLIjERDRaEs7JhWzw",
+    "name": "BUDDY CAKE & COFFEE",
+    "query": "ร้านเบเกอรี่ ของหวาน",
+    "district": "เมือง",
+    "reason": "รีวิว 5 < 20"
+  },
+  {
+    "id": "ChIJaQ-kXNqLIjER1eDInmH9Bp8",
+    "name": "ร้าน จิตติมาเบเกอรี่",
+    "query": "ร้านเบเกอรี่ ของหวาน",
+    "district": "เมือง",
+    "reason": "รีวิว 3 < 20"
+  },
+  {
+    "id": "ChIJRwIoOACLIjERWpYz47y7_5o",
+    "name": "ร้านขนมเบื้องกันเอง",
+    "query": "ร้านเบเกอรี่ ของหวาน",
+    "district": "เมือง",
+    "reason": "รีวิว 1 < 20"
+  },
+  {
+    "id": "ChIJ13OAfACLIjERwZSwvrwPzuw",
+    "name": "ขนมบ้านคุณย่า สาขาขอนแก่น",
+    "query": "ร้านเบเกอรี่ ของหวาน",
+    "district": "เมือง",
+    "reason": "รีวิว 7 < 20"
+  },
+  {
+    "id": "ChIJUYxacACLIjERf8LNuWj8hx4",
+    "name": "ร้านขนมบ้านครีมฮอร์น สาขากังสดาล",
+    "query": "ร้านเบเกอรี่ ของหวาน",
+    "district": "เมือง",
+    "reason": "รีวิว 4 < 20"
+  },
+  {
+    "id": "ChIJaytV_eSLIjERgesGFmx2_ts",
+    "name": "ขนมเบื้องโบราณลุงอ้วน",
+    "query": "ร้านเบเกอรี่ ของหวาน",
+    "district": "เมือง",
+    "reason": "รีวิว 10 < 20"
+  },
+  {
+    "id": "ChIJPZwAPACLIjERbLKNvadD0lY",
+    "name": "ชิฟฟ่อนมะพร้าวลาวา by ละมุนโฮมเมดเบเกอรี่",
+    "query": "ร้านเบเกอรี่ ของหวาน",
+    "district": "เมือง",
+    "reason": "รีวิว 9 < 20"
+  },
+  {
+    "id": "ChIJryGLWSOKIjERKPjomRzsehg",
+    "name": "Tong Bakery ต้องเบเกอรี่ และ HD Bakery เอชดีเบเกอรี่",
+    "query": "ร้านเบเกอรี่ ของหวาน",
+    "district": "เมือง",
+    "reason": "รีวิว 11 < 20"
+  },
+  {
+    "id": "ChIJy0aopgiKIjERV3csTm-Oe40",
+    "name": "Job​ cake​ บึงหนองโคตร",
+    "query": "ร้านเบเกอรี่ ของหวาน",
+    "district": "เมือง",
+    "reason": "รีวิว 12 < 20"
+  },
+  {
+    "id": "ChIJ2ebEPHRjIjER7nVeYbZgKIc",
+    "name": "ร้านขนม โคตร ปัง",
+    "query": "ร้านเบเกอรี่ ของหวาน",
+    "district": "เมือง",
+    "reason": "รีวิว 4 < 20"
+  },
+  {
+    "id": "ChIJOW1aL-OLIjERLuTxsfkh7b8",
+    "name": "Ricotta cafe ขอนแก่น",
+    "query": "ร้านเบเกอรี่ ของหวาน",
+    "district": "เมือง",
+    "reason": "รีวิว 2 < 20"
+  },
+  {
+    "id": "ChIJ-YNq5sSKIjER9hgLRfiM538",
+    "name": "ร้านมณีเบเกอรี่",
+    "query": "ร้านเบเกอรี่ ของหวาน",
+    "district": "เมือง",
+    "reason": "รีวิว 19 < 20"
+  },
+  {
+    "id": "ChIJa26pDgBhIjER8nklkf3CQDY",
+    "name": "แม่แต๋วขนมไทย",
+    "query": "ร้านเบเกอรี่ ของหวาน",
+    "district": "เมือง",
+    "reason": "รีวิว 2 < 20"
+  },
+  {
+    "id": "ChIJP_DMSPqLIjERQOndh5U9OO4",
+    "name": "บ้านเค้ก ขอนแก่น",
+    "query": "ร้านเบเกอรี่ ของหวาน",
+    "district": "เมือง",
+    "reason": "รีวิว 3 < 20"
+  },
+  {
+    "id": "ChIJj2apWQCLIjEReEHSp_I8Uuk",
+    "name": "หยกสด ขนมไทยใบเตย 100% สาขาเซ็นทรัลขอนแก่น (Central Khonkaen)",
+    "query": "ร้านเบเกอรี่ ของหวาน",
+    "district": "เมือง",
+    "reason": "รีวิว 4 < 20"
+  },
+  {
+    "id": "ChIJbX6OAwCLIjERQ_M7o2ZZdzA",
+    "name": "ขนมบ้านเอแคลร์ (Kanom baan Eclair)",
+    "query": "ร้านเบเกอรี่ ของหวาน",
+    "district": "เมือง",
+    "reason": "รีวิว 2 < 20"
+  },
+  {
+    "id": "ChIJRbn7xRU_IjER-YkRQ95wGus",
+    "name": "สุขในสวน - สวนยายสุข ภูเวียง Paradise Farm",
+    "query": "ร้านอาหาร",
+    "district": "ภูเวียง",
+    "reason": "รีวิว 3 < 5"
+  },
+  {
+    "id": "ChIJfcMYHnY5IjERNRfI2JELZ7Q",
+    "name": "ร้าน เลาะท่ง",
+    "query": "ร้านอาหาร",
+    "district": "ภูเวียง",
+    "reason": "รีวิว 1 < 5"
+  },
+  {
+    "id": "ChIJ1Tf-0Ds5IjERQlx5vGyqwKM",
+    "name": "ครัวฮักภูเวียง",
+    "query": "ร้านอาหาร",
+    "district": "ภูเวียง",
+    "reason": "รีวิว 2 < 5"
+  },
+  {
+    "id": "ChIJCZkrcpY5IjERDtBcK_Z9l-U",
+    "name": "Pizza House",
+    "query": "ร้านอาหาร",
+    "district": "ภูเวียง",
+    "reason": "รีวิว 2 < 5"
+  },
+  {
+    "id": "ChIJzweIQm4_IjER1G_ghPY6uX8",
+    "name": "ครัวบ้านเมย์ & ร้านพิชิตชัยมาร์ท",
+    "query": "ร้านอาหาร",
+    "district": "ภูเวียง",
+    "reason": "รีวิว 2 < 5"
+  },
+  {
+    "id": "ChIJIaJEtUI5IjERNX-s1ebFdBs",
+    "name": "ยืน ๑ ยำแซ่บ @ ภูเวียง",
+    "query": "ร้านอาหาร",
+    "district": "ภูเวียง",
+    "reason": "รีวิว 1 < 5"
+  },
+  {
+    "id": "ChIJVailMhU5IjERre2MWaIqLks",
+    "name": "ร้านอาหารร่มรื่นเลิศรส",
+    "query": "ร้านอาหาร",
+    "district": "ภูเวียง",
+    "reason": "รีวิว 3 < 5"
+  },
+  {
+    "id": "ChIJK1NA_0hRIjERR5972LF4cJY",
+    "name": "ร้านบ้านเพื่อน เขื่อนอุบลรัตน์",
+    "query": "ร้านอาหาร",
+    "district": "อุบลรัตน์",
+    "reason": "รีวิว 1 < 5"
+  },
+  {
+    "id": "ChIJGU9QbGyRITERheEO2-4vX5k",
+    "name": "ครัวบ้านสวน",
+    "query": "ร้านอาหาร",
+    "district": "ภูผาม่าน",
+    "reason": "รีวิว 1 < 5"
+  },
+  {
+    "id": "ChIJi_HLtUKPITERGijcCjUnJ4w",
+    "name": "กางนา​คาเฟ่​โฮมสเตย์​@ภูผาม่าน​&พิซซ่าโฮมเมดกางนา",
+    "query": "ร้านอาหาร",
+    "district": "ภูผาม่าน",
+    "reason": "อยู่อำเภอ \"?\" ไม่ใช่ ภูผาม่าน"
+  },
+  {
+    "id": "ChIJw2J1Wq8fIjERl62A6Gay8E0",
+    "name": "ครัวร้านอร่อย@ชุมแพ",
+    "query": "ร้านอาหาร",
+    "district": "ชุมแพ",
+    "reason": "รีวิว 1 < 5"
+  },
+  {
+    "id": "ChIJV2ZpSzhXIjERlRnNTzCwNbM",
+    "name": "ร้านฤกษ์ กิน เล่า น้ำพอง",
+    "query": "ร้านอาหาร",
+    "district": "น้ำพอง",
+    "reason": "รีวิว 2 < 5"
+  },
+  {
+    "id": "ChIJN7H8pBVXIjERP-_U4-KjGrU",
+    "name": "Before After bar & bistro",
+    "query": "ร้านอาหาร",
+    "district": "น้ำพอง",
+    "reason": "รีวิว 4 < 5"
+  },
+  {
+    "id": "ChIJzzmgwtFpIjERXfRRDmuVkE0",
+    "name": "ลานรับแขก ดอนโมง",
+    "query": "ร้านอาหาร",
+    "district": "หนองเรือ",
+    "reason": "รีวิว 3 < 5"
+  },
+  {
+    "id": "ChIJxTFmfLFDIjERz6ETYspxT2k",
+    "name": "ร้านบ้านปลา อิ่มสุข",
+    "query": "ร้านอาหาร",
+    "district": "หนองเรือ",
+    "reason": "รีวิว 4 < 5"
+  },
+  {
+    "id": "ChIJ7WktMgBpIjERCW5dnMHcF9k",
+    "name": "ดอกอ้อ บ่แอบกะแซบ",
+    "query": "ร้านอาหาร",
+    "district": "หนองเรือ",
+    "reason": "รีวิว 3 < 5"
+  },
+  {
+    "id": "ChIJ05EMRgBpIjERq12R1no_fmA",
+    "name": "ร้านก๋วยจั๊บอร่อยกลมกล่อม หอมเครื่องเทศ",
+    "query": "ร้านอาหาร",
+    "district": "หนองเรือ",
+    "reason": "รีวิว 1 < 5"
+  },
+  {
+    "id": "ChIJX6nYAgBpIjER7rm1MykeYIk",
+    "name": "ครัว“ข้างบ้าน”",
+    "query": "ร้านอาหาร",
+    "district": "หนองเรือ",
+    "reason": "รีวิว 1 < 5"
+  },
+  {
+    "id": "ChIJpaIp9CdrIjER4uVEK0l3mg8",
+    "name": "ร้านอาหารโฮมเลง",
+    "query": "ร้านอาหาร",
+    "district": "หนองเรือ",
+    "reason": "รีวิว 1 < 5"
+  },
+  {
+    "id": "ChIJU9etrIFrIjER3eTgYslN46w",
+    "name": "กุ้งทอง ซีฟู้ด",
+    "query": "ร้านอาหาร",
+    "district": "หนองเรือ",
+    "reason": "รีวิว 3 < 5"
+  },
+  {
+    "id": "ChIJd7R4zYBpIjERlys28cxYw7s",
+    "name": "JeedJaadFruitSnack",
+    "query": "ร้านอาหาร",
+    "district": "หนองเรือ",
+    "reason": "รีวิว 1 < 5"
+  },
+  {
+    "id": "ChIJQ6AnCABpIjERCAPP7Z5nMro",
+    "name": "ร้านบกะชังคาเฟ่แอนด์สเต็ก",
+    "query": "ร้านอาหาร",
+    "district": "หนองเรือ",
+    "reason": "รีวิว 3 < 5"
+  },
+  {
+    "id": "ChIJD-cX9aI5IjERVyv4eD13gks",
+    "name": "เฮือนภูเวียง",
+    "query": "ร้านอาหาร",
+    "district": "ภูเวียง",
+    "reason": "เกินโควตา 8 ร้านต่ออำเภอ"
+  },
+  {
+    "id": "ChIJm9ht7C8_IjERgxMwPbth6dM",
+    "name": "ล้านเว้าพื้นอาหารไทย อีสาน สเต็ก",
+    "query": "ร้านอาหาร",
+    "district": "ภูเวียง",
+    "reason": "เกินโควตา 8 ร้านต่ออำเภอ"
+  },
+  {
+    "id": "ChIJH2_lf5JHIjERuo4ojaBvPu0",
+    "name": "ครัวบ้านทุ่งริมทาง",
+    "query": "ร้านอาหาร",
+    "district": "ภูเวียง",
+    "reason": "เกินโควตา 8 ร้านต่ออำเภอ"
+  },
+  {
+    "id": "ChIJV8Hw5aw_IjERAffaAXqO2cc",
+    "name": "พ่วงข้างซาเล้งขอนแก่น",
+    "query": "ร้านอาหาร",
+    "district": "ภูเวียง",
+    "reason": "เกินโควตา 8 ร้านต่ออำเภอ"
+  },
+  {
+    "id": "ChIJ-30OvF05IjERU8KxHvQuOSU",
+    "name": "สนุกนิยมบาร์ คาเฟ่",
+    "query": "ร้านอาหาร",
+    "district": "ภูเวียง",
+    "reason": "เกินโควตา 8 ร้านต่ออำเภอ"
+  },
+  {
+    "id": "ChIJ4V6puSVQIjERKMLwXjIneMo",
+    "name": "ร้านอาหารวังมัจฉา",
+    "query": "ร้านอาหาร",
+    "district": "อุบลรัตน์",
+    "reason": "เกินโควตา 8 ร้านต่ออำเภอ"
+  },
+  {
+    "id": "ChIJtTNuVAdRIjERHN9Lqc-nuqM",
+    "name": "BoonHome Sweet Home",
+    "query": "ร้านอาหาร",
+    "district": "อุบลรัตน์",
+    "reason": "เกินโควตา 8 ร้านต่ออำเภอ"
+  },
+  {
+    "id": "ChIJX0yA2zhRIjER5NWLPJMkSdI",
+    "name": "Varee Cafe' & Restaurant",
+    "query": "ร้านอาหาร",
+    "district": "อุบลรัตน์",
+    "reason": "เกินโควตา 8 ร้านต่ออำเภอ"
+  },
+  {
+    "id": "ChIJhWSO4c9RIjERxT6XhxmanbU",
+    "name": "ร้านอาหารยืนหยัด",
+    "query": "ร้านอาหาร",
+    "district": "อุบลรัตน์",
+    "reason": "เกินโควตา 8 ร้านต่ออำเภอ"
+  },
+  {
+    "id": "ChIJuYkOG89FIjERNfChD2rv6uY",
+    "name": "มูนตาทูน ขอนแก่น (Moon Ta Toon)",
+    "query": "ร้านอาหาร",
+    "district": "อุบลรัตน์",
+    "reason": "เกินโควตา 8 ร้านต่ออำเภอ"
+  },
+  {
+    "id": "ChIJCftlX_pPIjERdnLc_bxhf9c",
+    "name": "แพร่ำรวย บางแสน2",
+    "query": "ร้านอาหาร",
+    "district": "อุบลรัตน์",
+    "reason": "เกินโควตา 8 ร้านต่ออำเภอ"
+  },
+  {
+    "id": "ChIJw_j0knBRIjERxipAzHLpBdA",
+    "name": "ร้านชมทุ่งกุ้งสด",
+    "query": "ร้านอาหาร",
+    "district": "อุบลรัตน์",
+    "reason": "เกินโควตา 8 ร้านต่ออำเภอ"
+  },
+  {
+    "id": "ChIJxxODR1ZRIjERulIOQNfkW1E",
+    "name": "ร้านแซ่บนัว",
+    "query": "ร้านอาหาร",
+    "district": "อุบลรัตน์",
+    "reason": "เกินโควตา 8 ร้านต่ออำเภอ"
+  },
+  {
+    "id": "ChIJ2Ury9P5RIjERSWej_e-vLCA",
+    "name": "จุ้ย แพริมน้ำบางแสน2",
+    "query": "ร้านอาหาร",
+    "district": "อุบลรัตน์",
+    "reason": "เกินโควตา 8 ร้านต่ออำเภอ"
+  },
+  {
+    "id": "ChIJccSYEABRIjERmjgcf5t7Ikw",
+    "name": "อันจังหมูย่างเกาหลี เขื่อนอุบลรัตน์",
+    "query": "ร้านอาหาร",
+    "district": "อุบลรัตน์",
+    "reason": "เกินโควตา 8 ร้านต่ออำเภอ"
+  },
+  {
+    "id": "ChIJgTqeiBNRIjERfArPr0RQsWs",
+    "name": "นั่งลาน Riverside เขื่อนอุบลรัตน์",
+    "query": "ร้านอาหาร",
+    "district": "อุบลรัตน์",
+    "reason": "เกินโควตา 8 ร้านต่ออำเภอ"
+  },
+  {
+    "id": "ChIJfaizSgCRITERW3Lmjau_6UY",
+    "name": "ไร่สุขอนันต์@ภูผาม่าน",
+    "query": "ร้านอาหาร",
+    "district": "ภูผาม่าน",
+    "reason": "เกินโควตา 8 ร้านต่ออำเภอ"
+  },
+  {
+    "id": "ChIJBdpamFSNITERHX-HLCSKmOE",
+    "name": "ครัวบ้านร่มไม้",
+    "query": "ร้านอาหาร",
+    "district": "ภูผาม่าน",
+    "reason": "เกินโควตา 8 ร้านต่ออำเภอ"
+  },
+  {
+    "id": "ChIJxdRsTQCNITERxfGoNI_Ifg8",
+    "name": "Batbar ภูผาม่าน",
+    "query": "ร้านอาหาร",
+    "district": "ภูผาม่าน",
+    "reason": "เกินโควตา 8 ร้านต่ออำเภอ"
+  },
+  {
+    "id": "ChIJwwpeXtCNITER-6d6_vBjlS4",
+    "name": "Phuphamanlakehill",
+    "query": "ร้านอาหาร",
+    "district": "ภูผาม่าน",
+    "reason": "เกินโควตา 8 ร้านต่ออำเภอ"
+  },
+  {
+    "id": "ChIJiXFKJaqPITERYw60yeHA3T8",
+    "name": "ภูนาดิน-Phunadin",
+    "query": "ร้านอาหาร",
+    "district": "ภูผาม่าน",
+    "reason": "เกินโควตา 8 ร้านต่ออำเภอ"
+  },
+  {
+    "id": "ChIJSdcz_DCNITER7NHIkpifsEI",
+    "name": "ลาบก้อยงอยทุ่ง",
+    "query": "ร้านอาหาร",
+    "district": "ภูผาม่าน",
+    "reason": "เกินโควตา 8 ร้านต่ออำเภอ"
+  },
+  {
+    "id": "ChIJ0f61z0SNITEReexqJDG7t0M",
+    "name": "ส้มบักกอ ภูผาม่าน",
+    "query": "ร้านอาหาร",
+    "district": "ภูผาม่าน",
+    "reason": "เกินโควตา 8 ร้านต่ออำเภอ"
+  },
+  {
+    "id": "ChIJe--UJwCNITERkNxh89_69-c",
+    "name": "หมูกระทะริมเขื่อน สาขา ภูผาม่าน",
+    "query": "ร้านอาหาร",
+    "district": "ภูผาม่าน",
+    "reason": "เกินโควตา 8 ร้านต่ออำเภอ"
+  },
+  {
+    "id": "ChIJS9CG-eWNITERJPy0NhPOSHU",
+    "name": "เฮือนน้อย มินิบาร์ Huannoi Minibar’s",
+    "query": "ร้านอาหาร",
+    "district": "ภูผาม่าน",
+    "reason": "เกินโควตา 8 ร้านต่ออำเภอ"
+  },
+  {
+    "id": "ChIJcwjAlfaNITERRNTGOYe5AKA",
+    "name": "ครัวแลภูByคุณแอน",
+    "query": "ร้านอาหาร",
+    "district": "ภูผาม่าน",
+    "reason": "เกินโควตา 8 ร้านต่ออำเภอ"
+  },
+  {
+    "id": "ChIJoQC0a-0hIjERpxG1BTGGUJk",
+    "name": "บุฟเฟ่หอย ชุมแพ",
+    "query": "ร้านอาหาร",
+    "district": "ชุมแพ",
+    "reason": "เกินโควตา 8 ร้านต่ออำเภอ"
+  },
+  {
+    "id": "ChIJU2SN74YfIjERUHjduQe6V0g",
+    "name": "De'Bear เดอแบร์'คาเฟ่ ชุมแพ",
+    "query": "ร้านอาหาร",
+    "district": "ชุมแพ",
+    "reason": "เกินโควตา 8 ร้านต่ออำเภอ"
+  },
+  {
+    "id": "ChIJLwU0jmIfIjERhvO3fhxSxJQ",
+    "name": "ครัวลมดี ชุมแพ",
+    "query": "ร้านอาหาร",
+    "district": "ชุมแพ",
+    "reason": "เกินโควตา 8 ร้านต่ออำเภอ"
+  },
+  {
+    "id": "ChIJiWxoWiwfIjERYM3-885vXJ8",
+    "name": "ร้านโปรด@ชุมแพ",
+    "query": "ร้านอาหาร",
+    "district": "ชุมแพ",
+    "reason": "เกินโควตา 8 ร้านต่ออำเภอ"
+  },
+  {
+    "id": "ChIJi8POXLgfIjERcbTaPeiF2BA",
+    "name": "มักยำ @ชุมแพ",
+    "query": "ร้านอาหาร",
+    "district": "ชุมแพ",
+    "reason": "เกินโควตา 8 ร้านต่ออำเภอ"
+  },
+  {
+    "id": "ChIJS7KD4YgfIjERvdXQqf5N8Sk",
+    "name": "ร้านน้องวิว​ข้าวต้ม​ไฮเทค​",
+    "query": "ร้านอาหาร",
+    "district": "ชุมแพ",
+    "reason": "เกินโควตา 8 ร้านต่ออำเภอ"
+  },
+  {
+    "id": "ChIJV44Em_EfIjER0zAV7FkBnTk",
+    "name": "กินเด้อหล่า (Green Derla)",
+    "query": "ร้านอาหาร",
+    "district": "ชุมแพ",
+    "reason": "เกินโควตา 8 ร้านต่ออำเภอ"
+  },
+  {
+    "id": "ChIJwca1mtMfIjERcIRpIB3ZkUM",
+    "name": "Twin Taste ชุมแพ",
+    "query": "ร้านอาหาร",
+    "district": "ชุมแพ",
+    "reason": "เกินโควตา 8 ร้านต่ออำเภอ"
+  },
+  {
+    "id": "ChIJi9BwkHEfIjER7gCCgIygFyM",
+    "name": "กูซคาเฟ่Xยู้ฮูที่สุดของหวานเย็น",
+    "query": "ร้านอาหาร",
+    "district": "ชุมแพ",
+    "reason": "เกินโควตา 8 ร้านต่ออำเภอ"
+  },
+  {
+    "id": "ChIJ7c2e8fwfIjERHOQC2gQlYto",
+    "name": "หมูกระทะริมคลอง สาขาชุมแพ",
+    "query": "ร้านอาหาร",
+    "district": "ชุมแพ",
+    "reason": "เกินโควตา 8 ร้านต่ออำเภอ"
+  },
+  {
+    "id": "ChIJf5C3rMcfIjERgyDM1x3bhyc",
+    "name": "ตำเลย ณ ชุมแพ",
+    "query": "ร้านอาหาร",
+    "district": "ชุมแพ",
+    "reason": "เกินโควตา 8 ร้านต่ออำเภอ"
+  },
+  {
+    "id": "ChIJyQuU7M75IjERBXpwXosyVPs",
+    "name": "ครัวบ้านแม่ยาย",
+    "query": "ร้านอาหาร",
+    "district": "น้ำพอง",
+    "reason": "เกินโควตา 8 ร้านต่ออำเภอ"
+  },
+  {
+    "id": "ChIJ36ZgrypWIjERLw8FFbmOzfI",
+    "name": "ครัวสำราญ ร้านอาหาร",
+    "query": "ร้านอาหาร",
+    "district": "น้ำพอง",
+    "reason": "เกินโควตา 8 ร้านต่ออำเภอ"
+  },
+  {
+    "id": "ChIJOwRO4t73IjERmfeTIdIEc-o",
+    "name": "Best Time Bar & Bistro",
+    "query": "ร้านอาหาร",
+    "district": "น้ำพอง",
+    "reason": "เกินโควตา 8 ร้านต่ออำเภอ"
+  },
+  {
+    "id": "ChIJiVsfTmv5IjERxkV-0P9_dxc",
+    "name": "ริมคลองหมูกระทะ สาขาน้ำพอง ขอนแก่น",
+    "query": "ร้านอาหาร",
+    "district": "น้ำพอง",
+    "reason": "เกินโควตา 8 ร้านต่ออำเภอ"
+  },
+  {
+    "id": "ChIJ-ThPYwDzIjER2FOU-RShqio",
+    "name": "ร้านอาหาร ดอกคูน",
+    "query": "ร้านอาหาร",
+    "district": "น้ำพอง",
+    "reason": "เกินโควตา 8 ร้านต่ออำเภอ"
+  },
+  {
+    "id": "ChIJV9tNrGtZIjERiP69HnUUsaw",
+    "name": "ตำยกครก สาขาน้ำพอง",
+    "query": "ร้านอาหาร",
+    "district": "น้ำพอง",
+    "reason": "เกินโควตา 8 ร้านต่ออำเภอ"
+  },
+  {
+    "id": "ChIJYx_Xil35IjERkCAbgUdHYwc",
+    "name": "ร้านอาหารสวนสร้างสุข Bar & Restaurant",
+    "query": "ร้านอาหาร",
+    "district": "น้ำพอง",
+    "reason": "เกินโควตา 8 ร้านต่ออำเภอ"
+  },
+  {
+    "id": "ChIJNRYecFj4IjERbcSD23TtCe4",
+    "name": "ครัวถุงเทียว",
+    "query": "ร้านอาหาร",
+    "district": "น้ำพอง",
+    "reason": "เกินโควตา 8 ร้านต่ออำเภอ"
+  },
+  {
+    "id": "ChIJq1vCR877IjERQdPI9HcZm9s",
+    "name": "ซังข้าว สเต็กเฮาส์",
+    "query": "ร้านอาหาร",
+    "district": "น้ำพอง",
+    "reason": "เกินโควตา 8 ร้านต่ออำเภอ"
+  },
+  {
+    "id": "ChIJFSt1CgD5IjER0hT0pP2YTqQ",
+    "name": "กินจั๊บ ก๋วยจั๊บอุบล สาขาน้ำพอง",
+    "query": "ร้านอาหาร",
+    "district": "น้ำพอง",
+    "reason": "เกินโควตา 8 ร้านต่ออำเภอ"
+  },
+  {
+    "id": "ChIJx5qWqrFpIjERhi8KIepCvHI",
+    "name": "ร้านต้นคูณโภชนา",
+    "query": "ร้านอาหาร",
+    "district": "หนองเรือ",
+    "reason": "เกินโควตา 8 ร้านต่ออำเภอ"
+  },
+  {
+    "id": "ChIJxW3yCDlpIjERbwicJ1_y4E4",
+    "name": "อร่อย อิ่มม ริมทาง (Aroy Imm Rimtang)",
+    "query": "ร้านอาหาร",
+    "district": "หนองเรือ",
+    "reason": "เกินโควตา 8 ร้านต่ออำเภอ"
+  },
+  {
+    "id": "ChIJe-hnLlwXIjERElLsDiuW6ss",
+    "name": "คุณ&เมย บุฟเฟต์ทะเลเผา หมูกะทะ สาขาหนองเรือ",
+    "query": "ร้านอาหาร",
+    "district": "หนองเรือ",
+    "reason": "เกินโควตา 8 ร้านต่ออำเภอ"
+  }
+]
