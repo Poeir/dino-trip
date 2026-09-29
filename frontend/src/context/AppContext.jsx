@@ -867,37 +867,14 @@ export function AppProvider({ children }) {
   }
 
   // Shapes a fetched place row into the same trimmed `place` object
-  // tripResponseToPlan embeds on every item -- swap/regenerate need to embed
-  // this themselves now (there's no bulk `state.places` for the derived
-  // `tripPlan` view's fallback lookup to fall back to anymore, see below).
+  // tripResponseToPlan embeds on every item -- regeneratePlan needs to embed
+  // this itself (there's no bulk `state.places` for the derived `tripPlan`
+  // view's fallback lookup to fall back to anymore, see below). Swapping a
+  // single item was cut from the product (no UI calls it) -- removed here too.
   const toTripPlace = (p) => ({
     id: p.id, name: p.name, category: p.category, rating: p.rating, address: p.address, img: p.img,
     location: (p.location?.lat != null && p.location?.lng != null) ? p.location : null,
   })
-
-  const swapItem = async (dayNum, placeId) => {
-    const plan = stateRef.current.tripPlan
-    const usedIds = new Set(plan.days.flatMap((d) => d.items.map((i) => i.placeId)))
-    const current = plan.days.flatMap((d) => d.items).find((i) => i.placeId === placeId)
-    const currentCategory = current && current.place && current.place.category
-    let { data: pool } = await fetchPlaces({ category: currentCategory, isActive: true, limit: 30 }).catch(() => ({ data: [] }))
-    pool = pool.filter((p) => !usedIds.has(p.id))
-    if (!pool.length) {
-      const fallback = await fetchPlaces({ isActive: true, limit: 30 }).catch(() => ({ data: [] }))
-      pool = fallback.data.filter((p) => !usedIds.has(p.id))
-    }
-    if (!pool.length) { showToast('ไม่มีสถานที่อื่นให้สลับแล้วครับ'); return }
-    const replacement = pool[Math.floor(Math.random() * pool.length)]
-    setState((s2) => ({
-      tripPlan: {
-        ...s2.tripPlan,
-        days: s2.tripPlan.days.map((d) => d.dayNum !== dayNum ? d : {
-          ...d,
-          items: d.items.map((it) => it.placeId !== placeId ? it : { placeId: replacement.id, time: it.time, liked: null, place: toTripPlace(replacement) })
-        })
-      }
-    }))
-  }
 
   const regeneratePlan = async () => {
     const plan = stateRef.current.tripPlan
@@ -1112,7 +1089,7 @@ export function AppProvider({ children }) {
     onStartDateChange, onEndDateChange, onAccommodationLocationChange, onAccommodationSelect, useCurrentLocationForAccommodation, setTripDatePreset,
     onMustGoQueryChange, addMustGo, removeMustGo, onMustGoKeyDown,
     setPace, onDailyStartChange, onDailyEndChange,
-    onFeedbackChange, toggleInterest, setBudget, setAreaScope, submitTripForm, loadTrip, setItemLike, swapItem, regeneratePlan,
+    onFeedbackChange, toggleInterest, setBudget, setAreaScope, submitTripForm, loadTrip, setItemLike, regeneratePlan,
     startScan, handleQrDetected, handleScanCancelled, claimScan, resetScan,
     adminLogin, adminLogout, openCreateForm, openEditForm, updateFormField, cancelForm, applyEventUpdate, applyRewardUpdate, applyQrUpdate, handleSessionExpired, reportError, reloadData: loadData,
     saveForm, deleteItem, onNewPlace, onNewEvent, onNewKb, onNewQr, onNewReward,
@@ -1260,7 +1237,6 @@ export function AppProvider({ children }) {
           durationLabel: isHotelReturn ? 'ถึงที่พัก' : (formatDurationMinutes(durationMin) ? `อยู่ประมาณ ${formatDurationMinutes(durationMin)}` : null),
           onLike: () => setItemLike(d.dayNum, it.placeId, true),
           onDislike: () => setItemLike(d.dayNum, it.placeId, false),
-          onSwap: () => swapItem(d.dayNum, it.placeId),
           likeBg: it.liked === true ? '#E8F5E9' : '#fff', likeColor: it.liked === true ? '#2E7D32' : '#6d7a72', likeBorder: it.liked === true ? '#2E7D32' : '#DCD8C6',
           dislikeBg: it.liked === false ? '#fdecec' : '#fff', dislikeColor: it.liked === false ? '#a33232' : '#6d7a72', dislikeBorder: it.liked === false ? '#a33232' : '#DCD8C6'
         }
