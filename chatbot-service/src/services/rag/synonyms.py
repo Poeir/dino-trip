@@ -61,10 +61,30 @@ SYNONYMS: dict[str, list[str]] = {
     # Bars
     "เบียร์": ["บาร์"],
     "ค็อกเทล": ["บาร์"],
+    # Trip-planner interest categories (TripFormPage) reuse this same tag
+    # vocabulary, so these gaps affect both the chatbot and "what places match
+    # my interests" trip planning -- found by probing each of the 7 interest
+    # tags with colloquial phrasings a user might actually type.
+    "สายมู": ["วัฒนธรรม/ศาสนา"],  # fortune-telling/spiritual-tourism slang
+    "ซากดึกดำบรรพ์": ["ไดโนเสาร์"],
+    "dino": ["ไดโนเสาร์"],
+    "งานฝีมือ": ["ช้อปปิ้ง/หัตถกรรม"],
     # Culture / shopping
+    # Regression: "ขอวัดในเมือง" retrieved none of the ~10 วัด-category
+    # places despite word_similarity(name, query_text) -- "วัด" is too short
+    # relative to a name like "วัดป่าธรรมอุทยาน" to clear the 0.3 threshold,
+    # and the tag substring check only ever saw "วัฒนธรรม"/"ศาสนา", never "วัด".
+    "วัด": ["วัฒนธรรม/ศาสนา"],
     "ทำบุญ": ["วัฒนธรรม/ศาสนา"],
     "ขอพร": ["วัฒนธรรม/ศาสนา"],
+    "ไหว้พระ": ["วัฒนธรรม/ศาสนา"],
     "ของฝาก": ["ช้อปปิ้ง/หัตถกรรม"],
+    # Same short-name-vs-long-name gap as "วัด" above, found by probing every
+    # place `category` value the same way: "อุทยานแห่งชาติ" (the category)
+    # isn't itself in any place's `tags` (those places are tagged "ธรรมชาติ"),
+    # so a generic "ขออุทยานแห่งชาติ..." query missed all of them even though
+    # asking for a specific park by name ("อุทยานแห่งชาติภูเวียง") works fine.
+    "อุทยานแห่งชาติ": ["ธรรมชาติ"],
 }
 
 
