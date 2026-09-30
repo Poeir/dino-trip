@@ -14,6 +14,10 @@ const OWNER_FILTERS = [
   { key: 'anonymous', label: 'ไม่ได้เข้าสู่ระบบ' },
 ]
 const CLOSED_LABEL = { CLOSED_PERMANENTLY: 'ปิดถาวร', CLOSED_TEMPORARILY: 'ปิดชั่วคราว' }
+// trip_pace is stored as the English key TripFormPage's paceList uses
+// (relaxed/standard/packed, see chatbot-service's models.py) -- shown here in
+// the same Thai labels the tourist picked from, not the raw key.
+const PACE_LABEL = { relaxed: 'สายชิลล์ (relaxed)', standard: 'กำลังดี (standard)', packed: 'สายลุย (packed)' }
 
 const fmtDateTime = (iso) => (iso ? new Date(iso).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }) : '-')
 const fmtDate = (d) => (d ? new Date(`${String(d).slice(0, 10)}T00:00:00`).toLocaleDateString('th-TH', { dateStyle: 'medium' }) : '-')
@@ -69,7 +73,7 @@ function TripDetail({ trip }) {
         <InfoRow label="วันที่เดินทาง">{fmtRange(trip)} ({trip.dayCount} วัน)</InfoRow>
         <InfoRow label="ช่วงเวลาต่อวัน">{input.start_time && input.end_time ? `${input.start_time} – ${input.end_time}` : null}</InfoRow>
         <InfoRow label="งบประมาณ">{input.budget_level}</InfoRow>
-        <InfoRow label="จังหวะการเที่ยว">{input.trip_pace}</InfoRow>
+        <InfoRow label="จังหวะการเที่ยว">{input.trip_pace && (PACE_LABEL[input.trip_pace] || input.trip_pace)}</InfoRow>
         <InfoRow label="ขอบเขตพื้นที่">{input.area_scope}</InfoRow>
         <InfoRow label="ความสนใจ">{(input.interests || []).join(', ')}</InfoRow>
         <InfoRow label="ต้องไปแน่ๆ">{(input.must_go || []).join(', ')}</InfoRow>
