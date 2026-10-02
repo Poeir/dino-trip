@@ -9,6 +9,9 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
 COPY src ./src
+# src/lib/googlePlaceRow.js imports this one file from outside src/; the rest
+# of scripts/ is one-off CLI tooling the API doesn't need.
+COPY scripts/place-category.js ./scripts/place-category.js
 
 # The official node image ships an unprivileged `node` user.
 RUN chown -R node:node /app
