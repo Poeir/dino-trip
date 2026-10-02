@@ -61,3 +61,9 @@ if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
 # silently wrong (comparing vectors from two different embedding spaces),
 # not loudly broken.
 EMBEDDING_MODEL_NAME = os.environ.get("EMBEDDING_MODEL_NAME", "paraphrase-multilingual-MiniLM-L12-v2")
+
+# Comma-separated list of origins allowed to call this service from a browser,
+# e.g. "https://app.example.com,http://localhost:5173". Unset keeps the old
+# open "*" behaviour so local dev works; set it in production -- this service
+# has no auth of its own, so CORS is the only thing limiting browser callers.
+CORS_ORIGINS = [o.strip().rstrip("/") for o in os.environ.get("CORS_ORIGINS", "*").split(",") if o.strip()]

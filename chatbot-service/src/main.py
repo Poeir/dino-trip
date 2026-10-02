@@ -2,6 +2,7 @@ import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from src.core.config import CORS_ORIGINS
 from src.api.routes_chatbot import router as chatbot_router
 from src.api.routes_tripplanner import router as tripplanner_router
 from src.api.routes_events import router as events_router
@@ -16,7 +17,7 @@ app = FastAPI(title="Khon Kaen AI Trip Planner")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
