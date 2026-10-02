@@ -44,7 +44,10 @@
 			flush_interval -1
 		}
 	}
-	handle /trip/* {
+	# Only the planner endpoint itself: /trip/result and /trip/<id> are pages of
+	# the React app (a saved trip, a refresh of the result page) and must reach
+	# the SPA fallback below, not the chatbot.
+	handle /trip/llm {
 		reverse_proxy chatbot:8000 {
 			flush_interval -1
 		}
