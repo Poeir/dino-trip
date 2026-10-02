@@ -42,3 +42,11 @@
 		file_server
 	}
 }
+
+# The previous hostname (e.g. the provider's own vps-xxxx name) keeps working
+# by redirecting to the real one, so links in emails already sent don't break.
+# When OLD_DOMAIN isn't set this falls back to `localhost`, which Caddy serves
+# with its internal CA (no public certificate attempt) and nobody reaches.
+{$OLD_DOMAIN:localhost} {
+	redir https://{$CHAT_DOMAIN}{uri} permanent
+}
