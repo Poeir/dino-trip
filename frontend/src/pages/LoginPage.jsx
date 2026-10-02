@@ -52,7 +52,7 @@ function WelcomeCard({ state }) {
         </div>
         <div style={{ transform: 'rotate(9deg)', textAlign: 'center', flexShrink: 0, animation: 'dc-pop 0.4s cubic-bezier(.34,1.56,.64,1) 0.3s both' }}>
           <div style={{ width: 42, height: 42, borderRadius: '50%', border: '2px solid #FBC02D', padding: 3, background: '#fff', animation: 'dc-pulse 2.4s ease-in-out infinite' }}>
-            <img src="./assets/chatbot-icon.png" alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: '50%' }} />
+            <img src="/assets/chatbot-icon.png" alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: '50%' }} />
           </div>
           <p style={{ margin: '4px 0 0', fontSize: 9, fontWeight: 800, color: '#1B5E20' }}>สมาชิก</p>
         </div>
@@ -67,7 +67,7 @@ function WelcomeCard({ state }) {
         }}>
           {initial
             ? <span data-font="culture" style={{ fontSize: 40, fontWeight: 900, color: '#fff' }}>{initial}</span>
-            : <img src="./assets/chatbot-icon.png" alt="" style={{ width: '70%', height: '70%', objectFit: 'contain' }} />}
+            : <img src="/assets/chatbot-icon.png" alt="" style={{ width: '70%', height: '70%', objectFit: 'contain' }} />}
         </div>
 
         <h2 data-font="culture" style={{ margin: 0, fontSize: 21, fontWeight: 800, color: '#1B5E20' }}>
@@ -97,7 +97,7 @@ export default function LoginPage() {
   return (
     <main style={{ maxWidth: 820, margin: '0 auto', padding: '70px 32px' }}>
       <h1 data-font="culture" style={{ fontSize: 22, fontWeight: 800, color: '#1B5E20', margin: '0 0 22px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, animation: 'dc-fade-up 0.4s ease both' }}>
-        <img src="./assets/dino-logo-mark.png" alt="" style={{ width: 26, height: 26 }} />
+        <img src="/assets/dino-logo-mark.png" alt="" style={{ width: 26, height: 26 }} />
         เข้าสู่ระบบ Dino
       </h1>
       <div data-role="login-grid" style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: 28, alignItems: 'start' }}>

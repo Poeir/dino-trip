@@ -2,7 +2,7 @@
 // broken-image state, so a card with no photo still reads as "a cafe" or "a
 // temple" instead of a blank green box. Keys are the place `category` values
 // from seed.js's `categories` list.
-const icon = (name) => `./assets/icons/${name}.webp`
+const icon = (name) => `/assets/icons/${name}.webp`
 
 const PLACE_ICONS = {
   'คาเฟ่': icon('cafe'),
@@ -24,7 +24,7 @@ export const HOTEL_ICON = icon('hotel')
 // per-category slots.
 export const MASCOT = Object.fromEntries(
   ['wave', 'map', 'camera', 'celebrate', 'think', 'sad', 'sleep', 'treasure', 'point']
-    .map((pose) => [pose, `./assets/mascot/mascot-${pose}.webp`]),
+    .map((pose) => [pose, `/assets/mascot/mascot-${pose}.webp`]),
 )
 
 export const MAP_ICON = icon('map-pin')

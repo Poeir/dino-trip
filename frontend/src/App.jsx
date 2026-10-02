@@ -68,7 +68,7 @@ function RedirectIfAuthed({ children }) {
 
 function Shell() {
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#FFFDF6', backgroundImage: "url('./assets/background1.png')", backgroundSize: 'cover', backgroundPosition: 'top center', backgroundRepeat: 'no-repeat', backgroundAttachment: 'fixed' }}>
+    <div style={{ minHeight: '100vh', backgroundColor: '#FFFDF6', backgroundImage: "url('/assets/background1.png')", backgroundSize: 'cover', backgroundPosition: 'top center', backgroundRepeat: 'no-repeat', backgroundAttachment: 'fixed' }}>
       <ScrollToTop />
       <Routes>
         <Route element={<PublicLayout />}>

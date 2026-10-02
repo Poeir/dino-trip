@@ -39,7 +39,7 @@ function personaAvatarContent(avatarUrl, avatarPosition, avatarScale, initial, p
     }
   }
   if (initial) return { bg: 'linear-gradient(135deg,#66BB6A,#388E3C)', node: <span data-font="culture" style={{ fontSize: 48, fontWeight: 900, color: '#fff' }}>{initial}</span>, isPhoto: false }
-  return { bg: '#F1F8E9', node: <img src="./assets/chatbot-icon.png" alt="" style={{ width: '70%', height: '70%', objectFit: 'contain' }} />, isPhoto: false }
+  return { bg: '#F1F8E9', node: <img src="/assets/chatbot-icon.png" alt="" style={{ width: '70%', height: '70%', objectFit: 'contain' }} />, isPhoto: false }
 }
 
 // Live-updating "membership pass" -- mirrors the form on the right so
@@ -75,7 +75,7 @@ function PersonaCard({ state, actions, derived }) {
         </div>
         <div style={{ transform: 'rotate(9deg)', textAlign: 'center', flexShrink: 0, animation: 'dc-pop 0.4s cubic-bezier(.34,1.56,.64,1) 0.3s both' }}>
           <div style={{ width: 42, height: 42, borderRadius: '50%', border: '2px solid #FBC02D', padding: 3, background: '#fff', animation: 'dc-pulse 2.4s ease-in-out infinite' }}>
-            <img src="./assets/chatbot-icon.png" alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: '50%' }} />
+            <img src="/assets/chatbot-icon.png" alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: '50%' }} />
           </div>
           <p style={{ margin: '4px 0 0', fontSize: 9, fontWeight: 800, color: '#1B5E20' }}>สมาชิกใหม่</p>
         </div>
@@ -204,7 +204,7 @@ export default function SignupPage() {
   return (
     <main style={{ maxWidth: isPending ? 420 : 980, margin: '0 auto', padding: '70px 32px' }}>
       <h1 data-font="culture" style={{ fontSize: 22, fontWeight: 800, color: '#1B5E20', margin: '0 0 22px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, animation: 'dc-fade-up 0.4s ease both' }}>
-        <img src="./assets/dino-logo-mark.png" alt="" style={{ width: 26, height: 26 }} />
+        <img src="/assets/dino-logo-mark.png" alt="" style={{ width: 26, height: 26 }} />
         สมัครสมาชิก Dino
       </h1>
       {isPending ? (

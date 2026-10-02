@@ -2,9 +2,10 @@ import { crudRouter, invalidateCache } from '../lib/crudRouter.js'
 import { requireAdmin } from '../middleware/requireAdmin.js'
 import { asyncHandler } from '../middleware/asyncHandler.js'
 import { httpError } from '../middleware/errorHandler.js'
-import { rowToEvent, eventPayload } from '../lib/mappers.js'
+import { rowToEvent, eventPayload, eventTimeStatus, todayInBangkok } from '../lib/mappers.js'
 import { forwardToChatbotService } from '../lib/chatbotProxy.js'
 import { db } from '../lib/db.js'
+import { sameValue } from '../lib/placeFields.js'
 import { galleryCleanup } from '../lib/cloudinaryCleanup.js'
 import { createImageUploadMiddleware } from '../lib/imageUpload.js'
 import { uploadImageBuffer, deleteImage } from '../lib/cloudinary.js'
@@ -33,9 +34,61 @@ async function attachEventPhotos(rows) {
   return rows.map((r) => ({ ...r, uploadedPhotoUrls: byEvent[r.id] || [] }))
 }
 
+// Report field -> the columns an edit to it touches (photos/other have no
+// column: an admin resolves those by hand).
+const REPORT_FIELD_COLUMNS = {
+  name: ['name'],
+  date: ['date_range', 'event_start_date', 'event_end_date'],
+  venue: ['venue_name', 'place_id'],
+  admission: ['admission'],
+  status: ['status'],
+  organizer: ['organizer'],
+}
+
+// When an admin edits an event field that users reported, close those
+// reports as "edited" -- the same hands-off flow places have. Nothing is
+// locked (events have no external source to overwrite them).
+async function closeReportsForEditedFields(id, payload, req) {
+  const current = await db('events').select('id', 'name', 'date_range', 'event_start_date', 'event_end_date', 'venue_name', 'place_id', 'admission', 'status', 'organizer').where('id', id).first()
+  if (!current) return null // the update itself will 404
+  const changed = Object.entries(REPORT_FIELD_COLUMNS)
+    .filter(([, cols]) => cols.filter((c) => c in payload).some((c) => !sameValue(current[c], payload[c])))
+    .map(([field]) => field)
+  if (!changed.length) return null
+  return {
+    after: async () => {
+      await db('event_reports').where({ event_id: id, status: 'pending' }).whereIn('field', changed)
+        .update({ status: 'resolved', resolution: 'edited', resolved_by: req.user.id, resolved_at: db.fn.now() })
+      await db('admin_audit_log').insert({
+        admin_id: req.user.id, action: 'event.update',
+        details: JSON.stringify({ eventId: id, name: payload.name ?? current.name, changed }),
+      })
+    },
+  }
+}
+
+// Ongoing first (ending soonest), then upcoming (starting soonest), then
+// ended (most recent first); events without dates and cancelled ones last.
+const TIME_STATUS_RANK = { ongoing: 0, upcoming: 1, ended: 2, null: 3, cancelled: 4 }
+function sortEventsByTime(rows) {
+  const today = todayInBangkok()
+  const keyed = rows.map((r) => {
+    const ts = eventTimeStatus(r, today)
+    const start = r.event_start_date || ''
+    const end = r.event_end_date || start
+    return { r, rank: TIME_STATUS_RANK[ts], date: ts === 'upcoming' ? start : end, desc: ts === 'ended' }
+  })
+  keyed.sort((a, b) => a.rank - b.rank
+    || (a.desc ? b.date.localeCompare(a.date) : a.date.localeCompare(b.date))
+    || String(a.r.name).localeCompare(String(b.r.name)))
+  return keyed.map((k) => k.r)
+}
+
 export const eventsRouter = crudRouter({
   table: 'events',
+  sortRows: sortEventsByTime,
   select: EVENT_COLUMNS,
+  beforeUpdate: closeReportsForEditedFields,
   order: { column: 'created_at' },
   toRow: eventPayload,
   toResponse: rowToEvent,
@@ -49,6 +102,19 @@ export const eventsRouter = crudRouter({
   beforeDelete: galleryCleanup('event_photos', 'event_id'),
   // ?search= (EventsTab/EventsListPage's search box).
   searchColumns: ['name'],
+  // ?status=upcoming|ongoing|ended|cancelled (EventsListPage's chips) --
+  // computed from the event dates, mirroring eventTimeStatus() in mappers.js.
+  filters: (q, reqQuery) => {
+    const today = todayInBangkok()
+    const end = db.raw('coalesce(event_end_date, event_start_date)')
+    switch (reqQuery.status) {
+      case 'cancelled': return q.where('status', 'cancelled')
+      case 'upcoming': return q.whereNot('status', 'cancelled').where('event_start_date', '>', today)
+      case 'ongoing': return q.whereNot('status', 'cancelled').where('event_start_date', '<=', today).where(end, '>=', today)
+      case 'ended': return q.whereNot('status', 'cancelled').where(end, '<', today)
+      default: return q
+    }
+  },
   // EventsTab's sort dropdown (name/status).
   sortable: ['name', 'status'],
 })

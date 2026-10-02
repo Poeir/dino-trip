@@ -16,7 +16,10 @@ import LoadError from '../components/LoadError.jsx'
 import EmptyState from '../components/EmptyState.jsx'
 import { MAP_ICON } from '../data/categoryImages.js'
 import { AMENITY_OPTIONS, TAG_OPTIONS } from '../data/placeVocabulary.js'
-import { createPlace, updatePlace, fetchPlaces, fetchPlacePhotos, uploadPlacePhoto, deletePlacePhoto } from '../lib/apiClient.js'
+import PlaceSyncModal from './PlaceSyncModal.jsx'
+import PlaceSyncInfo from './PlaceSyncInfo.jsx'
+import { createPlace, updatePlace, fetchPlaces, fetchPlace, fetchPlacePhotos, uploadPlacePhoto, deletePlacePhoto } from '../lib/apiClient.js'
+import { SYNC_FIELD_LABEL } from '../data/placeSync.js'
 import { usePagedList } from '../lib/usePagedList.js'
 
 // PlacesTab's own sort dropdown -> crudRouter.js's ?sort=/?dir= (distinct
@@ -51,6 +54,26 @@ export default function PlacesTab() {
   const [galleryBusy, setGalleryBusy] = useState(false)
   const [galleryBusyText, setGalleryBusyText] = useState('')
   const initialFormRef = useRef(null)
+  // Google sync has one entry point: the "ซิงก์จาก Google" dialog (choose places,
+  // a filter, or everything there). A single place can also be synced from its
+  // edit form. Cards only show sync status, never controls.
+  const [syncOpen, setSyncOpen] = useState(false)
+  const [reloadTick, setReloadTick] = useState(0)
+
+  // Sync/lock actions inside the edit form write straight to the DB, so the
+  // form has to pick up the fresh values -- otherwise saving it would send the
+  // old ones back and re-lock what was just synced/unlocked.
+  const reloadEditForm = async () => {
+    const fresh = await fetchPlace(state.editingId)
+    actions.openEditForm('place', fresh)
+    setReloadTick((t) => t + 1)
+    paged.refetch()
+  }
+  // Re-baseline dirty tracking once the reloaded form values have landed.
+  useEffect(() => {
+    if (reloadTick) initialFormRef.current = JSON.stringify(f)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reloadTick])
 
   // Snapshots formData the moment the modal opens, so closing it (backdrop
   // click, Esc, or the ยกเลิก button) can warn instead of silently dropping
@@ -192,8 +215,14 @@ export default function PlacesTab() {
     <>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
         <h1 style={{ fontSize: 22, fontWeight: 800, color: '#1B5E20', margin: 0 }}>จัดการสถานที่</h1>
-        <button onClick={actions.onNewPlace} style={{ background: 'linear-gradient(135deg,#66BB6A,#388E3C)', color: '#fff', border: 'none', padding: '10px 18px', borderRadius: 18, fontWeight: 700, fontSize: 13.5, cursor: 'pointer' }}>+ เพิ่มสถานที่ใหม่</button>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <button onClick={() => setSyncOpen(true)} style={{ background: '#fff', color: '#1565C0', border: '1px solid #90CAF9', padding: '10px 18px', borderRadius: 18, fontWeight: 700, fontSize: 13.5, cursor: 'pointer' }}>
+            ⟳ ซิงก์จาก Google
+          </button>
+          <button onClick={actions.onNewPlace} style={{ background: 'linear-gradient(135deg,#66BB6A,#388E3C)', color: '#fff', border: 'none', padding: '10px 18px', borderRadius: 18, fontWeight: 700, fontSize: 13.5, cursor: 'pointer' }}>+ เพิ่มสถานที่ใหม่</button>
+        </div>
       </div>
+      <PlaceSyncModal open={syncOpen} onClose={() => setSyncOpen(false)} onFinished={paged.refetch} />
 
       <Modal open={derived.isPlaceFormOpen} onClose={handleClose} title={state.editingId ? 'แก้ไขสถานที่' : 'เพิ่มสถานที่ใหม่'} maxWidth={760}>
           <SectionHeading first>ข้อมูลพื้นฐาน</SectionHeading>
@@ -232,6 +261,13 @@ export default function PlacesTab() {
               />
             </Field>
           </fieldset>
+
+          {state.editingId && f.googlePlaceId && (
+            <>
+              <SectionHeading>การซิงก์กับ Google</SectionHeading>
+              <PlaceSyncInfo placeId={state.editingId} dirty={isDirty()} onChanged={reloadEditForm} />
+            </>
+          )}
 
           <SectionHeading>รูปภาพ</SectionHeading>
           <div style={{ fontSize: 11.5, color: '#6d7a72', marginBottom: 8 }}>อัปโหลดได้สูงสุด <strong>{MAX_PHOTOS} รูปต่อสถานที่</strong> รูปแรกจะใช้เป็นรูปหลัก</div>
@@ -341,6 +377,16 @@ export default function PlacesTab() {
       <div style={{ display: paged.error ? 'none' : 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))', gap: 16, opacity: paged.loading ? 0.5 : 1, transition: 'opacity 0.15s ease', pointerEvents: paged.loading ? 'none' : 'auto' }}>
         {placesView.map((p) => (
           <PlaceCard key={p.id} place={p} dim={!p.isActive} badge={!p.isActive ? 'ซ่อนอยู่' : null}>
+            {p.googlePlaceId && (
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', fontSize: 11, fontWeight: 700 }}>
+                  {p.lockedFields.length > 0 && <span title={p.lockedFields.map((x) => SYNC_FIELD_LABEL[x]).join(', ')} style={{ background: '#f3f3f0', color: '#6d7a72', padding: '2px 8px', borderRadius: 10 }}>🔒 ล็อก {p.lockedFields.length}</span>}
+                  {p.hasGoogleDiff && <span style={{ background: '#FFF8E1', color: '#7A5205', padding: '2px 8px', borderRadius: 10 }}>Google มีค่าใหม่</span>}
+                  {['CLOSED_TEMPORARILY', 'CLOSED_PERMANENTLY'].includes(p.businessStatus) && <span style={{ background: '#fdecec', color: '#a33232', padding: '2px 8px', borderRadius: 10 }}>{p.businessStatus === 'CLOSED_PERMANENTLY' ? 'ปิดถาวร' : 'ปิดชั่วคราว'}</span>}
+                  <span style={{ color: '#8a938c', fontWeight: 400 }}>{p.lastSyncedAt ? `ซิงก์ ${new Date(p.lastSyncedAt).toLocaleDateString('th-TH', { dateStyle: 'medium' })}` : 'ยังไม่เคยซิงก์'}</span>
+                </div>
+              </div>
+            )}
             <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
               <button onClick={p.onEdit} style={{ flex: 1, background: '#E8F5E9', color: '#2E7D32', border: 'none', padding: 7, borderRadius: 10, fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>แก้ไข</button>
               <button onClick={p.onDelete} style={{ flex: 1, background: '#fdecec', color: '#a33232', border: 'none', padding: 7, borderRadius: 10, fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>ลบ</button>

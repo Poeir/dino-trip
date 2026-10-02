@@ -2,6 +2,7 @@ import { useParams } from 'react-router-dom'
 import AdminSidebar from '../admin/AdminSidebar.jsx'
 import DashboardTab from '../admin/DashboardTab.jsx'
 import PlacesTab from '../admin/PlacesTab.jsx'
+import ReportsTab from '../admin/ReportsTab.jsx'
 import EventsTab from '../admin/EventsTab.jsx'
 import KnowledgeTab from '../admin/KnowledgeTab.jsx'
 import QrTab from '../admin/QrTab.jsx'
@@ -28,6 +29,7 @@ export default function AdminDashboardPage() {
         <div style={{ padding: '28px 34px 40px' }}>
           {tab === 'dashboard' && <DashboardTab />}
           {tab === 'places' && <PlacesTab />}
+          {tab === 'reports' && <ReportsTab />}
           {tab === 'events' && <EventsTab />}
           {tab === 'knowledge' && <KnowledgeTab />}
           {tab === 'qr' && <QrTab />}

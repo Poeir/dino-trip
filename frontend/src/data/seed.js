@@ -4,9 +4,9 @@ import { haversineKm } from '../utils/geo.js'
 export const initialPlaces = placesFromGoogle
 
 export const initialEvents = [
-  { id: 'e1', name: 'เทศกาลไหมนานาชาติ ประเพณีผูกเสี่ยว และงานกาชาดจังหวัดขอนแก่น', category: 'เทศกาลวัฒนธรรม', dateRange: '29 พ.ย. - 10 ธ.ค. 2569', venueName: 'สนามหน้าศาลากลางจังหวัดขอนแก่น', admission: 'เข้าชมฟรี', organizer: 'จังหวัดขอนแก่น', suitableFor: ['ครอบครัว', 'ผู้สูงอายุ', 'นักท่องเที่ยวต่างชาติ'], status: 'upcoming', desc: 'งานประจำปีที่รวมการแสดงผ้าไหมมัดหมี่ ขบวนแห่ประเพณีผูกเสี่ยว และการออกร้านกาชาด', img: './assets/picture02.jpg' },
-  { id: 'e2', name: 'ขอนแก่น ไดโนเสาร์ เฟสติวัล', category: 'เทศกาลไดโนเสาร์', dateRange: '14-16 ส.ค. 2569', venueName: 'บึงแก่นนคร', admission: 'เด็ก 50 บาท / ผู้ใหญ่ 100 บาท', organizer: 'เทศบาลนครขอนแก่น', suitableFor: ['เด็ก', 'ครอบครัว'], status: 'upcoming', desc: 'งานรวมโมเดลไดโนเสาร์ขนาดเท่าจริง กิจกรรมขุดฟอสซิลจำลอง และเวิร์กชอปสำหรับเด็ก', img: './assets/picture02.jpg' },
-  { id: 'e3', name: 'ค่ำคืนดนตรีในสวน บึงแก่นนคร', category: 'คอนเสิร์ต', dateRange: '22 ส.ค. 2569 18:00-21:00', venueName: 'บึงแก่นนคร', admission: 'เข้าชมฟรี', organizer: 'การท่องเที่ยวแห่งประเทศไทย สนง.ขอนแก่น', suitableFor: ['วัยทำงาน', 'คู่รัก'], status: 'upcoming', desc: 'คอนเสิร์ตดนตรีโฟล์คริมบึงยามเย็น พร้อมตลาดอาหารท้องถิ่น', img: './assets/picture02.jpg' }
+  { id: 'e1', name: 'เทศกาลไหมนานาชาติ ประเพณีผูกเสี่ยว และงานกาชาดจังหวัดขอนแก่น', category: 'เทศกาลวัฒนธรรม', dateRange: '29 พ.ย. - 10 ธ.ค. 2569', venueName: 'สนามหน้าศาลากลางจังหวัดขอนแก่น', admission: 'เข้าชมฟรี', organizer: 'จังหวัดขอนแก่น', suitableFor: ['ครอบครัว', 'ผู้สูงอายุ', 'นักท่องเที่ยวต่างชาติ'], status: 'upcoming', desc: 'งานประจำปีที่รวมการแสดงผ้าไหมมัดหมี่ ขบวนแห่ประเพณีผูกเสี่ยว และการออกร้านกาชาด', img: '/assets/picture02.jpg' },
+  { id: 'e2', name: 'ขอนแก่น ไดโนเสาร์ เฟสติวัล', category: 'เทศกาลไดโนเสาร์', dateRange: '14-16 ส.ค. 2569', venueName: 'บึงแก่นนคร', admission: 'เด็ก 50 บาท / ผู้ใหญ่ 100 บาท', organizer: 'เทศบาลนครขอนแก่น', suitableFor: ['เด็ก', 'ครอบครัว'], status: 'upcoming', desc: 'งานรวมโมเดลไดโนเสาร์ขนาดเท่าจริง กิจกรรมขุดฟอสซิลจำลอง และเวิร์กชอปสำหรับเด็ก', img: '/assets/picture02.jpg' },
+  { id: 'e3', name: 'ค่ำคืนดนตรีในสวน บึงแก่นนคร', category: 'คอนเสิร์ต', dateRange: '22 ส.ค. 2569 18:00-21:00', venueName: 'บึงแก่นนคร', admission: 'เข้าชมฟรี', organizer: 'การท่องเที่ยวแห่งประเทศไทย สนง.ขอนแก่น', suitableFor: ['วัยทำงาน', 'คู่รัก'], status: 'upcoming', desc: 'คอนเสิร์ตดนตรีโฟล์คริมบึงยามเย็น พร้อมตลาดอาหารท้องถิ่น', img: '/assets/picture02.jpg' }
 ]
 
 export const initialKnowledgeBase = [
@@ -58,6 +58,7 @@ export const areaScopeMeta = { 'เมือง': 'เฉพาะในตั�
 export const adminTabs = [
   { key: 'dashboard', label: 'แดชบอร์ด', icon: 'dashboard' },
   { key: 'places', label: 'สถานที่', icon: 'places' },
+  { key: 'reports', label: 'รายงานข้อมูล', icon: 'reports' },
   { key: 'events', label: 'กิจกรรม', icon: 'events' },
   { key: 'knowledge', label: 'ฐานความรู้', icon: 'knowledge' },
   { key: 'qr', label: 'QR & พอยท์', icon: 'qr' },

@@ -3,6 +3,7 @@ import { requireAdmin } from '../middleware/requireAdmin.js'
 import { rowToPlace, placePayload } from '../lib/mappers.js'
 import { sortPlacesByWeightedRating } from '../services/placeRanking.js'
 import { db } from '../lib/db.js'
+import { changedSyncFields } from '../lib/placeFields.js'
 import { galleryCleanup } from '../lib/cloudinaryCleanup.js'
 import { asyncHandler } from '../middleware/asyncHandler.js'
 import { httpError } from '../middleware/errorHandler.js'
@@ -11,7 +12,7 @@ import { uploadImageBuffer, deleteImage } from '../lib/cloudinary.js'
 
 // Excludes `embedding` (384-float pgvector column, RAG-only) and
 // `hours_periods`/`price_level` -- the frontend doesn't read them.
-export const PLACE_COLUMNS = 'id, source, google_place_id, name, category, rating, review_count, price, address, district, hours, phone, website, maps_url, lat, lng, description, amenities, tags, has_qr, qr_points, img, images, reviews, business_status, is_active, created_at, updated_at'
+export const PLACE_COLUMNS = 'id, source, google_place_id, name, category, rating, review_count, price, address, district, hours, phone, website, maps_url, lat, lng, description, amenities, tags, has_qr, qr_points, img, images, reviews, business_status, is_active, locked_fields, last_synced_at, google_diff, created_at, updated_at'
 
 // Matches fetch-places.js's own MAX_PHOTOS_PER_PLACE -- same gallery-size
 // convention for admin-uploaded photos as Google-imported ones.
@@ -30,9 +31,43 @@ export async function attachUploadedPhotos(rows) {
   return rows.map((r) => ({ ...r, uploadedPhotoUrls: byPlace[r.id] || [] }))
 }
 
+const SYNC_TO_REPORT_FIELDS = { business_status: ['closed'] }
+
+// An admin edit to a Google-syncable field locks it, so the next sync can't
+// silently overwrite the correction (it parks Google's value in google_diff
+// instead). Also drops any now-stale parked value for that field, and closes
+// user reports about a field the admin just fixed.
+async function lockEditedFields(id, payload, req) {
+  const current = await db('places')
+    .select('id', 'name', 'address', 'lat', 'lng', 'hours', 'phone', 'website', 'business_status', 'google_place_id', 'locked_fields', 'google_diff')
+    .where('id', id).first()
+  if (!current) return null // the update itself will 404
+  const changed = changedSyncFields(current, payload)
+  if (!changed.length) return null
+
+  const extra = {}
+  if (current.google_place_id) {
+    extra.locked_fields = [...new Set([...(current.locked_fields || []), ...changed])]
+    extra.google_diff = JSON.stringify(Object.fromEntries(Object.entries(current.google_diff || {}).filter(([f]) => !changed.includes(f))))
+  }
+  return {
+    extra,
+    after: async () => {
+      const reportFields = changed.flatMap((f) => SYNC_TO_REPORT_FIELDS[f] || [f])
+      await db('place_reports').where({ place_id: id, status: 'pending' }).whereIn('field', reportFields)
+        .update({ status: 'resolved', resolution: 'edited', resolved_by: req.user.id, resolved_at: db.fn.now() })
+      await db('admin_audit_log').insert({
+        admin_id: req.user.id, action: 'place.update',
+        details: JSON.stringify({ placeId: id, name: payload.name ?? current.name, changed, locked: !!current.google_place_id }),
+      })
+    },
+  }
+}
+
 export const placesRouter = crudRouter({
   table: 'places',
   select: PLACE_COLUMNS,
+  beforeUpdate: lockEditedFields,
   sortRows: sortPlacesByWeightedRating,
   toRow: placePayload,
   toResponse: rowToPlace,

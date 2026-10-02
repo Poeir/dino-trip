@@ -220,6 +220,45 @@ export const uploadPlacePhoto = async (id, file) => {
 }
 export const deletePlacePhoto = (id, photoId) => apiDelete(`/api/places/${id}/photos/${photoId}`)
 
+// Tourist: point at the fields that look wrong (login required). `fields` is a
+// list of name/address/location/hours/phone/website/closed/photos/other; `other`
+// needs a note. Never changes the place -- an admin resolves it.
+export const reportPlace = (id, fields, note) => apiPost(`/api/places/${id}/reports`, { fields, note })
+// Fields this user already has an open report for on the place.
+export const fetchMyPlaceReports = (id) => apiGet(`/api/places/${id}/reports/mine`)
+
+// Events: same idea, with the event field vocabulary (name/date/venue/admission/
+// status/organizer/photos/other). Admin side mirrors the place-report calls.
+export const fetchEvent = (id) => apiGet(`/api/events/${id}`)
+export const reportEvent = (id, fields, note) => apiPost(`/api/events/${id}/reports`, { fields, note })
+export const fetchMyEventReports = (id) => apiGet(`/api/events/${id}/reports/mine`)
+export const fetchAdminEventReports = (params) => apiGet('/api/admin/event-reports', params)
+export const fetchAdminEventReportCount = () => apiGet('/api/admin/event-reports/count')
+// body: { eventId, field, status: 'resolved' (+ resolution: edited|no_change) | 'rejected' }
+export const resolveAdminEventReports = (body) => apiPost('/api/admin/event-reports/resolve', body)
+
+// Admin: reports grouped per place. Params: status (pending|resolved|rejected|
+// superseded), page, limit.
+export const fetchAdminPlaceReports = (params) => apiGet('/api/admin/place-reports', params)
+export const fetchAdminPlaceReportCount = () => apiGet('/api/admin/place-reports/count')
+// Closes every pending report for one place + field. `status` is 'resolved'
+// (with `resolution`: edited|synced|no_change) or 'rejected'.
+export const resolveAdminPlaceReports = (body) => apiPost('/api/admin/place-reports/resolve', body)
+
+// Admin: Google sync (backend/src/routes/adminPlaceSync.routes.js). Selection
+// input is { scope: single|selected|filter|all, ids, filters, maxItems }.
+export const previewPlaceSync = (selection) => apiPost('/api/admin/place-sync/preview', selection)
+// Starts a background job; rejects with `err.needsConfirm`-style 409 when the
+// run is large (retry with confirm: true after showing the count).
+export const startPlaceSyncJob = (body) => apiPost('/api/admin/place-sync/jobs', body)
+export const fetchPlaceSyncJobs = () => apiGet('/api/admin/place-sync/jobs')
+export const fetchPlaceSyncJob = (id) => apiGet(`/api/admin/place-sync/jobs/${id}`)
+export const cancelPlaceSyncJob = (id) => apiPost(`/api/admin/place-sync/jobs/${id}/cancel`, {})
+export const syncOnePlace = (id, body = {}) => apiPost(`/api/admin/place-sync/places/${id}/sync`, body)
+export const fetchPlaceSyncInfo = (id) => apiGet(`/api/admin/place-sync/places/${id}`)
+export const resolvePlaceGoogleDiff = (id, field, action) => apiPost(`/api/admin/place-sync/places/${id}/diff/${field}`, { action })
+export const setPlaceLockedFields = (id, lockedFields) => apiPut(`/api/admin/place-sync/places/${id}/locked-fields`, { lockedFields })
+
 // The signed-in user's own account (backend/src/routes/profile.routes.js).
 // multipart helper for the avatar upload -- bypasses request()'s forced JSON
 // Content-Type so the browser can set the multipart boundary itself.

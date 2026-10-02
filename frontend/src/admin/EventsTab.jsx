@@ -23,6 +23,7 @@ const EVENT_SORT_PARAMS = {
   status: { sort: 'status', dir: 'asc' },
 }
 
+const TIME_STATUS_LABEL = { ongoing: 'กำลังจัดอยู่', upcoming: 'เร็วๆ นี้', ended: 'จบแล้ว', cancelled: 'ยกเลิก' }
 const inputStyle = { width: '100%', border: '1px solid #DCD8C6', borderRadius: 8, padding: 9, fontSize: 14 }
 const EXTRACT_FIELDS = ['name', 'category', 'dateRange', 'venueName', 'admission', 'organizer', 'suitableFor', 'desc']
 const MAX_PHOTO_BYTES = 2 * 1024 * 1024
@@ -276,6 +277,23 @@ export default function EventsTab() {
     try {
       const extracted = await extractEventFromText(pasteText)
       EXTRACT_FIELDS.forEach((field) => actions.updateFormField(field, extracted[field] || ''))
+      // The start/end dates drive the computed event status, so fill the date
+      // pickers too. Keep the LLM's own dateRange text ('custom') when it
+      // isn't a plain start-end range (e.g. "ทุกวันเสาร์-อาทิตย์เดือน ธ.ค.").
+      const start = extracted.eventStartDate || ''
+      const end = extracted.eventEndDate || ''
+      if (start) {
+        const plain = !extracted.dateRange || extracted.dateRange === formatDateRange(start, end)
+        const mode = plain ? inferDateMode({ eventStartDate: start, eventEndDate: end }) : 'custom'
+        setDateMode(mode)
+        applyDateRange(start, end, mode)
+      } else {
+        setStartDate('')
+        setEndDate('')
+        actions.updateFormField('eventStartDate', '')
+        actions.updateFormField('eventEndDate', '')
+        setDateMode(extracted.dateRange ? 'custom' : 'range')
+      }
     } catch (err) {
       if (!actions.handleSessionExpired(err)) setExtractError(err.status === undefined ? 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาตรวจสอบอินเทอร์เน็ต' : err.message)
     } finally {
@@ -419,10 +437,9 @@ export default function EventsTab() {
 
           <SectionHeading>สถานะ</SectionHeading>
           <Field label="สถานะ">
-            <select value={f.status || 'upcoming'} onChange={actions.onField_status} style={inputStyle}>
-              <option value="upcoming">upcoming</option>
-              <option value="published">published</option>
-              <option value="cancelled">cancelled</option>
+            <select value={f.status === 'cancelled' ? 'cancelled' : 'upcoming'} onChange={actions.onField_status} style={inputStyle}>
+              <option value="upcoming">ปกติ (เร็วๆ นี้ / กำลังจัดอยู่ / จบแล้ว คำนวณจากวันที่จัดงาน)</option>
+              <option value="cancelled">ยกเลิกกิจกรรม</option>
             </select>
           </Field>
 
@@ -452,7 +469,7 @@ export default function EventsTab() {
             <ImageSlot src={e.img} shape="rect" style={{ width: '100%', height: 110 }} placeholder="ภาพงาน" icon={EVENT_ICON} />
             <div style={{ padding: 14 }}>
               <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 3 }}>{e.name}</div>
-              <div style={{ fontSize: 12.5, color: '#6d7a72', marginBottom: 4 }}>{e.dateRange} · {e.status}</div>
+              <div style={{ fontSize: 12.5, color: '#6d7a72', marginBottom: 4 }}>{e.dateRange} · {TIME_STATUS_LABEL[e.timeStatus] || 'ยังไม่ระบุวันที่'}</div>
               <div style={{ fontSize: 11, fontWeight: 700, color: eventIndexStatus(e).color, marginBottom: 10 }}>{eventIndexStatus(e).label}</div>
               <div style={{ display: 'flex', gap: 8 }}>
                 <button onClick={e.onEdit} style={{ flex: 1, background: '#E8F5E9', color: '#2E7D32', border: 'none', padding: 7, borderRadius: 10, fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>แก้ไข</button>

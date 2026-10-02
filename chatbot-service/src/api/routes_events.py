@@ -18,6 +18,18 @@ client = OpenAI(api_key=API_KEY, base_url=BASE_URL)
 # the LLM's raw JSON is never trusted as-is, only these keys are ever read
 # back out of it.
 EVENT_FIELDS = ["name", "category", "dateRange", "venueName", "admission", "organizer", "suitableFor", "desc"]
+# Machine-readable bounds (YYYY-MM-DD, Gregorian) -- these drive the computed
+# ongoing/upcoming/ended status, so they must be valid dates or empty.
+DATE_FIELDS = ["eventStartDate", "eventEndDate"]
+
+
+def _valid_iso_date(val) -> str:
+    if not isinstance(val, str):
+        return ""
+    try:
+        return date.fromisoformat(val.strip()).isoformat()
+    except ValueError:
+        return ""
 
 
 class ExtractEventRequest(BaseModel):
@@ -36,6 +48,8 @@ def build_prompt(post_text: str) -> str:
     - name: ชื่องาน/กิจกรรม
     - category: ประเภทงาน (เช่น เทศกาล, งานวัด, คอนเสิร์ต, งานประเพณี) -- one short Thai phrase
     - dateRange: ช่วงวันที่จัดงาน ในรูปแบบเดียวกับที่คนไทยเขียน เช่น "1-3 ธ.ค. 2569"
+    - eventStartDate: วันแรกของงาน ในรูปแบบ YYYY-MM-DD ปี ค.ศ. (Gregorian) -- ต้องแปลงปี พ.ศ. เป็น ค.ศ. โดยลบ 543 เช่น 2569 -> 2026
+    - eventEndDate: วันสุดท้ายของงาน ในรูปแบบ YYYY-MM-DD ปี ค.ศ. (ถ้างานวันเดียว ให้ใส่วันเดียวกับ eventStartDate)
     - venueName: ชื่อสถานที่จัดงาน
     - admission: ค่าเข้างาน (ถ้าข้อความไม่ได้พูดถึงค่าใช้จ่ายเลย ให้เว้นว่าง อย่าเดาว่าฟรี)
     - organizer: หน่วยงาน/ผู้จัดงาน (ถ้ามีระบุ)
@@ -45,7 +59,7 @@ def build_prompt(post_text: str) -> str:
     Rules:
     1. Only use information present in the post text. Do not invent dates, prices, or venues that aren't there.
     2. If a field cannot be determined from the text, use "" (or [] for suitableFor) -- never guess.
-    3. Output STRICTLY a JSON object with exactly these keys: name, category, dateRange, venueName, admission, organizer, suitableFor, desc. No other text.
+    3. Output STRICTLY a JSON object with exactly these keys: name, category, dateRange, eventStartDate, eventEndDate, venueName, admission, organizer, suitableFor, desc. No other text.
     """
 
 
@@ -79,4 +93,10 @@ def extract_event(req: ExtractEventRequest):
         if field == "suitableFor" and isinstance(val, list):
             val = ", ".join(str(v).strip() for v in val if str(v).strip())
         result[field] = val if isinstance(val, str) else ""
+    for field in DATE_FIELDS:
+        result[field] = _valid_iso_date(data.get(field))
+    # A lone end date, or an end before the start, is an LLM slip -- drop the
+    # end rather than let the form save an impossible range.
+    if result["eventEndDate"] and (not result["eventStartDate"] or result["eventEndDate"] < result["eventStartDate"]):
+        result["eventEndDate"] = ""
     return result

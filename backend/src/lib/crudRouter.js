@@ -56,7 +56,7 @@ function cacheKeyFor(table, query) {
   return `${table}?${keys.map((k) => `${k}=${query[k]}`).join('&')}`
 }
 
-export function crudRouter({ table, select, order, sortRows, toRow, toResponse, mutateAuth = [], invalidateColumns = [], enrichRows, searchColumns, filters, sortable, uniqueViolationMessage, beforeDelete }) {
+export function crudRouter({ table, select, order, sortRows, toRow, toResponse, mutateAuth = [], invalidateColumns = [], enrichRows, searchColumns, filters, sortable, uniqueViolationMessage, beforeDelete, beforeUpdate }) {
   const router = Router()
   // Turns a Postgres unique_violation (23505) on create/edit into a readable 409.
   const mapWriteError = (err) => (uniqueViolationMessage && err.code === '23505' ? httpError(409, uniqueViolationMessage) : err)
@@ -209,6 +209,11 @@ export function crudRouter({ table, select, order, sortRows, toRow, toResponse, 
 
   router.put('/:id', mutateAuth, asyncHandler(async (req, res) => {
     const payload = { ...(toRow ? toRow(req.body) : req.body), ...invalidate }
+    // Optional hook: (id, payload, req) => { extra?, after? } | null. `extra`
+    // is merged into the update (e.g. places auto-locking the fields an admin
+    // just edited); `after(row)` runs once the update succeeded.
+    const pre = beforeUpdate ? await beforeUpdate(req.params.id, payload, req) : null
+    if (pre?.extra) Object.assign(payload, pre.extra)
     let row
     try {
       ;[row] = await db(table).where('id', req.params.id).update(payload).returning(columns)
@@ -216,6 +221,11 @@ export function crudRouter({ table, select, order, sortRows, toRow, toResponse, 
       throw mapWriteError(err)
     }
     if (!row) throw httpError(404, 'ไม่พบข้อมูล')
+    if (pre?.after) {
+      // Bookkeeping (audit log, closing reports) must not turn a save that
+      // already happened into an error response.
+      try { await pre.after(row) } catch (err) { console.error(`afterUpdate for ${table} failed:`, err) }
+    }
     const [enriched] = await enrich([row])
     invalidateCache(table)
     res.json(mapRow(enriched))

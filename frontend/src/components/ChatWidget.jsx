@@ -105,7 +105,7 @@ export default function ChatWidget() {
             <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <span style={{ position: 'relative', width: 38, height: 38, borderRadius: '50%', background: 'rgba(255,255,255,0.16)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 0 0 2px rgba(255,255,255,0.35)' }}>
-                  <img src="./assets/icon-chatbot.svg" alt="" style={{ width: '78%', height: '78%', objectFit: 'contain' }} />
+                  <img src="/assets/icon-chatbot.svg" alt="" style={{ width: '78%', height: '78%', objectFit: 'contain' }} />
                   <span style={{ position: 'absolute', bottom: -1, right: -1, width: 10, height: 10, borderRadius: '50%', background: '#8BC34A', border: '2px solid #2E7D32', animation: 'dc-pulse 2s infinite' }}></span>
                 </span>
                 <div>
@@ -125,7 +125,7 @@ export default function ChatWidget() {
                 <div style={{ display: 'flex', alignItems: 'flex-end', gap: 7 }}>
                   {msg.from === 'bot' && (
                     <span style={{ width: 22, height: 22, borderRadius: '50%', background: 'linear-gradient(135deg,#66BB6A,#2E7D32)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, padding: 3 }}>
-                      <img src="./assets/icon-chatbot.svg" alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                      <img src="/assets/icon-chatbot.svg" alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                     </span>
                   )}
                   <div style={{ background: msg.from === 'bot' ? 'linear-gradient(135deg,#F1F8E9,#E8F5E9)' : '#2E7D32', color: msg.color, padding: '9px 13px', borderRadius: 14, fontSize: 13.5, lineHeight: 1.5, animation: 'dc-pop 0.25s ease both' }}>
@@ -182,7 +182,7 @@ export default function ChatWidget() {
             {state.chatTyping && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 7, alignSelf: 'flex-start' }}>
                 <span style={{ width: 22, height: 22, borderRadius: '50%', background: 'linear-gradient(135deg,#66BB6A,#2E7D32)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, padding: 3 }}>
-                  <img src="./assets/icon-chatbot.svg" alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                  <img src="/assets/icon-chatbot.svg" alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                 </span>
                 <div style={{ display: 'flex', gap: 4, background: '#F1F8E9', padding: '10px 14px', borderRadius: 14 }}>
                   {[0, 1, 2].map((i) => (
@@ -216,7 +216,7 @@ export default function ChatWidget() {
       )}
 
       <button onClick={() => { actions.toggleChat(); setBubbleVisible(false) }} className="dc-chat-fab" style={{ width: 64, height: 64, borderRadius: '50%', background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, animation: state.chatOpen ? 'none' : 'dc-pulse 2.4s infinite' }}>
-        <img src="./assets/icon-chatbot.svg" alt="แชทกับน้องไดโน" style={{ width: '92%', height: '92%', objectFit: 'contain' }} />
+        <img src="/assets/icon-chatbot.svg" alt="แชทกับน้องไดโน" style={{ width: '92%', height: '92%', objectFit: 'contain' }} />
       </button>
     </div>
   )

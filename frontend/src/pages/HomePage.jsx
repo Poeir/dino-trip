@@ -51,8 +51,8 @@ export default function HomePage() {
   return (
     <>
       <main>
-        <section style={{ background: 'linear-gradient(135deg,#1B5E20,#2E7D32)', padding: '52px 32px 76px', position: 'relative', overflow: 'hidden' }}>
-          <div style={{ position: 'absolute', inset: 0, backgroundImage: 'url(./assets/hero-pattern-bg.png)', backgroundSize: 'cover', backgroundRepeat: 'no-repeat', backgroundPosition: 'center 30%', opacity: 0.25, zIndex: 0, pointerEvents: 'none' }} />
+        <section data-role="hero-section" style={{ background: 'linear-gradient(135deg,#1B5E20,#2E7D32)', padding: '52px 32px 76px', position: 'relative', overflow: 'hidden' }}>
+          <div style={{ position: 'absolute', inset: 0, backgroundImage: 'url(/assets/hero-pattern-bg.png)', backgroundSize: 'cover', backgroundRepeat: 'no-repeat', backgroundPosition: 'center 30%', opacity: 0.25, zIndex: 0, pointerEvents: 'none' }} />
           {heroParticles.map((p, i) => (
             <span
               key={i}
@@ -74,8 +74,9 @@ export default function HomePage() {
                 <input value={state.searchQuery} onChange={actions.onSearchChange} placeholder="ค้นหาสถานที่ กิจกรรม..." style={{ flex: 1, border: 'none', outline: 'none', fontSize: 14.5, padding: '10px 0' }} />
                 <button style={{ background: 'linear-gradient(135deg,#66BB6A,#388E3C)', color: '#fff', border: 'none', borderRadius: 11, padding: '10px 22px', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>ค้นหา</button>
               </div>
-              <div style={{ display: 'flex', gap: 12, marginTop: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+              <div data-role="hero-actions" style={{ display: 'flex', gap: 12, marginTop: 14, alignItems: 'center', flexWrap: 'wrap' }}>
                 <img src={MASCOT.point} alt="" style={{ width: 84, height: 84, objectFit: 'contain', flexShrink: 0, marginRight: -4, pointerEvents: 'none' }} />
+                <div data-role="hero-chips" style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
                 <div onClick={actions.goTripForm} style={{ display: 'flex', alignItems: 'center', gap: 9, background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 14, padding: '10px 16px', cursor: 'pointer' }}>
                   <span style={{ width: 16, height: 16, background: '#FBC02D', flexShrink: 0, transform: 'rotate(45deg)', borderRadius: 3, position: 'relative' }}><span style={{ position: 'absolute', inset: 4, background: '#1B5E20', transform: 'rotate(0deg)', borderRadius: 2 }}></span></span>
                   <span style={{ color: '#fff', fontSize: 13, fontWeight: 700 }}>วางแผนทริป AI</span>
@@ -84,12 +85,13 @@ export default function HomePage() {
                   <span style={{ width: 16, height: 12, border: '2px solid #FBC02D', borderRadius: 3, position: 'relative', display: 'inline-block', flexShrink: 0 }}><span style={{ position: 'absolute', top: 1.5, left: 3, width: 6, height: 6, borderRadius: '50%', border: '1.5px solid #FBC02D' }}></span></span>
                   <span style={{ color: '#fff', fontSize: 13, fontWeight: 700 }}>สแกน QR สะสมพอยท์</span>
                 </div>
+                </div>
               </div>
             </div>
-            <div style={{ position: 'relative' }}>
-              <ImageSlot src="./assets/hero-picture.jpg" shape="rounded" radius={20} style={{ width: '100%', height: 340, boxShadow: '0 24px 50px rgba(0,0,0,0.28)' }} placeholder="ภาพจุดเด่นขอนแก่น" />
+            <div data-role="hero-media" style={{ position: 'relative' }}>
+              <ImageSlot src="/assets/hero-picture.jpg" shape="rounded" radius={20} style={{ width: '100%', height: 340, boxShadow: '0 24px 50px rgba(0,0,0,0.28)' }} placeholder="ภาพจุดเด่นขอนแก่น" />
               <div style={{ position: 'absolute', bottom: -18, left: -18, background: '#fff', borderRadius: 14, padding: '12px 18px', boxShadow: '0 14px 30px rgba(0,0,0,0.18)', display: 'flex', alignItems: 'center', gap: 10, animation: 'dc-float 3.8s ease-in-out infinite' }}>
-                <img src="./assets/dino-logo-mark.png" alt="" style={{ width: 28, height: 28 }} />
+                <img src="/assets/dino-logo-mark.png" alt="" style={{ width: 28, height: 28 }} />
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 800, color: '#1B5E20', lineHeight: 1.2 }}>Khon Kaen</div>
                   <div style={{ fontSize: 11, color: '#6d7a72' }}>ประเทศไทย</div>
@@ -102,7 +104,7 @@ export default function HomePage() {
           </svg>
         </section>
 
-        <section style={{ maxWidth: 1360, margin: '0 auto', padding: '44px 32px 8px' }}>
+        <section data-role="home-section" style={{ maxWidth: 1360, margin: '0 auto', padding: '44px 32px 8px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18, flexWrap: 'wrap', gap: 10 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <CalendarIcon />
@@ -125,7 +127,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section style={{ maxWidth: 1360, margin: '0 auto', padding: '44px 32px 56px' }}>
+        <section data-role="home-section" style={{ maxWidth: 1360, margin: '0 auto', padding: '44px 32px 56px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 14 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <PinIcon />
@@ -134,7 +136,7 @@ export default function HomePage() {
             <a href="#" onClick={(e) => { e.preventDefault(); actions.goPlaces() }} style={{ fontSize: 13.5, fontWeight: 700, color: '#2E7D32' }}>ดูสถานที่ทั้งหมด →</a>
           </div>
           {placesLoading && <LoadingSpinner size={32} label="กำลังโหลดสถานที่แนะนำ..." />}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: 24 }}>
+          <div data-role="card-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: 24 }}>
             {!placesLoading && homePlaces.map((place) => (
               <div key={place.id} onClick={place.onOpen} style={{ background: '#fff', border: '1px solid #E7E3D2', borderRadius: 16, overflow: 'hidden', cursor: 'pointer', transition: 'transform 0.22s ease,box-shadow 0.22s ease', animation: 'dc-fade-up 0.45s ease both' }}>
                 <ImageSlot src={place.img} shape="rect" style={{ width: '100%', height: 160 }} placeholder="ภาพสถานที่" icon={placeCategoryIcon(place.category)} />

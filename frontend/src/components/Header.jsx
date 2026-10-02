@@ -10,7 +10,7 @@ export default function Header() {
   return (
     <header style={{ position: 'sticky', top: 0, zIndex: 40, background: '#ffffff', borderBottom: '1px solid #E7E3D2', display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', padding: '0 32px', height: 68 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', justifySelf: 'start' }} onClick={actions.goHome}>
-        <img src="./assets/dino-logo-full.png" alt="Dino" style={{ height: 34, width: 'auto', flexShrink: 0 }} />
+        <img src="/assets/dino-logo-full.png" alt="Dino" style={{ height: 34, width: 'auto', flexShrink: 0 }} />
       </div>
       <nav data-role="desktop-nav" style={{ display: 'flex', alignItems: 'center', gap: 30, justifySelf: 'center' }}>
         <NavLink to="/" end style={navLinkStyle}>
@@ -34,7 +34,7 @@ export default function Header() {
           {({ isActive }) => (<>พอยท์สะสม<span style={underline(isActive)}></span></>)}
         </NavLink>
       </nav>
-      <div data-role="desktop-nav" style={{ display: 'flex', alignItems: 'center', gap: 14, justifySelf: 'end' }}>
+      <div data-role={state.authChecked && state.loggedIn ? 'header-auth' : 'desktop-nav'} style={{ display: 'flex', alignItems: 'center', gap: 14, justifySelf: 'end' }}>
         {!state.authChecked ? (
           // Session check still in flight: reserve the space instead of flashing
           // the logged-out buttons for a moment.

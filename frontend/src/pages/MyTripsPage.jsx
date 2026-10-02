@@ -6,6 +6,7 @@ import PageControls from '../components/PageControls.jsx'
 import Modal from '../components/Modal.jsx'
 import LoadingSpinner from '../components/LoadingSpinner.jsx'
 import EmptyState from '../components/EmptyState.jsx'
+import LoadError from '../components/LoadError.jsx'
 import { fetchTrips, updateTrip, deleteTrip, duplicateTrip } from '../lib/apiClient.js'
 import { usePagedList } from '../lib/usePagedList.js'
 import { MASCOT } from '../data/categoryImages.js'
@@ -79,7 +80,7 @@ export default function MyTripsPage() {
       </div>
 
       {paged.loading && paged.rows.length === 0 && <LoadingSpinner size={36} label="กำลังโหลดทริปของคุณ..." />}
-      {paged.error && <p style={{ color: '#a33232', fontSize: 14 }}>โหลดรายการทริปไม่สำเร็จ ลองรีเฟรชหน้านี้อีกครั้ง</p>}
+      {paged.error && <LoadError message="โหลดรายการทริปไม่สำเร็จ" onRetry={paged.refetch} />}
       {!paged.loading && !paged.error && paged.rows.length === 0 && (
         <EmptyState mascot={MASCOT.sad} tone="green" style={{ padding: '56px 20px' }}
           title={paged.query || onlyFavorites ? 'ไม่พบทริปที่ตรงกับเงื่อนไข' : 'ยังไม่มีแผนทริปที่บันทึกไว้'}
@@ -87,7 +88,7 @@ export default function MyTripsPage() {
           action={!paged.query && !onlyFavorites && <button onClick={actions.goTripForm} style={{ background: 'linear-gradient(135deg,#66BB6A,#2E7D32)', color: '#fff', border: 'none', padding: '10px 22px', borderRadius: 20, fontWeight: 800, fontSize: 14, cursor: 'pointer' }}>วางแผนทริป</button>} />
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))', gap: 22, opacity: paged.loading && paged.rows.length ? 0.6 : 1, transition: 'opacity 0.15s ease' }}>
+      <div style={{ display: paged.error ? 'none' : 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))', gap: 22, opacity: paged.loading && paged.rows.length ? 0.6 : 1, transition: 'opacity 0.15s ease' }}>
         {paged.rows.map((t) => (
           <div key={t.id} style={{ display: 'flex', flexDirection: 'column', background: '#fff', border: '1px solid #E7E3D2', borderRadius: 16, overflow: 'hidden', animation: 'dc-fade-up 0.4s ease both' }}>
             <div onClick={() => navigate(`/trip/${t.id}`)} style={{ position: 'relative', cursor: 'pointer' }}>

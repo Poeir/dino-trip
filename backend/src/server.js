@@ -2,6 +2,7 @@ import 'dotenv/config'
 import { app } from './app.js'
 import { db } from './lib/db.js'
 import { startCleanupJob } from './lib/cleanup.js'
+import { failOrphanedJobs } from './services/placeSyncJobs.js'
 
 const PORT = process.env.PORT || 4000
 
@@ -9,6 +10,9 @@ const PORT = process.env.PORT || 4000
 // first real request -- see db.js's pool.min for why a cold connection is
 // otherwise a multi-second tax on whoever happens to hit the API first.
 db.raw('select 1')
+  // A sync job's runner lives in memory, so one left running by the previous
+  // process can never finish. (No-ops harmlessly before the migration is applied.)
+  .then(() => failOrphanedJobs())
   .catch((err) => console.error('DB warmup query failed:', err.message))
   .finally(() => {
     app.listen(PORT, () => {

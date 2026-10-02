@@ -7,6 +7,7 @@ import { fetchPlaces } from '../lib/apiClient.js'
 import { usePagedList } from '../lib/usePagedList.js'
 import LoadingSpinner from '../components/LoadingSpinner.jsx'
 import EmptyState from '../components/EmptyState.jsx'
+import LoadError from '../components/LoadError.jsx'
 import { placeCategoryIcon, MASCOT } from '../data/categoryImages.js'
 
 // >=1500 reviews reads as "popular" -- mirrors the badge PlacesTab/PlaceCard
@@ -77,10 +78,11 @@ export default function PlacesListPage() {
         ))}
       </div>
       {paged.loading && placesView.length === 0 && <LoadingSpinner size={36} label="กำลังโหลดสถานที่..." />}
-      {!paged.loading && placesView.length === 0 && (
+      {paged.error && <LoadError message="โหลดรายการสถานที่ไม่สำเร็จ" onRetry={paged.refetch} />}
+      {!paged.loading && !paged.error && placesView.length === 0 && (
         <EmptyState mascot={MASCOT.sad} tone="green" style={{ padding: '56px 20px' }} title="ไม่พบสถานที่ในหมวดนี้" desc={'ลองเลือกหมวดหมู่อื่น หรือกลับไปดู "ทั้งหมด"'} />
       )}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: 24 }}>
+      <div data-role="card-grid" style={{ display: paged.error ? 'none' : 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: 24 }}>
         {placesView.map((place) => (
           <div key={place.id} onClick={place.onOpen} style={{ position: 'relative', display: 'flex', flexDirection: 'column', height: 320, background: '#fff', border: '1px solid #E7E3D2', borderRadius: 16, overflow: 'hidden', cursor: 'pointer', transition: 'transform 0.22s ease,box-shadow 0.22s ease', animation: 'dc-fade-up 0.4s ease both' }}>
             {place.badge.label && (

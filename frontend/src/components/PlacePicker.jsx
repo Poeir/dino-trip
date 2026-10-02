@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import ImageSlot from './ImageSlot.jsx'
 import PlaceCard from './PlaceCard.jsx'
 import LocationPicker from './LocationPicker.jsx'
+import LoadError from './LoadError.jsx'
 import { fetchPlace, fetchPlaces } from '../lib/apiClient.js'
 import { usePagedList } from '../lib/usePagedList.js'
 
@@ -137,7 +138,9 @@ export default function PlacePicker({ value, onChange, allowClear, onAddFromGoog
             style={{ width: '100%', border: '1px solid #DCD8C6', borderRadius: 8, padding: 9, fontSize: 14, marginBottom: 8 }}
           />
           <div style={{ maxHeight: 340, overflowY: 'auto', border: '1px solid #F0EDE0', borderRadius: 12, padding: 10, background: '#FBF8EE' }}>
-            {paged.rows.length === 0 ? (
+            {paged.error ? (
+              <LoadError message="โหลดรายการสถานที่ไม่สำเร็จ" onRetry={paged.refetch} />
+            ) : paged.rows.length === 0 ? (
               <div style={{ padding: '16px 8px', textAlign: 'center', fontSize: 13, color: '#8a938c' }}>
                 {paged.loading ? 'กำลังค้นหา...' : `ไม่พบสถานที่ที่ตรงกับ "${paged.query}"`}
               </div>

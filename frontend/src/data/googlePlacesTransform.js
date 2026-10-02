@@ -143,6 +143,6 @@ export const placesFromGoogle = rawPlaces.map((p) => {
     qrPoints,
     reviewsList: mapReviews(p),
     location: p.location ? { lat: p.location.latitude, lng: p.location.longitude } : null,
-    img: './assets/picture01.jpg',
+    img: '/assets/picture01.jpg',
   }
 })

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useApp } from '../context/AppContext.jsx'
 import ImageSlot from './ImageSlot.jsx'
 import ImageGallery from './ImageGallery.jsx'
+import ReportPlaceModal from './ReportPlaceModal.jsx'
 import { MASCOT, MAP_ICON } from '../data/categoryImages.js'
 import { ChecklistIcon, StarIcon, PinIcon, ClockIcon, PhoneIcon, RouteIcon, PencilIcon, ShareArrowIcon, HeartIcon, AmenityIcon, SparkleAIIcon, groupAmenities } from './Icons.jsx'
 
@@ -14,7 +15,8 @@ const mockReviews = [
 ]
 
 export default function PlaceDetailView({ place: p, imageHeight = 460 }) {
-  const { actions } = useApp()
+  const { state, actions } = useApp()
+  const [reportOpen, setReportOpen] = useState(false)
   const [reviewFormOpen, setReviewFormOpen] = useState(false)
   const [newStars, setNewStars] = useState(0)
   const [newText, setNewText] = useState('')
@@ -33,6 +35,12 @@ export default function PlaceDetailView({ place: p, imageHeight = 460 }) {
     actions.showToast('ขอบคุณสำหรับรีวิว')
   }
 
+  // Reports need an account (spam is attributable); send visitors to log in.
+  const handleReport = () => {
+    if (!state.loggedIn) { actions.showToast('กรุณาเข้าสู่ระบบก่อนแจ้งข้อมูลไม่ถูกต้อง'); actions.goLogin(); return }
+    setReportOpen(true)
+  }
+
   const handleShare = async () => {
     const url = window.location.href
     if (navigator.share) {
@@ -47,7 +55,11 @@ export default function PlaceDetailView({ place: p, imageHeight = 460 }) {
     }
   }
   return (
-    <div style={{ background: '#fff', border: '1px solid #E7E3D2', borderRadius: 22, padding: 32, boxShadow: '0 14px 34px rgba(46,125,50,0.08)' }}>
+    <div data-role="detail-card" style={{ background: '#fff', border: '1px solid #E7E3D2', borderRadius: 22, padding: 32, boxShadow: '0 14px 34px rgba(46,125,50,0.08)' }}>
+      {/* Rendered at the root, not inside the sticky media column: a sticky
+          element makes its own stacking context, which trapped the modal's
+          z-index and let the transformed icons in the info cards paint over it. */}
+      <ReportPlaceModal open={reportOpen} onClose={() => setReportOpen(false)} place={p} />
       <div data-role="place-detail-grid" style={{ display: 'grid', gridTemplateColumns: '400px 1fr', gap: 32, alignItems: 'start' }}>
         <div data-role="place-detail-media" style={{ position: 'sticky', top: 88 }}>
           <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
@@ -83,6 +95,7 @@ export default function PlaceDetailView({ place: p, imageHeight = 460 }) {
             )}
             <button onClick={() => setReviewFormOpen((v) => !v)} style={{ display: 'flex', alignItems: 'center', gap: 7, background: '#fff', color: '#1f2a24', border: '1px solid #DCD8C6', padding: '10px 18px', borderRadius: 20, fontSize: 13.5, fontWeight: 700, cursor: 'pointer' }}><PencilIcon size={16} color="#1f2a24" box={false} />เขียนรีวิว</button>
             <button onClick={handleShare} style={{ display: 'flex', alignItems: 'center', gap: 7, background: '#fff', color: '#1f2a24', border: '1px solid #DCD8C6', padding: '10px 18px', borderRadius: 20, fontSize: 13.5, fontWeight: 700, cursor: 'pointer' }}><ShareArrowIcon size={16} color="#1f2a24" box={false} />แชร์</button>
+            <button onClick={handleReport} style={{ display: 'flex', alignItems: 'center', gap: 7, background: '#fff', color: '#6d7a72', border: '1px solid #DCD8C6', padding: '10px 18px', borderRadius: 20, fontSize: 13.5, fontWeight: 700, cursor: 'pointer' }}>⚑ แจ้งข้อมูลไม่ถูกต้อง</button>
           </div>
         </div>
         <div>

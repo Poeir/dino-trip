@@ -37,13 +37,38 @@ export function rowToPlace(row) {
     img: (row.uploadedPhotoUrls?.[0]) || row.img,
     images: (row.uploadedPhotoUrls?.length ? row.uploadedPhotoUrls : null) || (row.images && row.images.length ? row.images : (row.img ? [row.img] : [])),
     businessStatus: row.business_status,
+    // Sync bookkeeping (admin badges). The parked Google values themselves are
+    // only served by the admin place-sync endpoints, not on every public list.
+    lockedFields: row.locked_fields || [],
+    lastSyncedAt: row.last_synced_at || null,
+    hasGoogleDiff: !!row.google_diff && Object.keys(row.google_diff).length > 0,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
 }
 
+// Today in Thailand as YYYY-MM-DD (event dates are plain date strings, see
+// the pg DATE parser note in CLAUDE.md), independent of the server's timezone.
+export function todayInBangkok() {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
+}
+
+// Real-date status: cancelled (admin-set) wins, otherwise upcoming/ongoing/
+// ended from event_start_date..event_end_date. null when the event has no
+// start date, so the UI can fall back to showing nothing.
+export function eventTimeStatus(row, today = todayInBangkok()) {
+  if (row.status === 'cancelled') return 'cancelled'
+  const start = row.event_start_date
+  if (!start) return null
+  const end = row.event_end_date || start
+  if (today < start) return 'upcoming'
+  if (today > end) return 'ended'
+  return 'ongoing'
+}
+
 export function rowToEvent(row) {
   return {
+    timeStatus: eventTimeStatus(row),
     id: row.id, name: row.name, category: row.category, dateRange: row.date_range, venueName: row.venue_name,
     admission: row.admission, organizer: row.organizer, suitableFor: row.suitable_for || [], desc: row.description,
     status: row.status,

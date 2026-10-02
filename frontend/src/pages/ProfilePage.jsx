@@ -21,7 +21,7 @@ const TABS = [
 export default function ProfilePage() {
   const { actions } = useApp()
   // Tabs live in ?tab= rather than /profile/:tab: the app's header/footer load
-  // images from relative ./assets/ URLs, which only resolve on one-level paths.
+  // images from relative /assets/ URLs, which only resolve on one-level paths.
   const [searchParams] = useSearchParams()
   const requested = searchParams.get('tab')
   const tab = TABS.some((t) => t.key === requested) ? requested : 'overview'
