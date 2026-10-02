@@ -48,4 +48,5 @@ python scripts/embed_content.py            # re-embed after importing/editing pl
 
 - After importing places or editing knowledge base/events, run `embed_content.py` or search results go stale.
 - Security checklist still open: anonymous write on content tables, rate limiting coverage (`lib/rateLimit.js`), prod cookie/HTTPS settings. Don't weaken auth/RLS (`20260929000001_drop_public_write_policies.sql`).
-- Frontend `data/khon_kaen_places.json` / `seed.js` are leftover prototype data; real data comes from the API.
+- Frontend `data/seed.js` only holds UI constants (categories, trip-form lists, admin tabs); the old prototype sample data and its 408KB Google Places dump were removed. Real data comes from the API.
+- Frontend performance rules that are easy to undo by accident: images go through `lib/cloudinary.js` `cld()` (via `ImageSlot`), non-landing routes are `lazyPage()` chunks (see `App.jsx`), the Thai address table loads through `useThaiAddress()`, fonts are self-hosted WOFF2 (no Google Fonts), and `deploy/Caddyfile` sets the Cache-Control headers.
