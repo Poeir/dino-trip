@@ -27,6 +27,11 @@ import { db } from './lib/db.js'
 
 export const app = express()
 
+// Behind a host's reverse proxy (Render etc.) req.ip would otherwise be the
+// proxy's address for everyone, so rateLimit() would put all anonymous users
+// in one shared bucket.
+app.set('trust proxy', 1)
+
 // credentials:true + an explicit origin (not '*', which credentialed
 // requests can't use) is required for the browser to accept/send the
 // httpOnly session cookies /api/auth sets.
