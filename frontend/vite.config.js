@@ -13,4 +13,13 @@ const siteUrlPlugin = {
 
 export default defineConfig({
   plugins: [react(), siteUrlPlugin],
+  build: {
+    rollupOptions: {
+      output: {
+        // React and the router change rarely; keeping them in their own file means
+        // a deploy that only touches app code doesn't invalidate visitors' cached copy.
+        manualChunks: { 'react-vendor': ['react', 'react-dom', 'react-router-dom'] },
+      },
+    },
+  },
 })

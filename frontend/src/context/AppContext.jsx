@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   categories, categoryIcons, interestList, budgetList, budgetMeta, areaScopeList, areaScopeMeta
 } from '../data/seed.js'
-import thaiAddress from '../data/thaiAddress.json'
+import { useThaiAddress } from '../lib/thaiAddress.js'
 import {
   fetchPlaces, createPlace, updatePlace, deletePlace,
   fetchEvents, createEvent, updateEvent, deleteEvent,
@@ -191,6 +191,8 @@ export function AppProvider({ children }) {
   const toastTimer = useRef(null)
   const stateRef = useRef(state)
   stateRef.current = state
+  // Only read here (derived sign-up options below); SignupPage triggers the load.
+  const thaiAddress = useThaiAddress({ load: false })
 
   // Mirrors React class setState: accepts a partial object or an updater fn(prevState) => partial
   const setState = (updater) => {

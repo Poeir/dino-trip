@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import thaiAddress from '../data/thaiAddress.json'
+import { useMemo, useState } from 'react'
+import { useThaiAddress } from '../lib/thaiAddress.js'
 import Field from './Field.jsx'
 
 const fieldStyle = { width: '100%', border: '1px solid #DCD8C6', borderRadius: 8, padding: 9, fontSize: 14 }
@@ -14,14 +14,16 @@ const fixedFieldStyle = { ...fieldStyle, background: '#F5F4EE', color: '#5f6a63'
 // free-form text (Google-imported addresses especially) this doesn't try to
 // parse back out.
 const PROVINCE_NAME = 'ขอนแก่น'
-const khonKaen = thaiAddress.find((p) => p.name === PROVINCE_NAME)
 
 export default function AddressComposer({ onCompose }) {
   const [district, setDistrict] = useState('')
   const [subdistrict, setSubdistrict] = useState('')
   const [detail, setDetail] = useState('')
 
-  const subdistrictOptions = khonKaen.districts.find((d) => d.name === district)?.subdistricts || []
+  // The address table loads on demand (lib/thaiAddress.js): empty lists until it arrives.
+  const thaiAddress = useThaiAddress()
+  const districts = useMemo(() => thaiAddress.find((p) => p.name === PROVINCE_NAME)?.districts ?? [], [thaiAddress])
+  const subdistrictOptions = districts.find((d) => d.name === district)?.subdistricts || []
 
   const apply = (d, sd, det) => {
     setDistrict(d)
@@ -49,7 +51,7 @@ export default function AddressComposer({ onCompose }) {
         <Field label="อำเภอ">
           <select value={district} onChange={(e) => apply(e.target.value, '', detail)} style={fieldStyle}>
             <option value="">-- เลือกอำเภอ --</option>
-            {khonKaen.districts.map((d) => <option key={d.name} value={d.name}>{d.name}</option>)}
+            {districts.map((d) => <option key={d.name} value={d.name}>{d.name}</option>)}
           </select>
         </Field>
         <Field label="ตำบล">

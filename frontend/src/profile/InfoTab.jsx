@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useApp } from '../context/AppContext.jsx'
 import Field from '../components/Field.jsx'
-import thaiAddress from '../data/thaiAddress.json'
+import { useThaiAddress } from '../lib/thaiAddress.js'
 import { updateProfile } from '../lib/apiClient.js'
 import { Card, Notice, inputStyle, primaryBtn, ghostBtn, formGrid } from './ui.jsx'
 
@@ -14,6 +14,7 @@ const fromProfile = (p) => ({
 
 export default function InfoTab({ profile, onSaved }) {
   const { derived } = useApp()
+  const thaiAddress = useThaiAddress() // loaded on demand; [] until it arrives
   const [form, setForm] = useState(() => fromProfile(profile))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')

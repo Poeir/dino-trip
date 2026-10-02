@@ -2,6 +2,7 @@ import { useRef } from 'react'
 import { useApp } from '../context/AppContext.jsx'
 import { PinIcon, UserIcon, GenderIcon, CalendarIcon, BriefcaseIcon, MailIcon, PhoneIcon, LockIcon, CameraIcon, ZoomIcon } from '../components/Icons.jsx'
 import Modal from '../components/Modal.jsx'
+import { useThaiAddress } from '../lib/thaiAddress.js'
 
 const labelStyle = { fontSize: 13, fontWeight: 700, color: '#1B5E20', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }
 const inputStyle = { width: '100%', border: '1px solid #DCD8C6', borderRadius: 8, padding: 10, fontSize: 14, marginBottom: 16 }
@@ -200,6 +201,7 @@ function AvatarCropModal({ state, actions }) {
 
 export default function SignupPage() {
   const { state, actions, derived } = useApp()
+  useThaiAddress() // starts loading the address table; derived.*Options fill in when it arrives
   const isPending = state.authPendingConfirmation
   return (
     <main style={{ maxWidth: isPending ? 420 : 980, margin: '0 auto', padding: '70px 32px' }}>
