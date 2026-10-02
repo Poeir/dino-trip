@@ -1,0 +1,37 @@
+name: CI chatbot-service
+
+on:
+  pull_request:
+    paths: ['chatbot-service/**', '.github/workflows/ci-chatbot.yml']
+  push:
+    branches: [main]
+    paths: ['chatbot-service/**', '.github/workflows/ci-chatbot.yml']
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: chatbot-service
+    env:
+      # config.py refuses to import without these; the default pytest run
+      # (-m "not live") never calls the real services, so dummies are enough.
+      KKU_API_KEY: dummy
+      SUPABASE_URL: https://dummy.supabase.co
+      SUPABASE_SERVICE_ROLE_KEY: dummy
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: chatbot-service/requirements.txt
+      # CPU-only torch, same as the Dockerfile (the CUDA build is huge).
+      - run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - run: pip install -r requirements.txt
+      # retriever.py loads the embedding model at import time.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-paraphrase-multilingual-MiniLM-L12-v2
+      - run: pytest

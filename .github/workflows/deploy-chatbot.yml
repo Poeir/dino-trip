@@ -1,0 +1,45 @@
+name: Deploy chatbot-service
+
+# Runs deploy/deploy.sh on the VPS over SSH. Frontend (Vercel) and backend
+# (Render) deploy themselves from main; only the VPS needs this.
+#
+# Required repository secrets (Settings > Secrets and variables > Actions):
+#   VPS_HOST         e.g. vps-fb8bdaca.vps.ovh.ca
+#   VPS_USER         e.g. ubuntu
+#   VPS_SSH_KEY      private key of a key pair made ONLY for CI
+#   VPS_KNOWN_HOSTS  output of: ssh-keyscan -t ed25519 <VPS_HOST>
+# The matching public key sits in the VPS's authorized_keys with a forced
+# command (see deploy/deploy.sh), so this key can only trigger a deploy.
+
+on:
+  push:
+    branches: [main]
+    paths: ['chatbot-service/**', 'deploy/**']
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-chatbot
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Configure SSH
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Deploy
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            "$VPS_USER@$VPS_HOST" deploy
