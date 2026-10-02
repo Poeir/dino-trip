@@ -2,7 +2,8 @@ import { crudRouter } from '../lib/crudRouter.js'
 import { requireAdmin } from '../middleware/requireAdmin.js'
 import { rowToKb, kbPayload } from '../lib/mappers.js'
 
-const KB_COLUMNS = 'id, title, category, content, is_pinned, is_active'
+// Includes `embedding` so rowToKb() can report isEmbedded (same as events.routes.js).
+const KB_COLUMNS = 'id, title, category, content, is_pinned, is_active, embedding'
 
 export const knowledgeBaseRouter = crudRouter({
   table: 'knowledge_base',

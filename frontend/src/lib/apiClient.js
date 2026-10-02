@@ -316,3 +316,9 @@ export const requestEmailChange = (email, password) => apiPost('/api/profile/ema
 export const cancelEmailChangeRequest = () => apiDelete('/api/profile/email')
 export const confirmEmailChange = (token) => apiPost('/api/profile/email/confirm', { token })
 export const deleteMyAccount = (password) => request('/api/profile', { method: 'DELETE', body: JSON.stringify({ password }) })
+
+// Admin: add a place from Google Maps (backend/src/routes/adminPlaceImport.routes.js).
+// Search returns candidates (flagged `existingPlaceId` if already imported);
+// import creates a hidden draft + its photos and returns { created, place }.
+export const searchGooglePlaces = (q) => apiGet('/api/admin/place-import/search', { q })
+export const importGooglePlace = (googlePlaceId) => apiPost('/api/admin/place-import', { googlePlaceId })

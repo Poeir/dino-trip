@@ -6,14 +6,6 @@ import ReportPlaceModal from './ReportPlaceModal.jsx'
 import { MASCOT, MAP_ICON } from '../data/categoryImages.js'
 import { ChecklistIcon, StarIcon, PinIcon, ClockIcon, PhoneIcon, RouteIcon, PencilIcon, ShareArrowIcon, HeartIcon, AmenityIcon, SparkleAIIcon, groupAmenities } from './Icons.jsx'
 
-const mockReviews = [
-  { stars: 5, name: 'นักท่องเที่ยว', text: 'บริการดี บรรยากาศน่ามาเยือน แนะนำมาก' },
-  { stars: 5, name: 'คนขอนแก่น', text: 'มาบ่อยมาก ทุกครั้งประทับใจ พนักงานยิ้มแย้มเป็นกันเอง' },
-  { stars: 4, name: 'สายเที่ยวไทย', text: 'โดยรวมดีมาก ที่จอดรถสะดวก แต่ช่วงเย็นคนค่อนข้างเยอะ' },
-  { stars: 5, name: 'ผู้มาเยือน', text: 'ถ่ายรูปสวย เหมาะกับครอบครัว เด็กๆ ชอบมาก' },
-  { stars: 4, name: 'นักชิม', text: 'คุ้มค่ากับราคา จะกลับมาใช้บริการอีกแน่นอน' },
-]
-
 export default function PlaceDetailView({ place: p, imageHeight = 460 }) {
   const { state, actions } = useApp()
   const [reportOpen, setReportOpen] = useState(false)
@@ -22,7 +14,7 @@ export default function PlaceDetailView({ place: p, imageHeight = 460 }) {
   const [newText, setNewText] = useState('')
   const [sessionReviews, setSessionReviews] = useState([])
   if (!p || !p.id) return null
-  const reviewsToShow = [...sessionReviews, ...(p.reviewsList && p.reviewsList.length ? p.reviewsList : mockReviews)]
+  const reviewsToShow = [...sessionReviews, ...(p.reviewsList || [])]
   const mapQuery = p.location ? `${p.location.lat},${p.location.lng}` : p.address
   const mapEmbedSrc = mapQuery ? `https://maps.google.com/maps?q=${encodeURIComponent(mapQuery)}&z=15&output=embed` : null
 
@@ -152,6 +144,9 @@ export default function PlaceDetailView({ place: p, imageHeight = 460 }) {
             </div>
           )}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 14 }}>
+            {reviewsToShow.length === 0 && (
+              <div style={{ border: '1px solid #E7E3D2', borderRadius: 12, padding: 16, fontWeight: 300, fontSize: 13.5, color: '#6d7a72', textAlign: 'center' }}>ยังไม่มีรีวิวสำหรับสถานที่นี้</div>
+            )}
             {reviewsToShow.map((r, i) => (
               <div key={i} style={{ border: '1px solid #E7E3D2', borderRadius: 12, padding: 16 }}>
                 <div style={{ fontWeight: 400, fontSize: 14, color: '#1f2a24' }}>{'★'.repeat(r.stars)}{'☆'.repeat(5 - r.stars)} {r.name}</div>
@@ -159,7 +154,9 @@ export default function PlaceDetailView({ place: p, imageHeight = 460 }) {
               </div>
             ))}
           </div>
-          <button style={{ width: '100%', background: '#fff', color: '#2E7D32', border: '1px solid #C8E6C9', padding: 11, borderRadius: 14, fontSize: 13.5, fontWeight: 700, cursor: 'pointer', marginBottom: 20 }}>ดูรีวิวเพิ่มเติม</button>
+          {reviewsToShow.length > 0 && (
+            <button style={{ width: '100%', background: '#fff', color: '#2E7D32', border: '1px solid #C8E6C9', padding: 11, borderRadius: 14, fontSize: 13.5, fontWeight: 700, cursor: 'pointer', marginBottom: 20 }}>ดูรีวิวเพิ่มเติม</button>
+          )}
           <div data-role="place-detail-info-grid" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div style={{ border: '1px solid #E7E3D2', borderRadius: 14, padding: 18 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>

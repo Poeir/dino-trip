@@ -90,7 +90,7 @@ export function rowToEvent(row) {
 }
 
 export function rowToKb(row) {
-  return { id: row.id, title: row.title, category: row.category, content: row.content, isPinned: row.is_pinned, isActive: row.is_active }
+  return { id: row.id, title: row.title, category: row.category, content: row.content, isPinned: row.is_pinned, isActive: row.is_active, isEmbedded: row.embedding != null }
 }
 
 export function rowToQr(row) {

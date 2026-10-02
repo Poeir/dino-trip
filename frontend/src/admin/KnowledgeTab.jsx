@@ -87,7 +87,10 @@ export default function KnowledgeTab() {
               </span>
             </div>
             <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 3 }}>{k.title}</div>
-            <div style={{ fontSize: 12.5, color: '#6d7a72', marginBottom: 12 }}>{k.category} · {k.statusLabel}</div>
+            <div style={{ fontSize: 12.5, color: '#6d7a72', marginBottom: 4 }}>{k.category} · {k.statusLabel}</div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: k.isEmbedded ? '#2E7D32' : '#b07a1e', marginBottom: 12 }}>
+              {k.isEmbedded ? 'อยู่ในดัชนีค้นหาแชทบอทแล้ว' : 'ยังไม่ได้ทำดัชนีค้นหา'}
+            </div>
             <div style={{ display: 'flex', gap: 8 }}>
               <button onClick={k.onEdit} style={{ flex: 1, background: '#E8F5E9', color: '#2E7D32', border: 'none', padding: 7, borderRadius: 10, fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>แก้ไข</button>
               <button onClick={k.onDelete} style={{ flex: 1, background: '#fdecec', color: '#a33232', border: 'none', padding: 7, borderRadius: 10, fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>ลบ</button>

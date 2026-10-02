@@ -17,6 +17,7 @@ import EmptyState from '../components/EmptyState.jsx'
 import { MAP_ICON } from '../data/categoryImages.js'
 import { AMENITY_OPTIONS, TAG_OPTIONS } from '../data/placeVocabulary.js'
 import PlaceSyncModal from './PlaceSyncModal.jsx'
+import GooglePlaceImportModal from './GooglePlaceImportModal.jsx'
 import PlaceSyncInfo from './PlaceSyncInfo.jsx'
 import { createPlace, updatePlace, fetchPlaces, fetchPlace, fetchPlacePhotos, uploadPlacePhoto, deletePlacePhoto } from '../lib/apiClient.js'
 import { SYNC_FIELD_LABEL } from '../data/placeSync.js'
@@ -58,6 +59,7 @@ export default function PlacesTab() {
   // a filter, or everything there). A single place can also be synced from its
   // edit form. Cards only show sync status, never controls.
   const [syncOpen, setSyncOpen] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
   const [reloadTick, setReloadTick] = useState(0)
 
   // Sync/lock actions inside the edit form write straight to the DB, so the
@@ -219,9 +221,22 @@ export default function PlacesTab() {
           <button onClick={() => setSyncOpen(true)} style={{ background: '#fff', color: '#1565C0', border: '1px solid #90CAF9', padding: '10px 18px', borderRadius: 18, fontWeight: 700, fontSize: 13.5, cursor: 'pointer' }}>
             ⟳ ซิงก์จาก Google
           </button>
+          <button onClick={() => setImportOpen(true)} style={{ background: '#fff', color: '#2E7D32', border: '1px solid #A5D6A7', padding: '10px 18px', borderRadius: 18, fontWeight: 700, fontSize: 13.5, cursor: 'pointer' }}>
+            + เพิ่มจาก Google Maps
+          </button>
           <button onClick={actions.onNewPlace} style={{ background: 'linear-gradient(135deg,#66BB6A,#388E3C)', color: '#fff', border: 'none', padding: '10px 18px', borderRadius: 18, fontWeight: 700, fontSize: 13.5, cursor: 'pointer' }}>+ เพิ่มสถานที่ใหม่</button>
         </div>
       </div>
+      <GooglePlaceImportModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImported={(place, created) => {
+          setImportOpen(false)
+          paged.refetch()
+          actions.openEditForm('place', place)
+          actions.showToast(created ? 'นำเข้าจาก Google แล้ว (ฉบับร่างที่ซ่อนอยู่) — ตรวจแก้แล้วติ๊ก "เผยแพร่" เมื่อพร้อม' : 'สถานที่นี้มีในระบบอยู่แล้ว เปิดให้แก้ไข')
+        }}
+      />
       <PlaceSyncModal open={syncOpen} onClose={() => setSyncOpen(false)} onFinished={paged.refetch} />
 
       <Modal open={derived.isPlaceFormOpen} onClose={handleClose} title={state.editingId ? 'แก้ไขสถานที่' : 'เพิ่มสถานที่ใหม่'} maxWidth={760}>

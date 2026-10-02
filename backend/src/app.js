@@ -19,6 +19,7 @@ import { adminTripsRouter } from './routes/adminTrips.routes.js'
 import { reindexRouter } from './routes/reindex.routes.js'
 import { placeReportsRouter, adminPlaceReportsRouter } from './routes/placeReports.routes.js'
 import { adminPlaceSyncRouter } from './routes/adminPlaceSync.routes.js'
+import { adminPlaceImportRouter } from './routes/adminPlaceImport.routes.js'
 import { eventReportsRouter, adminEventReportsRouter } from './routes/eventReports.routes.js'
 import { eventRequestsRouter, adminEventRequestsRouter } from './routes/eventRequests.routes.js'
 import { notFoundHandler, errorHandler } from './middleware/errorHandler.js'
@@ -56,6 +57,7 @@ app.use('/api/admin/place-reports', adminPlaceReportsRouter)
 app.use('/api/admin/event-reports', adminEventReportsRouter)
 app.use('/api/admin/event-requests', adminEventRequestsRouter)
 app.use('/api/admin/place-sync', adminPlaceSyncRouter)
+app.use('/api/admin/place-import', adminPlaceImportRouter)
 app.use('/api/reindex', reindexRouter)
 
 app.use(notFoundHandler)
