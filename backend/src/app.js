@@ -24,6 +24,7 @@ import { eventReportsRouter, adminEventReportsRouter } from './routes/eventRepor
 import { eventRequestsRouter, adminEventRequestsRouter } from './routes/eventRequests.routes.js'
 import { notFoundHandler, errorHandler } from './middleware/errorHandler.js'
 import { db } from './lib/db.js'
+import { rateLimit } from './lib/rateLimit.js'
 
 export const app = express()
 
@@ -31,6 +32,7 @@ export const app = express()
 // proxy's address for everyone, so rateLimit() would put all anonymous users
 // in one shared bucket.
 app.set('trust proxy', 1)
+app.disable('x-powered-by')
 
 // credentials:true + an explicit origin (not '*', which credentialed
 // requests can't use) is required for the browser to accept/send the
@@ -54,6 +56,12 @@ app.get(['/health', '/api/health'], async (req, res) => {
     res.status(503).json({ status: 'error' })
   }
 })
+
+// Coarse per-IP ceiling for the whole API (the specific limits on auth and
+// writes sit below this). Public list endpoints run DB queries, so this is the
+// backstop against flooding them. Loose enough for many users behind one NAT:
+// one page load fires roughly ten requests.
+app.use('/api', rateLimit({ windowMs: 60 * 1000, max: 1200, keyFn: (req) => req.ip }))
 
 app.use('/api/auth', authRouter)
 app.use('/api/places', placeReportsRouter)

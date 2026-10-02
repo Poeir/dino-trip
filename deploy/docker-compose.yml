@@ -4,6 +4,15 @@
 #   backend -> Express API
 #   chatbot -> FastAPI (not published; only reachable inside this network)
 # Run from this directory:  docker compose up -d --build
+
+# Docker's default json-file logs grow without limit and eventually fill the
+# 40GB disk; keep the last 3 x 10MB per container.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   chatbot:
     build: ../chatbot-service
@@ -13,6 +22,9 @@ services:
     volumes:
       # Keeps the downloaded embedding model across rebuilds/restarts.
       - hf_cache:/app/.cache/huggingface
+    logging: *default-logging
+    security_opt:
+      - no-new-privileges:true
     restart: unless-stopped
 
   backend:
@@ -26,6 +38,9 @@ services:
       # Origin exactly (CORS + links in emails).
       FRONTEND_ORIGIN: https://${CHAT_DOMAIN:?set CHAT_DOMAIN in deploy/.env}
       CHATBOT_SERVICE_URL: http://chatbot:8000
+    logging: *default-logging
+    security_opt:
+      - no-new-privileges:true
     restart: unless-stopped
 
   caddy:
@@ -45,6 +60,9 @@ services:
     depends_on:
       - backend
       - chatbot
+    logging: *default-logging
+    security_opt:
+      - no-new-privileges:true
     restart: unless-stopped
 
 volumes:

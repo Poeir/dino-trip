@@ -2,7 +2,14 @@ import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from src.core.config import CORS_ORIGINS
+from src.core.config import (
+    CORS_ORIGINS,
+    RATE_LIMIT_CHAT_PER_HOUR,
+    RATE_LIMIT_CHAT_PER_MINUTE,
+    RATE_LIMIT_TRIP_PER_10_MIN,
+    RATE_LIMIT_TRIP_PER_HOUR,
+)
+from src.core.rate_limit import RateLimitMiddleware, SlidingWindowLimiter
 from src.api.routes_chatbot import router as chatbot_router
 from src.api.routes_tripplanner import router as tripplanner_router
 from src.api.routes_events import router as events_router
@@ -14,6 +21,17 @@ logging.basicConfig(
 )
 
 app = FastAPI(title="Khon Kaen AI Trip Planner")
+
+# Added BEFORE CORSMiddleware on purpose: the last middleware added is the
+# outermost, and a 429 has to pass back through CORS to get its headers --
+# otherwise the browser reports a CORS error instead of "too many requests".
+app.add_middleware(
+    RateLimitMiddleware,
+    limits={
+        "/chat/": SlidingWindowLimiter([(60, RATE_LIMIT_CHAT_PER_MINUTE), (3600, RATE_LIMIT_CHAT_PER_HOUR)]),
+        "/trip/": SlidingWindowLimiter([(600, RATE_LIMIT_TRIP_PER_10_MIN), (3600, RATE_LIMIT_TRIP_PER_HOUR)]),
+    },
+)
 
 app.add_middleware(
     CORSMiddleware,

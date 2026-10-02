@@ -1,4 +1,16 @@
 {$CHAT_DOMAIN} {
+	# Baseline hardening for every response. Deliberately no full CSP: the app
+	# pulls scripts/tiles/images from Google Maps and Cloudinary, and a strict
+	# policy written blind would break it. frame-ancestors alone only stops the
+	# site being embedded in someone else's page (clickjacking).
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Content-Security-Policy "frame-ancestors 'self'"
+		-Server
+	}
+
 	# Only what the browser itself calls is exposed. The chatbot's /admin/* and
 	# /events/* have no auth of their own, so they stay reachable only from the
 	# backend over the internal Docker network.

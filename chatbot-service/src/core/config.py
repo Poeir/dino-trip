@@ -62,6 +62,15 @@ if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
 # not loudly broken.
 EMBEDDING_MODEL_NAME = os.environ.get("EMBEDDING_MODEL_NAME", "paraphrase-multilingual-MiniLM-L12-v2")
 
+# Per-client limits on the public endpoints (see core/rate_limit.py). This
+# service has no auth and each call spends LLM quota. Generous per-minute caps
+# for chat (people type follow-ups quickly), tighter for the expensive trip
+# planner; the hourly caps are what actually bound a runaway client.
+RATE_LIMIT_CHAT_PER_MINUTE = int(os.environ.get("RATE_LIMIT_CHAT_PER_MINUTE", "20"))
+RATE_LIMIT_CHAT_PER_HOUR = int(os.environ.get("RATE_LIMIT_CHAT_PER_HOUR", "200"))
+RATE_LIMIT_TRIP_PER_10_MIN = int(os.environ.get("RATE_LIMIT_TRIP_PER_10_MIN", "5"))
+RATE_LIMIT_TRIP_PER_HOUR = int(os.environ.get("RATE_LIMIT_TRIP_PER_HOUR", "20"))
+
 # Comma-separated list of origins allowed to call this service from a browser,
 # e.g. "https://app.example.com,http://localhost:5173". Unset keeps the old
 # open "*" behaviour so local dev works; set it in production -- this service
