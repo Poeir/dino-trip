@@ -23,6 +23,7 @@ import { adminPlaceImportRouter } from './routes/adminPlaceImport.routes.js'
 import { eventReportsRouter, adminEventReportsRouter } from './routes/eventReports.routes.js'
 import { eventRequestsRouter, adminEventRequestsRouter } from './routes/eventRequests.routes.js'
 import { notFoundHandler, errorHandler } from './middleware/errorHandler.js'
+import { db } from './lib/db.js'
 
 export const app = express()
 
@@ -35,6 +36,17 @@ app.use(express.json())
 app.use(cookieParser())
 
 app.get('/', (req, res) => res.json({ name: 'Dino Khon Kaen API', docs: '/api' }))
+
+// For uptime pings / host health checks. Runs a real query so it also keeps
+// the DB pool's connection warm, and returns 503 when the DB is unreachable.
+app.get('/health', async (req, res) => {
+  try {
+    await db.raw('select 1')
+    res.json({ status: 'ok' })
+  } catch (err) {
+    res.status(503).json({ status: 'error' })
+  }
+})
 
 app.use('/api/auth', authRouter)
 app.use('/api/places', placeReportsRouter)

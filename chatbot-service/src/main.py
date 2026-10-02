@@ -28,6 +28,13 @@ app.include_router(events_router)
 app.include_router(admin_router)
 
 
+@app.get("/health")
+def health():
+    # Deliberately cheap (no DB / model call) so frequent uptime pings
+    # keep the container awake without costing LLM or DB quota.
+    return {"status": "ok"}
+
+
 @app.get("/")
 def read_root():
     return {"message": "Welcome to Khon Kaen Trip API! ไปที่ /docs เพื่อดูวิธีใช้งาน"}
