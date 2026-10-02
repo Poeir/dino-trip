@@ -34,7 +34,7 @@ export default function Header() {
           {({ isActive }) => (<>พอยท์สะสม<span style={underline(isActive)}></span></>)}
         </NavLink>
       </nav>
-      <div data-role={state.authChecked && state.loggedIn ? 'header-auth' : 'desktop-nav'} style={{ display: 'flex', alignItems: 'center', gap: 14, justifySelf: 'end' }}>
+      <div data-role={state.authChecked ? 'header-auth' : 'desktop-nav'} style={{ display: 'flex', alignItems: 'center', gap: 14, justifySelf: 'end' }}>
         {!state.authChecked ? (
           // Session check still in flight: reserve the space instead of flashing
           // the logged-out buttons for a moment.
@@ -43,16 +43,11 @@ export default function Header() {
           <UserMenu />
         ) : (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <a href="#" onClick={(e) => { e.preventDefault(); actions.goLogin() }} style={{ fontSize: 14, fontWeight: 600, color: '#1f2a24' }}>เข้าสู่ระบบ</a>
+            <a data-role="header-login-link" href="#" onClick={(e) => { e.preventDefault(); actions.goLogin() }} style={{ fontSize: 14, fontWeight: 600, color: '#1f2a24' }}>เข้าสู่ระบบ</a>
             <button onClick={actions.goSignup} style={{ background: 'linear-gradient(135deg,#66BB6A,#388E3C)', color: '#fff', border: 'none', padding: '9px 18px', borderRadius: 20, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>สมัครสมาชิก</button>
           </div>
         )}
       </div>
-      <button data-role="hamburger-btn" onClick={actions.toggleMobileMenu} style={{ display: 'none', background: 'none', border: 'none', cursor: 'pointer', flexDirection: 'column', gap: 5, padding: 8 }}>
-        <span style={{ width: 24, height: 2.5, background: '#1B5E20', borderRadius: 2 }}></span>
-        <span style={{ width: 24, height: 2.5, background: '#1B5E20', borderRadius: 2 }}></span>
-        <span style={{ width: 24, height: 2.5, background: '#1B5E20', borderRadius: 2 }}></span>
-      </button>
     </header>
   )
 }

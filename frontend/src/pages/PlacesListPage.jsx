@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useApp } from '../context/AppContext.jsx'
 import ImageSlot from '../components/ImageSlot.jsx'
 import { GridIcon, CupIcon, TempleIcon, MuseumIcon, TreeIcon, MountainIcon, BasketIcon, CameraIcon, FoodIcon, BedIcon, HeartIcon } from '../components/Icons.jsx'
@@ -59,6 +59,26 @@ export default function PlacesListPage() {
     onToggleFavorite: () => actions.toggleFavorite(p.id),
   }))
 
+  // On small screens the category bar scrolls sideways; show a "next" arrow
+  // (and edge fade, via CSS) only while there is more to the right.
+  const filterRef = useRef(null)
+  const [canScrollMore, setCanScrollMore] = useState(false)
+  const [canScrollBack, setCanScrollBack] = useState(false)
+  const updateCanScroll = () => {
+    const el = filterRef.current
+    if (!el) return
+    const overflowing = el.scrollWidth > el.clientWidth + 1
+    const more = overflowing && el.scrollLeft + el.clientWidth < el.scrollWidth - 4
+    const back = overflowing && el.scrollLeft > 4
+    setCanScrollMore((prev) => (prev === more ? prev : more))
+    setCanScrollBack((prev) => (prev === back ? prev : back))
+  }
+  useEffect(() => {
+    updateCanScroll()
+    window.addEventListener('resize', updateCanScroll)
+    return () => window.removeEventListener('resize', updateCanScroll)
+  }, [derived.categoriesViewIcons.length])
+
   return (
     <main style={{ maxWidth: 1360, margin: '0 auto', padding: '36px 32px 60px' }}>
       <h1 data-font="culture" style={{ fontSize: 27, fontWeight: 800, color: '#1B5E20', margin: '0 0 6px' }}>สถานที่ท่องเที่ยวทั้งหมด</h1>
@@ -69,13 +89,17 @@ export default function PlacesListPage() {
         placeholder="ค้นหาสถานที่..."
         style={{ width: '100%', maxWidth: 420, border: '1px solid #DCD8C6', borderRadius: 20, padding: '10px 18px', fontSize: 14, marginBottom: 18, display: 'block' }}
       />
-      <div data-role="places-filter-bar" style={{ display: 'flex', gap: 9, flexWrap: 'wrap', marginBottom: 26 }}>
+      <div data-role="places-filter-wrap" data-more={canScrollMore ? 'true' : 'false'} data-back={canScrollBack ? 'true' : 'false'} style={{ position: 'relative' }}>
+      <button type="button" className="dc-filter-prev" aria-label="ดูหมวดหมู่ก่อนหน้า" onClick={() => filterRef.current?.scrollBy({ left: -180, behavior: 'smooth' })}>‹</button>
+      <div ref={filterRef} data-role="places-filter-bar" data-more={canScrollMore ? 'true' : 'false'} data-back={canScrollBack ? 'true' : 'false'} onScroll={updateCanScroll} style={{ display: 'flex', gap: 9, flexWrap: 'wrap', marginBottom: 26 }}>
         {derived.categoriesViewIcons.map((cat) => (
           <button key={cat.label} onClick={cat.onClick} style={{ display: 'flex', alignItems: 'center', gap: 7, border: '1px solid #C8E6C9', borderRadius: 20, padding: '8px 18px 8px 13px', fontSize: 13.5, fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s ease', background: cat.bg, color: cat.color }}>
             <CategoryIcon cat={cat} />
             {cat.label}
           </button>
         ))}
+      </div>
+      <button type="button" className="dc-filter-next" aria-label="ดูหมวดหมู่ถัดไป" onClick={() => filterRef.current?.scrollBy({ left: 180, behavior: 'smooth' })}>›</button>
       </div>
       {paged.loading && placesView.length === 0 && <LoadingSpinner size={36} label="กำลังโหลดสถานที่..." />}
       {paged.error && <LoadError message="โหลดรายการสถานที่ไม่สำเร็จ" onRetry={paged.refetch} />}

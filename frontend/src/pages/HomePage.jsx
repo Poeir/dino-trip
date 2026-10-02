@@ -154,10 +154,6 @@ export default function HomePage() {
           </div>
         </section>
       </main>
-      <div data-role="mobile-cta-bar" style={{ display: 'none', position: 'fixed', bottom: 0, left: 0, right: 0, background: '#fff', borderTop: '1px solid #E7E3D2', padding: '12px 16px', zIndex: 45, boxShadow: '0 -6px 20px rgba(0,0,0,0.08)' }}>
-        {state.authChecked && !state.loggedIn && <button onClick={actions.goSignup} style={{ width: '100%', background: 'linear-gradient(135deg,#66BB6A,#388E3C)', color: '#fff', border: 'none', padding: 13, borderRadius: 18, fontWeight: 800, fontSize: 14.5, cursor: 'pointer' }}>สมัครสมาชิกฟรี</button>}
-        {state.loggedIn && <button onClick={actions.goTripForm} style={{ width: '100%', background: 'linear-gradient(135deg,#66BB6A,#388E3C)', color: '#fff', border: 'none', padding: 13, borderRadius: 18, fontWeight: 800, fontSize: 14.5, cursor: 'pointer' }}>เริ่มวางแผนทริป AI</button>}
-      </div>
     </>
   )
 }

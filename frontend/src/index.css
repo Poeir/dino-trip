@@ -167,7 +167,10 @@ input, textarea, select, button { font-family: inherit; }
 
 @media (max-width: 880px) {
   [data-role="desktop-nav"] { display: none !important; }
-  [data-role="hamburger-btn"] { display: flex !important; }
+  .dc-bottom-nav { display: flex !important; }
+  [data-role="public-layout"] { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
+  [data-role="chat-widget"] { bottom: calc(76px + env(safe-area-inset-bottom)) !important; right: 12px !important; }
+  [data-role="header-auth"] > div > button { padding: 8px 14px !important; font-size: 13px !important; }
   header { padding: 0 16px !important; display: flex !important; justify-content: space-between; }
   [data-role="hero-grid"] { grid-template-columns: 1fr !important; gap: 26px !important; }
   [data-role="header-auth"] { margin-left: auto; gap: 8px !important; }
@@ -187,8 +190,15 @@ input, textarea, select, button { font-family: inherit; }
   [data-role="trip-form-card"] { padding: 22px !important; }
   [data-role="trip-stepper-label"] { font-size: 9.5px !important; white-space: normal !important; max-width: 56px; text-align: center; }
   [data-role="trip-two-col"] { grid-template-columns: 1fr !important; }
-  [data-role="places-filter-bar"] { position: sticky !important; top: 68px !important; z-index: 20; background: #FBF7E8; padding: 10px 0 !important; margin: 0 -16px 16px !important; padding-left: 16px !important; overflow-x: auto; flex-wrap: nowrap !important; }
-  [data-role="mobile-cta-bar"] { display: block !important; }
+  [data-role="places-filter-wrap"] { margin: 0 0 12px; }
+  [data-role="places-filter-bar"] { padding: 2px 0 !important; margin: 0 !important; overflow-x: auto; flex-wrap: nowrap !important; }
+  [data-role="places-filter-bar"][data-more="true"] { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 44px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 44px), transparent); }
+  [data-role="places-filter-bar"][data-back="true"] { -webkit-mask-image: linear-gradient(to right, transparent, #000 44px); mask-image: linear-gradient(to right, transparent, #000 44px); }
+  [data-role="places-filter-bar"][data-more="true"][data-back="true"] { -webkit-mask-image: linear-gradient(to right, transparent, #000 44px, #000 calc(100% - 44px), transparent); mask-image: linear-gradient(to right, transparent, #000 44px, #000 calc(100% - 44px), transparent); }
+  .dc-filter-next, .dc-filter-prev { display: none; position: absolute; top: 50%; transform: translateY(-50%); width: 30px; height: 30px; border-radius: 50%; border: 1px solid #C8E6C9; background: #fff; color: #1B5E20; font-size: 20px; line-height: 1; padding: 0 0 3px; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.12); align-items: center; justify-content: center; z-index: 2; }
+  .dc-filter-next { right: 2px; }
+  .dc-filter-prev { left: 2px; }
+  [data-role="places-filter-wrap"][data-more="true"] .dc-filter-next, [data-role="places-filter-wrap"][data-back="true"] .dc-filter-prev { display: flex; }
   [data-role="footer-inner"] { flex-direction: column !important; align-items: flex-start !important; gap: 14px !important; }
   [data-role="footer-info-stack"] { flex: 0 0 auto !important; width: 100%; justify-content: flex-start !important; flex-direction: column !important; align-items: flex-start !important; border-left: none !important; padding-left: 0 !important; gap: 12px; }
   [data-role="event-detail-grid"] { grid-template-columns: 1fr !important; }
@@ -201,9 +211,10 @@ input, textarea, select, button { font-family: inherit; }
   [data-role="admin-stats-grid"] { grid-template-columns: 1fr !important; }
   main { padding-left: 8px !important; padding-right: 8px !important; }
   [data-role="card-grid"] { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 10px !important; }
-  [data-role="places-filter-bar"] { margin: 0 -8px 12px !important; padding-left: 8px !important; padding-right: 8px !important; }
+  [data-role="places-filter-bar"] > button { flex-shrink: 0; white-space: nowrap; padding: 6px 12px 6px 10px !important; font-size: 13px !important; }
+  [data-role="places-filter-bar"] { align-items: center !important; scrollbar-width: none; }
+  [data-role="places-filter-bar"]::-webkit-scrollbar { display: none; }
   footer { padding-left: 16px !important; padding-right: 16px !important; }
-  body:has([data-role="mobile-cta-bar"]) footer { padding-bottom: 96px !important; }
   main main { padding-left: 0 !important; padding-right: 0 !important; }
   main:has([data-role="hero-section"]) { padding-left: 0 !important; padding-right: 0 !important; }
   [data-role="hero-section"] { padding-left: 16px !important; padding-right: 16px !important; }
@@ -214,6 +225,19 @@ input, textarea, select, button { font-family: inherit; }
   [data-role="admin-form-panel"] { position: fixed !important; inset: 0 !important; z-index: 70; border-radius: 0 !important; overflow-y: auto; margin: 0 !important; }
 }
 *:focus-visible { outline: 2.5px solid #2E7D32; outline-offset: 2px; }
+
+/* Category-bar scroll arrows: mobile only (styled and revealed in the media query above). */
+.dc-filter-prev, .dc-filter-next { display: none; }
+
+/* ---- Mobile bottom navigation (shown <= 880px) ---- */
+.dc-bottom-nav { display: none; position: fixed; left: 0; right: 0; bottom: 0; z-index: 50; height: calc(64px + env(safe-area-inset-bottom)); padding: 0 6px env(safe-area-inset-bottom); background: #fff; border-top: 1px solid #E7E3D2; box-shadow: 0 -6px 20px rgba(0,0,0,0.07); align-items: stretch; justify-content: space-around; }
+.dc-bn-item { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; color: #6d7a72; text-decoration: none; font-size: 11px; font-weight: 600; position: relative; }
+.dc-bn-item:focus-visible { outline-offset: -6px; border-radius: 14px; }
+.dc-bn-label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dc-bn-item.active { color: #1B5E20; font-weight: 800; }
+.dc-bn-item.active:not(.dc-bn-primary)::before { content: ''; position: absolute; top: 0; width: 28px; height: 3px; border-radius: 0 0 3px 3px; background: #2E7D32; }
+.dc-bn-primary .dc-bn-icon { width: 50px; height: 50px; margin-top: -22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #fff; background: linear-gradient(135deg,#66BB6A,#2E7D32); border: 4px solid #fff; box-shadow: 0 6px 14px rgba(46,125,50,0.35); }
+.dc-bn-primary { color: #1B5E20; font-weight: 700; }
 
 /* ---- Profile page: membership pass (ticket with a perforated points stub) ---- */
 .dc-pass-wrap { filter: drop-shadow(0 12px 24px rgba(27,94,32,0.22)); margin-bottom: 22px; }

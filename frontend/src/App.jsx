@@ -2,7 +2,7 @@ import { Routes, Route, Navigate, Outlet } from 'react-router-dom'
 import { AppProvider, useApp } from './context/AppContext.jsx'
 import ScrollToTop from './components/ScrollToTop.jsx'
 import Header from './components/Header.jsx'
-import MobileMenu from './components/MobileMenu.jsx'
+import BottomNav from './components/BottomNav.jsx'
 import WelcomeModal from './components/WelcomeModal.jsx'
 import Footer from './components/Footer.jsx'
 import ChatWidget from './components/ChatWidget.jsx'
@@ -30,14 +30,14 @@ import AdminDashboardPage from './pages/AdminDashboardPage.jsx'
 
 function PublicLayout() {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+    <div data-role="public-layout" style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
       <Header />
-      <MobileMenu />
       <WelcomeModal />
       <main style={{ flex: 1 }}>
         <Outlet />
       </main>
       <Footer />
+      <BottomNav />
       <ChatWidget />
     </div>
   )

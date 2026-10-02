@@ -95,7 +95,7 @@ export default function ChatWidget() {
   }, [state.chatOpen])
 
   return (
-    <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 60, display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+    <div data-role="chat-widget" style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 60, display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
       {state.chatOpen && (
         <div style={{ width: 340, height: 460, background: '#fff', borderRadius: 22, boxShadow: '0 20px 48px rgba(27,94,32,0.28)', display: 'flex', flexDirection: 'column', overflow: 'hidden', marginBottom: 14, animation: 'dc-pop 0.28s ease both' }}>
           <div style={{ position: 'relative', overflow: 'hidden', background: 'linear-gradient(135deg,#66BB6A,#2E7D32 60%,#1B5E20)', padding: '16px 16px 14px' }}>
