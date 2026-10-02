@@ -1,7 +1,7 @@
 name: Deploy chatbot-service
 
-# Runs deploy/deploy.sh on the VPS over SSH. Frontend (Vercel) and backend
-# (Render) deploy themselves from main; only the VPS needs this.
+# Runs deploy/deploy.sh on the VPS over SSH, which rebuilds and restarts the
+# whole stack there (frontend + backend + chatbot behind Caddy).
 #
 # Required repository secrets (Settings > Secrets and variables > Actions):
 #   VPS_HOST         e.g. vps-fb8bdaca.vps.ovh.ca
@@ -14,7 +14,7 @@ name: Deploy chatbot-service
 on:
   push:
     branches: [main]
-    paths: ['chatbot-service/**', 'deploy/**']
+    paths: ['chatbot-service/**', 'backend/**', 'frontend/**', 'deploy/**']
   workflow_dispatch:
 
 concurrency:

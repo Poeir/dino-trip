@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000'
+const API_BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:4000'
 
 // Almost every `src` (Cloudinary, a pasted URL) is already absolute. A few
 // backend-served images (e.g. GET /api/users/:id/avatar) come back as a

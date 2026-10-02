@@ -1,5 +1,9 @@
-# chatbot-service on a single VPS: Caddy terminates HTTPS and proxies to the
-# FastAPI container. Run from this directory:  docker compose up -d --build
+# Whole site on a single VPS behind one hostname (so the session cookie is
+# first-party and no domain name has to be bought):
+#   caddy   -> serves the built React app, proxies /api/*, /chat/*, /trip/*
+#   backend -> Express API
+#   chatbot -> FastAPI (not published; only reachable inside this network)
+# Run from this directory:  docker compose up -d --build
 services:
   chatbot:
     build: ../chatbot-service
@@ -10,10 +14,26 @@ services:
       # Keeps the downloaded embedding model across rebuilds/restarts.
       - hf_cache:/app/.cache/huggingface
     restart: unless-stopped
-    # Not published to the host: only Caddy (same compose network) can reach it.
+
+  backend:
+    build: ../backend
+    env_file: ./backend.env
+    environment:
+      NODE_ENV: production
+      PORT: "4000"
+      # Set here rather than in backend.env so they can't drift from the
+      # setup this file describes. FRONTEND_ORIGIN must equal the browser's
+      # Origin exactly (CORS + links in emails).
+      FRONTEND_ORIGIN: https://${CHAT_DOMAIN:?set CHAT_DOMAIN in deploy/.env}
+      CHATBOT_SERVICE_URL: http://chatbot:8000
+    restart: unless-stopped
 
   caddy:
-    image: caddy:2
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.web
+      args:
+        VITE_GOOGLE_MAPS_API_KEY: ${VITE_GOOGLE_MAPS_API_KEY:-}
     ports:
       - "80:80"
       - "443:443"
@@ -23,6 +43,7 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
     depends_on:
+      - backend
       - chatbot
     restart: unless-stopped
 

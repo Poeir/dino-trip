@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useApp } from '../context/AppContext.jsx'
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000'
+const API_BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:4000'
 
 // A user's profile picture the way they set it up at signup: an uploaded photo
 // (with the crop position/zoom they chose), one of the built-in emoji

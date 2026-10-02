@@ -1,6 +1,32 @@
 {$CHAT_DOMAIN} {
-	reverse_proxy chatbot:8000 {
-		# Don't buffer: /chat/ streams its answer over SSE.
-		flush_interval -1
+	# Only what the browser itself calls is exposed. The chatbot's /admin/* and
+	# /events/* have no auth of their own, so they stay reachable only from the
+	# backend over the internal Docker network.
+	handle /api/* {
+		reverse_proxy backend:4000
+	}
+
+	# No `encode` on these: /chat/ streams its answer over SSE and must not be
+	# buffered or re-compressed.
+	handle /chat/* {
+		reverse_proxy chatbot:8000 {
+			flush_interval -1
+		}
+	}
+	handle /trip/* {
+		reverse_proxy chatbot:8000 {
+			flush_interval -1
+		}
+	}
+	handle /health {
+		reverse_proxy chatbot:8000
+	}
+
+	# Everything else is the React app (SPA fallback so deep links/refresh work).
+	handle {
+		root * /srv
+		encode zstd gzip
+		try_files {path} /index.html
+		file_server
 	}
 }

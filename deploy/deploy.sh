@@ -18,7 +18,12 @@ main() {
   git merge --ff-only origin/main
 
   cd deploy
-  docker compose up -d --build
+  # One build at a time: torch (chatbot) and vite (frontend) are both heavy,
+  # and building them in parallel can run a 4GB box out of memory.
+  for service in chatbot backend caddy; do
+    docker compose build "$service"
+  done
+  docker compose up -d --remove-orphans
 
   # CHAT_DOMAIN is where Caddy serves the chatbot; poll it until it answers
   # (a fresh container loads the embedding model first, which takes a while).

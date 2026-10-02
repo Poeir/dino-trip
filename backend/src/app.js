@@ -44,7 +44,9 @@ app.get('/', (req, res) => res.json({ name: 'Dino Khon Kaen API', docs: '/api' }
 
 // For uptime pings / host health checks. Runs a real query so it also keeps
 // the DB pool's connection warm, and returns 503 when the DB is unreachable.
-app.get('/health', async (req, res) => {
+// /api/health is the one reachable from outside when everything sits behind a
+// single reverse proxy that forwards only /api/* to this service.
+app.get(['/health', '/api/health'], async (req, res) => {
   try {
     await db.raw('select 1')
     res.json({ status: 'ok' })

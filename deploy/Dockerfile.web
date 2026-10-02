@@ -1,0 +1,22 @@
+# Builds the React frontend and serves it with Caddy, which also reverse-proxies
+# /api/* to the backend and /chat/, /trip/ to the chatbot (see Caddyfile).
+# Build context is the repo root (see docker-compose.yml).
+
+FROM node:20-slim AS build
+WORKDIR /app
+
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+
+COPY frontend/ ./
+
+# Empty API/chatbot URLs = same origin: the browser calls /api/... and /chat/
+# on the very host that served the page, so the session cookie is first-party.
+ARG VITE_GOOGLE_MAPS_API_KEY=""
+ENV VITE_API_URL="" \
+    VITE_CHATBOT_SERVICE_URL="" \
+    VITE_GOOGLE_MAPS_API_KEY=${VITE_GOOGLE_MAPS_API_KEY}
+RUN npm run build
+
+FROM caddy:2
+COPY --from=build /app/dist /srv

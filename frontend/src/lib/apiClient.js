@@ -1,7 +1,9 @@
 // Talks to the backend API (backend/src/) for all Places/Events/KnowledgeBase/
 // QRs/Rewards data -- replaces the old direct-to-Supabase calls that used to
 // live in AppContext.jsx via supabaseClient.js.
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000'
+// `??` not `||`: an empty VITE_API_URL means "same origin" (production build
+// served behind the same Caddy as the API), only an unset one falls back to dev.
+const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:4000'
 
 async function request(path, options) {
   const res = await fetch(`${BASE_URL}${path}`, {
