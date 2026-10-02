@@ -34,14 +34,14 @@ export default function Footer() {
     <footer style={{ padding: '0 32px', borderTop: '1px solid rgba(27,94,32,0.3)' }}>
       <div data-role="footer-inner" style={{ maxWidth: 1360, margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 20, padding: '16px 0' }}>
         <div style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }} onClick={actions.goHome}>
-          <img src="/assets/dino-logo-full.png" alt="Dino Trip Planner" style={{ height: 52, width: 'auto' }} />
+          <img src="/assets/dino-logo-full.webp" alt="Dino Trip Planner" width={103} height={52} loading="lazy" decoding="async" style={{ height: 52, width: 'auto' }} />
         </div>
 
         <div data-role="footer-info-stack" style={{ display: 'flex', alignItems: 'center', gap: 18, flexWrap: 'wrap', flex: '1 1 420px', justifyContent: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-            <img src="/assets/logos/cpkku.png" alt="วิทยาลัยการคอมพิวเตอร์ มหาวิทยาลัยขอนแก่น" style={{ height: 34, width: 'auto', display: 'block' }} />
-            <img src="/assets/logos/kku.png" alt="มหาวิทยาลัยขอนแก่น" style={logoStyle} />
-            <img src="/assets/logos/tat.png" alt="การท่องเที่ยวแห่งประเทศไทย" style={{ height: 40, width: 'auto', display: 'block' }} />
+            <img src="/assets/logos/cpkku.webp" alt="วิทยาลัยการคอมพิวเตอร์ มหาวิทยาลัยขอนแก่น" width={113} height={34} loading="lazy" decoding="async" style={{ height: 34, width: 'auto', display: 'block' }} />
+            <img src="/assets/logos/kku.webp" alt="มหาวิทยาลัยขอนแก่น" width={73} height={34} loading="lazy" decoding="async" style={logoStyle} />
+            <img src="/assets/logos/tat.webp" alt="การท่องเที่ยวแห่งประเทศไทย" width={40} height={40} loading="lazy" decoding="async" style={{ height: 40, width: 'auto', display: 'block' }} />
           </div>
           <div style={{ fontSize: 12.5, lineHeight: 1.5, color: '#3d4a41', maxWidth: 420 }}>
             <span style={{ fontWeight: 700, color: '#1B5E20' }}>สร้างสรรค์โดย </span>

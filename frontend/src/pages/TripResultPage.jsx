@@ -95,7 +95,7 @@ export default function TripResultPage() {
               <span key={i} style={{ position: 'absolute', left: s.left, top: s.top, width: s.size, height: s.size, borderRadius: '50%', background: '#FBC02D', animation: `dc-particle-float ${s.duration} ease-in-out infinite`, animationDelay: s.delay, pointerEvents: 'none' }}></span>
             ))}
             <div style={{ position: 'relative' }}>
-              <img src={MASCOT.celebrate} alt="" style={{ width: 96, height: 'auto', animation: 'dc-float 3.4s ease-in-out infinite', filter: 'drop-shadow(0 8px 14px rgba(0,0,0,0.2))', marginBottom: 10 }} />
+              <img src={MASCOT.celebrate} alt="" width={96} height={96} style={{ width: 96, height: 'auto', animation: 'dc-float 3.4s ease-in-out infinite', filter: 'drop-shadow(0 8px 14px rgba(0,0,0,0.2))', marginBottom: 10 }} />
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(251,192,45,0.22)', border: '1px solid rgba(251,192,45,0.5)', color: '#FFF3C4', fontSize: 11, fontWeight: 800, padding: '4px 11px', borderRadius: 20, marginBottom: 10 }}>✦ AI จัดให้แบบเอ็กซ์คลูซีฟ</div>
               <h1 data-font="culture" style={{ color: '#fff', fontSize: 22, fontWeight: 900, margin: '0 0 6px' }}>ทริปของคุณพร้อมแล้ว!</h1>
               <p style={{ color: '#E8F5E9', fontSize: 13, margin: '0 0 20px' }}>น้องไดโนจัดเส้นทางตามความสนใจของคุณเรียบร้อย พร้อมออกเดินทางได้เลย</p>

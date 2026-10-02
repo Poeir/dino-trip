@@ -52,7 +52,7 @@ export default function HomePage() {
     <>
       <main>
         <section data-role="hero-section" style={{ background: 'linear-gradient(135deg,#1B5E20,#2E7D32)', padding: '52px 32px 76px', position: 'relative', overflow: 'hidden' }}>
-          <div style={{ position: 'absolute', inset: 0, backgroundImage: 'url(/assets/hero-pattern-bg.png)', backgroundSize: 'cover', backgroundRepeat: 'no-repeat', backgroundPosition: 'center 30%', opacity: 0.25, zIndex: 0, pointerEvents: 'none' }} />
+          <div style={{ position: 'absolute', inset: 0, backgroundImage: 'url(/assets/hero-pattern-bg.webp)', backgroundSize: 'cover', backgroundRepeat: 'no-repeat', backgroundPosition: 'center 30%', opacity: 0.25, zIndex: 0, pointerEvents: 'none' }} />
           {heroParticles.map((p, i) => (
             <span
               key={i}
@@ -89,7 +89,7 @@ export default function HomePage() {
               </div>
             </div>
             <div data-role="hero-media" style={{ position: 'relative' }}>
-              <ImageSlot src="/assets/hero-picture.jpg" shape="rounded" radius={20} style={{ width: '100%', height: 340, boxShadow: '0 24px 50px rgba(0,0,0,0.28)' }} placeholder="ภาพจุดเด่นขอนแก่น" />
+              <ImageSlot src="/assets/hero-picture.webp" priority imgWidth={640} shape="rounded" radius={20} style={{ width: '100%', height: 340, boxShadow: '0 24px 50px rgba(0,0,0,0.28)' }} placeholder="ภาพจุดเด่นขอนแก่น" />
               <div style={{ position: 'absolute', bottom: -18, left: -18, background: '#fff', borderRadius: 14, padding: '12px 18px', boxShadow: '0 14px 30px rgba(0,0,0,0.18)', display: 'flex', alignItems: 'center', gap: 10, animation: 'dc-float 3.8s ease-in-out infinite' }}>
                 <img src="/assets/dino-logo-mark.png" alt="" style={{ width: 28, height: 28 }} />
                 <div>

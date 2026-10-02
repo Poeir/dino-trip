@@ -26,7 +26,7 @@ export default function AiNotice({ variant = 'card' }) {
         maxWidth: compact ? undefined : 520,
       }}
     >
-      <img src={MASCOT.sad} alt="" style={{ width: compact ? 64 : 88, height: 'auto', flexShrink: 0 }} />
+      <img src={MASCOT.sad} alt="" width={compact ? 64 : 88} height={compact ? 64 : 88} style={{ width: compact ? 64 : 88, height: 'auto', flexShrink: 0 }} />
       <div style={{ fontSize: compact ? 12 : 13.5, lineHeight: 1.5, color: '#7A5205' }}>
         {!compact && <div style={{ fontWeight: 800, marginBottom: 2 }}>ประกาศจากน้องไดโน</div>}
         {AI_NOTICE_TEXT}
