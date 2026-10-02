@@ -10,7 +10,7 @@ import * as seo from '../lib/seo.js'
 //   GET /robots.txt, /sitemap.xml   -- plain files, routed here by Caddy
 //   GET /api/seo/page/<site path>   -- a server-rendered page for one public
 //     URL. Caddy rewrites a request here only when the User-Agent is a known
-//     crawler / link-preview bot (see deploy/Caddyfile); people get the SPA.
+//     crawler / link-preview bot (see deploy/caddy/Caddyfile); people get the SPA.
 export const seoRouter = Router()
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i

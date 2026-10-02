@@ -7,7 +7,7 @@ import { useEffect } from 'react'
 // This is what browsers and JS-capable crawlers see. Crawlers that don't run
 // JavaScript (LINE/Facebook link previews, most bots) are served a
 // server-rendered page instead -- see backend/src/lib/seo.js and the bot
-// matcher in deploy/Caddyfile. Keep the title/description formats in sync.
+// matcher in deploy/caddy/Caddyfile. Keep the title/description formats in sync.
 
 export const SITE_NAME = 'Dino เที่ยวขอนแก่น'
 const MAX_DESCRIPTION = 155

@@ -57,7 +57,10 @@ services:
       CHAT_DOMAIN: ${CHAT_DOMAIN:?set CHAT_DOMAIN in deploy/.env}
       OLD_DOMAIN: ${OLD_DOMAIN:-localhost}
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # A directory, not the single file: git replaces files by renaming a new
+      # one into place, and a container that bind-mounts one file keeps seeing the
+      # old (deleted) inode, so Caddyfile edits would never reach it.
+      - ./caddy:/etc/caddy:ro
       - caddy_data:/data
     depends_on:
       - backend

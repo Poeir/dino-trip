@@ -1,5 +1,5 @@
 # Builds the React frontend and serves it with Caddy, which also reverse-proxies
-# /api/* to the backend and /chat/, /trip/ to the chatbot (see Caddyfile).
+# /api/* to the backend and /chat/ and /trip/llm to the chatbot (see caddy/Caddyfile).
 # Build context is the repo root (see docker-compose.yml).
 
 FROM node:20-slim AS build
