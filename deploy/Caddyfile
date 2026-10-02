@@ -34,6 +34,9 @@
 	# /events/* have no auth of their own, so they stay reachable only from the
 	# backend over the internal Docker network.
 	handle /api/* {
+		# The API's JSON (e.g. the places list, ~100KB) is sent uncompressed by
+		# Express; compress it here. Not applied to /chat/ below (SSE).
+		encode zstd gzip
 		reverse_proxy backend:4000
 	}
 
