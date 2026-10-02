@@ -4,6 +4,7 @@ import { MASCOT } from '../data/categoryImages.js'
 import TripLoadingPage from './TripLoadingPage.jsx'
 import LocationPicker from '../components/LocationPicker.jsx'
 import { useSeo } from '../lib/useSeo.js'
+import AiNotice from '../components/AiNotice.jsx'
 
 export default function TripFormPage() {
   const { state, actions, derived } = useApp()
@@ -19,6 +20,7 @@ export default function TripFormPage() {
 
   return (
     <main style={{ maxWidth: 720, margin: '0 auto', padding: '48px 24px 70px' }}>
+      <AiNotice />
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14, marginBottom: 30, animation: 'dc-fade-up 0.4s ease both' }}>
         <img src={MASCOT.map} alt="" style={{ width: 84, height: 84, objectFit: 'contain', flexShrink: 0, animation: 'dc-float 3.4s ease-in-out infinite' }} />
         <div>

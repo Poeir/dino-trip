@@ -18,6 +18,7 @@ import {
 } from '../lib/apiClient.js'
 import { sendChatMessage, requestTripPlan } from '../lib/chatbotService.js'
 import { getCurrentPosition, LOCATION_ERROR_MESSAGE } from '../lib/geolocation.js'
+import { isWelcomeSnoozed, snoozeWelcome } from '../lib/welcomeSnooze.js'
 
 const AppContext = createContext(null)
 
@@ -158,7 +159,7 @@ const initialState = {
   formData: {},
   editingId: null,
   mobileMenuOpen: false,
-  welcomeModalOpen: true,
+  welcomeModalOpen: !isWelcomeSnoozed(),
   toastMsg: '',
 }
 
@@ -292,6 +293,8 @@ export function AppProvider({ children }) {
   const toggleMobileMenu = () => setState((s) => ({ mobileMenuOpen: !s.mobileMenuOpen }))
   const closeMobileMenu = () => setState({ mobileMenuOpen: false })
   const closeWelcomeModal = () => setState({ welcomeModalOpen: false })
+  // "Don't show again for 7 days": close it and remember that in this browser.
+  const snoozeWelcomeModal = () => { snoozeWelcome(); setState({ welcomeModalOpen: false }) }
   const welcomeGoTrip = () => { setState({ welcomeModalOpen: false, tripStep: 0 }); navigate('/trip') }
   const welcomeGoPoints = () => { setState({ welcomeModalOpen: false }); navigate('/points') }
 
@@ -1081,7 +1084,7 @@ export function AppProvider({ children }) {
   })
 
   const actions = {
-    showToast, toggleMobileMenu, closeMobileMenu, closeWelcomeModal, welcomeGoTrip, welcomeGoPoints,
+    showToast, toggleMobileMenu, closeMobileMenu, closeWelcomeModal, snoozeWelcomeModal, welcomeGoTrip, welcomeGoPoints,
     goHome, goPlaces, goEvents, goPublic, goAdminLogin, goTripForm, nextStep, prevStep, goToStep,
     goPoints, goLogin, goSignup, goForgotPassword, openPlace, openEvent, setSearchQuery, onSearchChange, setCategory,
     setEventSearchQuery, onEventSearchChange, toggleFavorite, togglePlaceActive,

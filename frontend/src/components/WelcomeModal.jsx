@@ -1,5 +1,7 @@
 import { useApp } from '../context/AppContext.jsx'
 import { MASCOT } from '../data/categoryImages.js'
+import AiNotice from './AiNotice.jsx'
+import { WELCOME_SNOOZE_DAYS } from '../lib/welcomeSnooze.js'
 
 export default function WelcomeModal() {
   const { state, actions } = useApp()
@@ -13,6 +15,7 @@ export default function WelcomeModal() {
           <h2 data-font="culture" style={{ fontSize: 20, fontWeight: 800, color: '#1B5E20', margin: '0 0 4px' }}>สวัสดีครับ! ผม น้องไดโน พร้อมช่วยเหลือแล้วครับ</h2>
           <p style={{ fontSize: 13.5, color: '#6d7a72', margin: 0 }}>สามารถเริ่มฟังก์ชันพิเศษได้เลย</p>
         </div>
+        <div style={{ marginBottom: 14 }}><AiNotice variant="compact" /></div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 22 }}>
           <div onClick={actions.welcomeGoTrip} style={{ display: 'flex', alignItems: 'center', gap: 14, background: '#F1F8E9', borderRadius: 16, padding: '14px 16px', cursor: 'pointer' }}>
             <span style={{ width: 20, height: 20, background: '#FBC02D', flexShrink: 0, transform: 'rotate(45deg)', borderRadius: 4, position: 'relative' }}><span style={{ position: 'absolute', inset: 5, background: '#fff', transform: 'rotate(0deg)', borderRadius: 2 }}></span></span>
@@ -30,6 +33,7 @@ export default function WelcomeModal() {
           </div>
         </div>
         <button onClick={actions.closeWelcomeModal} style={{ width: '100%', background: 'linear-gradient(135deg,#66BB6A,#388E3C)', color: '#fff', border: 'none', padding: 13, borderRadius: 20, fontWeight: 800, fontSize: 14.5, cursor: 'pointer' }}>เริ่มสำรวจขอนแก่น</button>
+        <button onClick={actions.snoozeWelcomeModal} style={{ display: 'block', margin: '12px auto 0', background: 'none', border: 'none', color: '#6d7a72', fontSize: 12.5, textDecoration: 'underline', cursor: 'pointer', padding: 4 }}>ไม่แสดงอีก {WELCOME_SNOOZE_DAYS} วัน</button>
       </div>
     </div>
   )

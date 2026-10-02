@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useState } from 'react'
 import { useApp } from '../context/AppContext.jsx'
+import AiNotice from './AiNotice.jsx'
 
 function renderInline(text, keyPrefix) {
   const parts = text.split(/(\*\*[^*]+\*\*)/g).filter((p) => p !== '')
@@ -120,6 +121,7 @@ export default function ChatWidget() {
             </div>
           </div>
           <div style={{ flex: 1, overflowY: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 10, background: 'linear-gradient(180deg,#FBFAF3,#fff 40%)' }}>
+            <AiNotice variant="compact" />
             {derived.chatMessagesView.map((msg, i) => (
               <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 8, alignSelf: msg.align, maxWidth: '85%' }}>
                 <div style={{ display: 'flex', alignItems: 'flex-end', gap: 7 }}>
