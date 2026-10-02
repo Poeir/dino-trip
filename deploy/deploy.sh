@@ -25,6 +25,12 @@ main() {
   done
   docker compose up -d --remove-orphans
 
+  # The Caddyfile is bind-mounted and Caddy only reads it when it starts. When
+  # a deploy changes just that file the image is unchanged, so `up -d` leaves
+  # the old container running with the old config. Reload explicitly; this
+  # also fails the deploy (set -e) if the new Caddyfile is invalid.
+  docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile
+
   # CHAT_DOMAIN is where Caddy serves the chatbot; poll it until it answers
   # (a fresh container loads the embedding model first, which takes a while).
   set -a
