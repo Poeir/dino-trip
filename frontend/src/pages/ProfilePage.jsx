@@ -7,6 +7,7 @@ import { fetchProfile } from '../lib/apiClient.js'
 import OverviewTab from '../profile/OverviewTab.jsx'
 import InfoTab from '../profile/InfoTab.jsx'
 import HistoryTab from '../profile/HistoryTab.jsx'
+import EventRequestsTab from '../profile/EventRequestsTab.jsx'
 import SecurityTab from '../profile/SecurityTab.jsx'
 import AvatarEditor from '../profile/AvatarEditor.jsx'
 import ProfilePass from '../profile/ProfilePass.jsx'
@@ -15,6 +16,7 @@ const TABS = [
   { key: 'overview', to: '/profile', label: 'ภาพรวม' },
   { key: 'info', to: '/profile?tab=info', label: 'ข้อมูล' },
   { key: 'history', to: '/profile?tab=history', label: 'ประวัติ' },
+  { key: 'events', to: '/profile?tab=events', label: 'กิจกรรมของฉัน' },
   { key: 'security', to: '/profile?tab=security', label: 'ความปลอดภัย' },
 ]
 
@@ -59,6 +61,7 @@ export default function ProfilePage() {
             {tab === 'overview' && <OverviewTab profile={profile} />}
             {tab === 'info' && <InfoTab profile={profile} onSaved={applyProfile} />}
             {tab === 'history' && <HistoryTab />}
+            {tab === 'events' && <EventRequestsTab />}
             {tab === 'security' && <SecurityTab profile={profile} onPendingChange={(pendingEmail) => setProfile((p) => ({ ...p, pendingEmail }))} />}
           </div>
           <AvatarEditor open={avatarOpen} onClose={() => setAvatarOpen(false)} profile={profile} onSaved={applyProfile} />

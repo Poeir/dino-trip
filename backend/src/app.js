@@ -20,6 +20,7 @@ import { reindexRouter } from './routes/reindex.routes.js'
 import { placeReportsRouter, adminPlaceReportsRouter } from './routes/placeReports.routes.js'
 import { adminPlaceSyncRouter } from './routes/adminPlaceSync.routes.js'
 import { eventReportsRouter, adminEventReportsRouter } from './routes/eventReports.routes.js'
+import { eventRequestsRouter, adminEventRequestsRouter } from './routes/eventRequests.routes.js'
 import { notFoundHandler, errorHandler } from './middleware/errorHandler.js'
 
 export const app = express()
@@ -39,6 +40,7 @@ app.use('/api/places', placeReportsRouter)
 app.use('/api/places', placesRouter)
 app.use('/api/events', eventReportsRouter)
 app.use('/api/events', eventsRouter)
+app.use('/api/event-requests', eventRequestsRouter)
 app.use('/api/knowledge-base', knowledgeBaseRouter)
 app.use('/api/qrs', qrsRouter)
 app.use('/api/rewards', rewardsRouter)
@@ -52,6 +54,7 @@ app.use('/api/admin/stats', adminStatsRouter)
 app.use('/api/admin/trips', adminTripsRouter)
 app.use('/api/admin/place-reports', adminPlaceReportsRouter)
 app.use('/api/admin/event-reports', adminEventReportsRouter)
+app.use('/api/admin/event-requests', adminEventRequestsRouter)
 app.use('/api/admin/place-sync', adminPlaceSyncRouter)
 app.use('/api/reindex', reindexRouter)
 

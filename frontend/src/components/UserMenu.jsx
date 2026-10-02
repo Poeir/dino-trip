@@ -51,6 +51,7 @@ export default function UserMenu() {
             <div className="dc-menu-rule" />
             <Link role="menuitem" to="/profile" className="dc-menu-item" onClick={close}>โปรไฟล์ของฉัน</Link>
             <Link role="menuitem" to="/trips" className="dc-menu-item" onClick={close}>ทริปของฉัน</Link>
+            <Link role="menuitem" to="/profile?tab=events" className="dc-menu-item" onClick={close}>กิจกรรมของฉัน</Link>
             <Link role="menuitem" to="/profile?tab=history" className="dc-menu-item" onClick={close}>ประวัติพอยท์</Link>
             <div className="dc-menu-rule" />
             <button role="menuitem" type="button" className="dc-menu-item dc-menu-danger" onClick={() => { close(); actions.logout() }}>ออกจากระบบ</button>

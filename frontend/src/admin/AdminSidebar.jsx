@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext.jsx'
-import { fetchAdminPlaceReportCount, fetchAdminEventReportCount } from '../lib/apiClient.js'
+import { fetchAdminPlaceReportCount, fetchAdminEventReportCount, fetchAdminEventRequestCount } from '../lib/apiClient.js'
 import { adminTabs } from '../data/seed.js'
 
 function NavIcon({ nav }) {
@@ -60,10 +60,14 @@ export default function AdminSidebar() {
   // Pending-report badge; refreshed whenever the admin switches tab (e.g. after
   // clearing the queue) rather than polled.
   const [pendingReports, setPendingReports] = useState(0)
+  const [pendingRequests, setPendingRequests] = useState(0)
   useEffect(() => {
     let cancelled = false
     Promise.all([fetchAdminPlaceReportCount(), fetchAdminEventReportCount()])
       .then(([p, e]) => { if (!cancelled) setPendingReports(p.pending + e.pending) })
+      .catch(() => {})
+    fetchAdminEventRequestCount()
+      .then((r) => { if (!cancelled) setPendingRequests(r.pending) })
       .catch(() => {})
     return () => { cancelled = true }
   }, [tab])
@@ -76,7 +80,7 @@ export default function AdminSidebar() {
       iconBg: active ? 'linear-gradient(135deg,#66BB6A,#2E7D32)' : '#F1F8E9',
       iconColor: active ? '#fff' : '#7d8a80',
       isDashboard: t.icon === 'dashboard', isPlaces: t.icon === 'places', isEvents: t.icon === 'events', isKnowledge: t.icon === 'knowledge', isQr: t.icon === 'qr', isRedeem: t.icon === 'redeem', isUsers: t.icon === 'users', isTrips: t.icon === 'trips', isReports: t.icon === 'reports',
-      badge: t.key === 'reports' ? pendingReports : 0
+      badge: t.key === 'reports' ? pendingReports : t.key === 'event-requests' ? pendingRequests : 0
     }
   })
 

@@ -60,6 +60,7 @@ export const adminTabs = [
   { key: 'places', label: 'สถานที่', icon: 'places' },
   { key: 'reports', label: 'รายงานข้อมูล', icon: 'reports' },
   { key: 'events', label: 'กิจกรรม', icon: 'events' },
+  { key: 'event-requests', label: 'คำขอกิจกรรม', icon: 'events' },
   { key: 'knowledge', label: 'ฐานความรู้', icon: 'knowledge' },
   { key: 'qr', label: 'QR & พอยท์', icon: 'qr' },
   { key: 'redeem', label: 'แลกของรางวัล', icon: 'redeem' },

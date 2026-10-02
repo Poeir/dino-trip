@@ -4,6 +4,7 @@ import DashboardTab from '../admin/DashboardTab.jsx'
 import PlacesTab from '../admin/PlacesTab.jsx'
 import ReportsTab from '../admin/ReportsTab.jsx'
 import EventsTab from '../admin/EventsTab.jsx'
+import EventRequestsTab from '../admin/EventRequestsTab.jsx'
 import KnowledgeTab from '../admin/KnowledgeTab.jsx'
 import QrTab from '../admin/QrTab.jsx'
 import UsersTab from '../admin/UsersTab.jsx'
@@ -31,6 +32,7 @@ export default function AdminDashboardPage() {
           {tab === 'places' && <PlacesTab />}
           {tab === 'reports' && <ReportsTab />}
           {tab === 'events' && <EventsTab />}
+          {tab === 'event-requests' && <EventRequestsTab />}
           {tab === 'knowledge' && <KnowledgeTab />}
           {tab === 'qr' && <QrTab />}
           {tab === 'redeem' && <RedeemTab />}

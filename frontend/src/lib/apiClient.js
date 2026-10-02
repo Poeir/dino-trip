@@ -237,6 +237,30 @@ export const fetchAdminEventReportCount = () => apiGet('/api/admin/event-reports
 // body: { eventId, field, status: 'resolved' (+ resolution: edited|no_change) | 'rejected' }
 export const resolveAdminEventReports = (body) => apiPost('/api/admin/event-reports/resolve', body)
 
+// Event requests: a signed-in user asks for their own event to be listed; an
+// admin approves (-> becomes a public event) or rejects with a reason.
+export const submitEventRequest = (payload) => apiPost('/api/event-requests', payload)
+export const fetchMyEventRequests = (params) => apiGet('/api/event-requests/mine', params)
+export const updateEventRequest = (id, payload) => apiPut(`/api/event-requests/${id}`, payload)
+export const cancelEventRequest = (id) => apiDelete(`/api/event-requests/${id}`)
+export const fetchEventRequestPhotos = (id) => apiGet(`/api/event-requests/${id}/photos`)
+// multipart, same as uploadEventPhoto; returns the updated request.
+export const uploadEventRequestPhoto = async (id, file) => {
+  const form = new FormData()
+  form.append('photoFile', file)
+  const res = await fetch(`${BASE_URL}/api/event-requests/${id}/photos`, { method: 'POST', body: form, credentials: 'include' })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(body.error?.message || `API request failed: /api/event-requests/${id}/photos (${res.status})`)
+  }
+  return res.json()
+}
+export const deleteEventRequestPhoto = (id, photoId) => apiDelete(`/api/event-requests/${id}/photos/${photoId}`)
+export const fetchAdminEventRequests = (params) => apiGet('/api/admin/event-requests', params)
+export const fetchAdminEventRequestCount = () => apiGet('/api/admin/event-requests/count')
+export const approveEventRequest = (id) => apiPost(`/api/admin/event-requests/${id}/approve`, {})
+export const rejectEventRequest = (id, reason) => apiPost(`/api/admin/event-requests/${id}/reject`, { reason })
+
 // Admin: reports grouped per place. Params: status (pending|resolved|rejected|
 // superseded), page, limit.
 export const fetchAdminPlaceReports = (params) => apiGet('/api/admin/place-reports', params)
