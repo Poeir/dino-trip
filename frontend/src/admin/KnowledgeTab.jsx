@@ -71,7 +71,7 @@ export default function KnowledgeTab() {
           <option value="title-desc">หัวข้อ (ฮ-ก)</option>
           <option value="category">หมวดหมู่</option>
         </select>
-        <span style={{ fontSize: 12.5, color: '#8a938c' }}>{paged.loading ? 'กำลังโหลด...' : `พบ ${paged.total} รายการ`}</span>
+        <span style={{ fontSize: 12.5, color: '#626863' }}>{paged.loading ? 'กำลังโหลด...' : `พบ ${paged.total} รายการ`}</span>
       </div>
       {paged.loading && kbView.length === 0 && <LoadingSpinner size={32} label="กำลังโหลดฐานความรู้..." />}
       {paged.error && <LoadError message="โหลดรายการฐานความรู้ไม่สำเร็จ" onRetry={paged.refetch} />}
@@ -87,7 +87,7 @@ export default function KnowledgeTab() {
               </span>
             </div>
             <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 3 }}>{k.title}</div>
-            <div style={{ fontSize: 12.5, color: '#6d7a72', marginBottom: 4 }}>{k.category} · {k.statusLabel}</div>
+            <div style={{ fontSize: 12.5, color: '#5f6a63', marginBottom: 4 }}>{k.category} · {k.statusLabel}</div>
             <div style={{ fontSize: 12, fontWeight: 600, color: k.isEmbedded ? '#2E7D32' : '#b07a1e', marginBottom: 12 }}>
               {k.isEmbedded ? 'อยู่ในดัชนีค้นหาแชทบอทแล้ว' : 'ยังไม่ได้ทำดัชนีค้นหา'}
             </div>

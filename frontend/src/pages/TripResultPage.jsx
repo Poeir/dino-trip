@@ -21,7 +21,7 @@ const sparkles = [
 function SummaryRow({ label, value }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-      <span style={{ color: '#8a938c', flexShrink: 0 }}>{label}</span>
+      <span style={{ color: '#626863', flexShrink: 0 }}>{label}</span>
       <span style={{ color: '#3c463f', fontWeight: 700, textAlign: 'right' }}>{value}</span>
     </div>
   )
@@ -110,7 +110,7 @@ export default function TripResultPage() {
           <div style={{ background: '#fff', border: '1px solid #E7E3D2', borderRadius: 16, animation: 'dc-fade-up 0.45s ease 0.05s both' }}>
             <div onClick={() => setSummaryOpen((v) => !v)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '13px 16px', cursor: 'pointer' }}>
               <span style={{ fontWeight: 800, fontSize: 13, color: '#1B5E20' }}>เงื่อนไขที่เลือกไว้</span>
-              <span style={{ fontSize: 11, color: '#8a938c', fontWeight: 700 }}>{summaryOpen ? 'ซ่อน ▾' : 'ดู ▸'}</span>
+              <span style={{ fontSize: 11, color: '#626863', fontWeight: 700 }}>{summaryOpen ? 'ซ่อน ▾' : 'ดู ▸'}</span>
             </div>
             {summaryOpen && (
               <div style={{ padding: '0 16px 16px', display: 'grid', gap: 8, fontSize: 12.5 }}>
@@ -145,8 +145,8 @@ export default function TripResultPage() {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <a href="#" style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, fontWeight: 700, color: '#6d7a72' }}><PinIcon box={false} color="#6d7a72" />เปิดใน Google Maps</a>
-            <a href="#" onClick={(e) => { e.preventDefault(); actions.goTripForm() }} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, fontWeight: 700, color: '#6d7a72' }}><RouteIcon size={15} color="#6d7a72" box={false} />สร้างแผนใหม่</a>
+            <a href="#" style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, fontWeight: 700, color: '#5f6a63' }}><PinIcon box={false} color="#5f6a63" />เปิดใน Google Maps</a>
+            <a href="#" onClick={(e) => { e.preventDefault(); actions.goTripForm() }} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, fontWeight: 700, color: '#5f6a63' }}><RouteIcon size={15} color="#5f6a63" box={false} />สร้างแผนใหม่</a>
           </div>
         </div>
 
@@ -160,7 +160,7 @@ export default function TripResultPage() {
                 </div>
                 <div>
                   <div style={{ fontSize: 15, fontWeight: 800, color: '#1B5E20' }}>วันที่ {day.dayNum}</div>
-                  <div style={{ fontSize: 12.5, color: '#8a938c' }}>{day.date}</div>
+                  <div style={{ fontSize: 12.5, color: '#626863' }}>{day.date}</div>
                 </div>
               </div>
 
@@ -171,8 +171,8 @@ export default function TripResultPage() {
                 {day.items.map((item) => (
                   <div key={item.placeId + item.time} style={{ position: 'relative', marginBottom: 14, animation: 'dc-slide-in 0.45s ease both' }}>
                     {item.distanceFromPrev != null && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#8a938c', marginLeft: 26, marginBottom: 8 }}>
-                        <RouteIcon size={12} color="#8a938c" box={false} />เดินทางต่อ {item.distanceFromPrev} กม.
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#626863', marginLeft: 26, marginBottom: 8 }}>
+                        <RouteIcon size={12} color="#626863" box={false} />เดินทางต่อ {item.distanceFromPrev} กม.
                       </div>
                     )}
                     <div onClick={() => setSelectedPlaceId(item.placeId)} style={{ display: 'flex', gap: 16, alignItems: 'center', border: '1px solid #EFEBDB', borderRadius: 16, padding: 12, transition: 'transform 0.2s ease, box-shadow 0.2s ease', cursor: 'pointer' }}>
@@ -180,14 +180,14 @@ export default function TripResultPage() {
                       <div style={{ width: 68, flexShrink: 0, textAlign: 'center' }}>
                         <div style={{ fontWeight: 800, fontSize: 13, color: '#2E7D32', lineHeight: 1.3 }}>{item.timeRangeLabel}</div>
                         {item.durationLabel && (
-                          <div style={{ fontSize: 10, color: '#8a938c', marginTop: 3 }}>{item.durationLabel}</div>
+                          <div style={{ fontSize: 10, color: '#626863', marginTop: 3 }}>{item.durationLabel}</div>
                         )}
                       </div>
                       <ImageSlot src={item.place.img} shape="rounded" radius={12} style={{ width: 84, height: 84, flexShrink: 0 }} placeholder="ภาพ" icon={placeCategoryIcon(item.place.category)} />
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <span style={{ fontSize: 10.5, fontWeight: 700, color: '#2E7D32', background: '#E8F5E9', padding: '2px 9px', borderRadius: 10 }}>{item.place.category}</span>
                         <div style={{ fontWeight: 700, fontSize: 15.5, color: '#1f2a24', margin: '5px 0 3px' }}>{item.place.name}</div>
-                        <div style={{ fontSize: 12.5, color: '#6d7a72', marginBottom: 9, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>★ {item.place.rating} · {item.place.address}</div>
+                        <div style={{ fontSize: 12.5, color: '#5f6a63', marginBottom: 9, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>★ {item.place.rating} · {item.place.address}</div>
                         <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', gap: 8 }}>
                           <button onClick={item.onLike} style={{ display: 'flex', alignItems: 'center', gap: 5, border: `1px solid ${item.likeBorder}`, background: item.likeBg, color: item.likeColor, borderRadius: 12, padding: '4px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
                             <span style={{ width: 0, height: 0, borderLeft: '5px solid transparent', borderRight: '5px solid transparent', borderBottom: `7px solid ${item.likeColor}` }}></span>ถูกใจ

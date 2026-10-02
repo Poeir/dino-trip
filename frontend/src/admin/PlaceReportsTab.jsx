@@ -89,7 +89,7 @@ export function PlaceReportsPanel() {
     <>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
         <h1 style={{ fontSize: 22, fontWeight: 800, color: '#1B5E20', margin: 0 }}>รายงานข้อมูลสถานที่</h1>
-        <span style={{ fontSize: 13, color: '#6d7a72' }}>{paged.loading ? 'กำลังโหลด...' : `${paged.total} สถานที่`}</span>
+        <span style={{ fontSize: 13, color: '#5f6a63' }}>{paged.loading ? 'กำลังโหลด...' : `${paged.total} สถานที่`}</span>
       </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
         {STATUS_FILTERS.map((f) => <button key={f.key} onClick={() => setStatus(f.key)} style={chipStyle(status === f.key)}>{f.label}</button>)}
@@ -108,10 +108,10 @@ export function PlaceReportsPanel() {
               <div key={g.place.id} style={{ background: '#fff', border: '1px solid #E7E3D2', borderRadius: 14, overflow: 'hidden' }}>
                 <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', padding: '12px 16px', background: '#FBF8EE' }}>
                   <div style={{ fontWeight: 800, color: '#1B5E20', fontSize: 15 }}>{g.place.name}</div>
-                  {g.place.district && <span style={{ fontSize: 12.5, color: '#6d7a72' }}>{g.place.district}</span>}
+                  {g.place.district && <span style={{ fontSize: 12.5, color: '#5f6a63' }}>{g.place.district}</span>}
                   {g.place.businessStatus && g.place.businessStatus !== 'OPERATIONAL' && <Badge bg="#fdecec" color="#a33232">{BUSINESS_STATUS_LABEL[g.place.businessStatus] || g.place.businessStatus}</Badge>}
-                  {!g.place.isActive && <Badge bg="#f3f3f0" color="#6d7a72">ซ่อนอยู่</Badge>}
-                  <span style={{ marginLeft: 'auto', fontSize: 12, color: '#8a938c' }}>ซิงก์ล่าสุด {g.place.lastSyncedAt ? fmtDateTime(g.place.lastSyncedAt) : 'ยังไม่เคย'}</span>
+                  {!g.place.isActive && <Badge bg="#f3f3f0" color="#5f6a63">ซ่อนอยู่</Badge>}
+                  <span style={{ marginLeft: 'auto', fontSize: 12, color: '#626863' }}>ซิงก์ล่าสุด {g.place.lastSyncedAt ? fmtDateTime(g.place.lastSyncedAt) : 'ยังไม่เคย'}</span>
                   <button onClick={() => openEdit(g.place.id)} style={btn('#E8F5E9', '#2E7D32')}>เปิดหน้าแก้ไข</button>
                 </div>
 
@@ -124,13 +124,13 @@ export function PlaceReportsPanel() {
                       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
                         <span style={{ fontWeight: 700, fontSize: 14, color: '#1f2a24' }}>{REPORT_FIELD_LABEL[field]}</span>
                         <Badge bg={count >= 3 ? '#fdecec' : '#FFF8E1'} color={count >= 3 ? '#a33232' : '#7A5205'}>{count} คนรายงาน</Badge>
-                        {g.place.lockedFields.includes(syncKey) && <Badge bg="#f3f3f0" color="#6d7a72">🔒 ล็อกไว้ ไม่ให้ซิงก์ทับ</Badge>}
+                        {g.place.lockedFields.includes(syncKey) && <Badge bg="#f3f3f0" color="#5f6a63">🔒 ล็อกไว้ ไม่ให้ซิงก์ทับ</Badge>}
                       </div>
                       <ul style={{ margin: '0 0 10px', paddingLeft: 18, fontSize: 13, color: '#3c463f' }}>
                         {reports.map((r) => (
                           <li key={r.id}>
                             {r.note ? `“${r.note}”` : <span style={{ color: '#a3ab9e' }}>(ไม่มีหมายเหตุ)</span>}
-                            <span style={{ color: '#8a938c' }}> — {r.reporter}, {fmtDateTime(r.createdAt)}{r.resolution ? ` · ${RESOLUTION_LABEL[r.resolution]}` : ''}</span>
+                            <span style={{ color: '#626863' }}> — {r.reporter}, {fmtDateTime(r.createdAt)}{r.resolution ? ` · ${RESOLUTION_LABEL[r.resolution]}` : ''}</span>
                           </li>
                         ))}
                       </ul>

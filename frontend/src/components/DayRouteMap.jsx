@@ -83,7 +83,7 @@ export default function DayRouteMap({ items, onSelectPlace }) {
       {loadError && (
         <div style={{ fontSize: 11.5, color: '#a33232', marginTop: 6 }}>โหลดแผนที่ไม่สำเร็จ ลองตรวจสอบ API key หรือลองรีเฟรชอีกครั้ง</div>
       )}
-      <div style={{ fontSize: 10.5, color: '#8a938c', textAlign: 'center', marginTop: 6 }}>
+      <div style={{ fontSize: 10.5, color: '#626863', textAlign: 'center', marginTop: 6 }}>
         เส้นทางเรียงตามลำดับการเดินทาง (เส้นตรง ไม่ใช่เส้นทางถนนจริง)
       </div>
     </div>

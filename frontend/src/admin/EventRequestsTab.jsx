@@ -22,7 +22,7 @@ const btn = (bg, color, border = 'none') => ({ background: bg, color, border, pa
 
 function Detail({ label, children }) {
   if (!children) return null
-  return <div style={{ fontSize: 13, color: '#3c463f' }}><span style={{ color: '#8a938c' }}>{label}: </span>{children}</div>
+  return <div style={{ fontSize: 13, color: '#3c463f' }}><span style={{ color: '#626863' }}>{label}: </span>{children}</div>
 }
 
 // Admin queue of event requests from users. Approving copies the request into
@@ -55,7 +55,7 @@ export default function EventRequestsTab() {
     <>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
         <h1 style={{ fontSize: 22, fontWeight: 800, color: '#1B5E20', margin: 0 }}>คำขอแสดงกิจกรรม</h1>
-        <span style={{ fontSize: 13, color: '#6d7a72' }}>{paged.loading ? 'กำลังโหลด...' : `${paged.total} รายการ`}</span>
+        <span style={{ fontSize: 13, color: '#5f6a63' }}>{paged.loading ? 'กำลังโหลด...' : `${paged.total} รายการ`}</span>
       </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
         {STATUS_FILTERS.map((f) => <button key={f.key} onClick={() => setStatus(f.key)} style={chipStyle(status === f.key)}>{f.label}</button>)}
@@ -75,7 +75,7 @@ export default function EventRequestsTab() {
                 <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', padding: '12px 16px', background: '#FBF8EE' }}>
                   <div style={{ fontWeight: 800, color: '#1B5E20', fontSize: 15 }}>{r.name}</div>
                   <span style={{ fontSize: 11.5, fontWeight: 700, background: st.bg, color: st.color, padding: '3px 10px', borderRadius: 20 }}>{st.label}</span>
-                  <span style={{ fontSize: 12.5, color: '#6d7a72', marginLeft: 'auto' }}>
+                  <span style={{ fontSize: 12.5, color: '#5f6a63', marginLeft: 'auto' }}>
                     {r.requester}{r.requesterEmail ? ` (${r.requesterEmail})` : ''} · {fmtDateTime(r.createdAt)}
                   </span>
                 </div>
@@ -93,7 +93,7 @@ export default function EventRequestsTab() {
                   )}
                   {r.desc && <div style={{ fontSize: 13, color: '#3c463f', whiteSpace: 'pre-wrap', marginTop: 4 }}>{r.desc}</div>}
                   {r.status === 'rejected' && <div style={{ fontSize: 13, color: '#a33232', marginTop: 4 }}>เหตุผลที่ไม่อนุมัติ: {r.rejectReason}</div>}
-                  {r.status === 'approved' && <div style={{ fontSize: 12.5, color: '#6d7a72', marginTop: 4 }}>อนุมัติเมื่อ {fmtDateTime(r.reviewedAt)} — แก้ไขเพิ่มเติม/เพิ่มรูปได้ที่แท็บ “กิจกรรม”</div>}
+                  {r.status === 'approved' && <div style={{ fontSize: 12.5, color: '#5f6a63', marginTop: 4 }}>อนุมัติเมื่อ {fmtDateTime(r.reviewedAt)} — แก้ไขเพิ่มเติม/เพิ่มรูปได้ที่แท็บ “กิจกรรม”</div>}
 
                   {r.status === 'pending' && (rejectingId === r.id ? (
                     <div style={{ display: 'grid', gap: 8, marginTop: 8 }}>

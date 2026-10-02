@@ -13,7 +13,7 @@ export default function WelcomeModal() {
         <div style={{ textAlign: 'center', marginBottom: 22 }}>
           <img src={MASCOT.wave} alt="" width={130} height={130} style={{ width: 130, height: 'auto', margin: '0 auto 8px', display: 'block', animation: 'dc-float 3.4s ease-in-out infinite' }} />
           <h2 data-font="culture" style={{ fontSize: 20, fontWeight: 800, color: '#1B5E20', margin: '0 0 4px' }}>สวัสดีครับ! ผม น้องไดโน พร้อมช่วยเหลือแล้วครับ</h2>
-          <p style={{ fontSize: 13.5, color: '#6d7a72', margin: 0 }}>สามารถเริ่มฟังก์ชันพิเศษได้เลย</p>
+          <p style={{ fontSize: 13.5, color: '#5f6a63', margin: 0 }}>สามารถเริ่มฟังก์ชันพิเศษได้เลย</p>
         </div>
         <div style={{ marginBottom: 14 }}><AiNotice variant="compact" /></div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 22 }}>
@@ -21,7 +21,7 @@ export default function WelcomeModal() {
             <span style={{ width: 20, height: 20, background: '#FBC02D', flexShrink: 0, transform: 'rotate(45deg)', borderRadius: 4, position: 'relative' }}><span style={{ position: 'absolute', inset: 5, background: '#fff', transform: 'rotate(0deg)', borderRadius: 2 }}></span></span>
             <div>
               <div style={{ fontWeight: 800, fontSize: 14.5, color: '#1B5E20' }}>AI ช่วยวางแผนทริป</div>
-              <div style={{ fontSize: 12.5, color: '#6d7a72' }}>ตอบไม่กี่คำถาม รับตารางเที่ยวรายวันทันที</div>
+              <div style={{ fontSize: 12.5, color: '#5f6a63' }}>ตอบไม่กี่คำถาม รับตารางเที่ยวรายวันทันที</div>
             </div>
           </div>
           <div onClick={actions.welcomeGoPoints} style={{ display: 'flex', alignItems: 'center', gap: 14, background: '#FFF8E1', borderRadius: 16, padding: '14px 16px', cursor: 'pointer' }}>
@@ -33,7 +33,7 @@ export default function WelcomeModal() {
           </div>
         </div>
         <button onClick={actions.closeWelcomeModal} style={{ width: '100%', background: 'linear-gradient(135deg,#66BB6A,#388E3C)', color: '#fff', border: 'none', padding: 13, borderRadius: 20, fontWeight: 800, fontSize: 14.5, cursor: 'pointer' }}>เริ่มสำรวจขอนแก่น</button>
-        <button onClick={actions.snoozeWelcomeModal} style={{ display: 'block', margin: '12px auto 0', background: 'none', border: 'none', color: '#6d7a72', fontSize: 12.5, textDecoration: 'underline', cursor: 'pointer', padding: 4 }}>ไม่แสดงอีก {WELCOME_SNOOZE_DAYS} วัน</button>
+        <button onClick={actions.snoozeWelcomeModal} style={{ display: 'block', margin: '12px auto 0', background: 'none', border: 'none', color: '#5f6a63', fontSize: 12.5, textDecoration: 'underline', cursor: 'pointer', padding: 4 }}>ไม่แสดงอีก {WELCOME_SNOOZE_DAYS} วัน</button>
       </div>
     </div>
   )

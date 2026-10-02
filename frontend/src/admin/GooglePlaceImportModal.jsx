@@ -50,19 +50,19 @@ export default function GooglePlaceImportModal({ open, onClose, onImported }) {
         <input value={query} onChange={(e) => setQuery(e.target.value)} disabled={busy} autoFocus placeholder="พิมพ์ชื่อสถานที่ เช่น คาเฟ่ xxx ขอนแก่น" style={{ ...inputStyle, flex: 1 }} />
         <button type="submit" disabled={searching || busy || query.trim().length < 2} style={btn('linear-gradient(135deg,#66BB6A,#388E3C)', '#fff')}>{searching ? 'กำลังค้นหา...' : 'ค้นหา'}</button>
       </form>
-      <div style={{ fontSize: 11.5, color: '#8a938c', marginBottom: 14 }}>ผลลัพธ์จาก Google Maps — เมื่อเลือกแล้วระบบจะดึงข้อมูลและรูป (สูงสุด 5 รูป) มาสร้างเป็นฉบับร่างที่ซ่อนอยู่ ให้ตรวจแก้ก่อนเผยแพร่</div>
+      <div style={{ fontSize: 11.5, color: '#626863', marginBottom: 14 }}>ผลลัพธ์จาก Google Maps — เมื่อเลือกแล้วระบบจะดึงข้อมูลและรูป (สูงสุด 5 รูป) มาสร้างเป็นฉบับร่างที่ซ่อนอยู่ ให้ตรวจแก้ก่อนเผยแพร่</div>
       {error && <div style={{ color: '#a33232', fontSize: 13, marginBottom: 10 }}>{error}</div>}
-      {results && results.length === 0 && <div style={{ color: '#8a938c', fontSize: 13.5, padding: '12px 0' }}>ไม่พบสถานที่ใน Google Maps ลองเปลี่ยนคำค้น หรือปิดหน้านี้แล้วกรอกเองด้วย "+ เพิ่มสถานที่ใหม่"</div>}
+      {results && results.length === 0 && <div style={{ color: '#626863', fontSize: 13.5, padding: '12px 0' }}>ไม่พบสถานที่ใน Google Maps ลองเปลี่ยนคำค้น หรือปิดหน้านี้แล้วกรอกเองด้วย "+ เพิ่มสถานที่ใหม่"</div>}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {(results || []).map((r) => (
           <div key={r.googlePlaceId} style={{ border: '1px solid #E7E3D2', borderRadius: 12, padding: '10px 14px', display: 'flex', gap: 12, alignItems: 'center' }}>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontWeight: 700, fontSize: 14 }}>{r.name}</div>
-              <div style={{ fontSize: 12, color: '#6d7a72' }}>{r.address}</div>
+              <div style={{ fontSize: 12, color: '#5f6a63' }}>{r.address}</div>
               {['CLOSED_TEMPORARILY', 'CLOSED_PERMANENTLY'].includes(r.businessStatus) && <div style={{ fontSize: 11.5, color: '#a33232' }}>{r.businessStatus === 'CLOSED_PERMANENTLY' ? 'ปิดถาวร' : 'ปิดชั่วคราว'}</div>}
             </div>
             {r.existingPlaceId
-              ? <span style={{ fontSize: 12, fontWeight: 700, color: '#6d7a72', background: '#f3f3f0', padding: '4px 10px', borderRadius: 10 }}>มีในระบบแล้ว</span>
+              ? <span style={{ fontSize: 12, fontWeight: 700, color: '#5f6a63', background: '#f3f3f0', padding: '4px 10px', borderRadius: 10 }}>มีในระบบแล้ว</span>
               : <button type="button" disabled={busy} onClick={() => pick(r)} style={btn(importingId === r.googlePlaceId ? '#A5D6A7' : '#E8F5E9', '#2E7D32')}>{importingId === r.googlePlaceId ? 'กำลังนำเข้า...' : 'เลือก'}</button>}
           </div>
         ))}

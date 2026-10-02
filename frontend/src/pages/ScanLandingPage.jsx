@@ -34,7 +34,7 @@ export default function ScanLandingPage() {
         <div style={{ textAlign: 'center', padding: 28, border: '1px dashed #C8E6C9', borderRadius: 14 }}>
           <img src={MASCOT.map} alt="" width={130} height={130} style={heroIcon} />
           <div style={{ width: 40, height: 40, borderRadius: '50%', border: '4px solid #C8E6C9', borderTopColor: '#2E7D32', margin: '0 auto 14px', animation: 'dc-spin 0.8s linear infinite' }}></div>
-          <div style={{ color: '#6d7a72', fontSize: 14 }}>กำลังตรวจสอบ QR Code...</div>
+          <div style={{ color: '#5f6a63', fontSize: 14 }}>กำลังตรวจสอบ QR Code...</div>
         </div>
       )}
       {derived.isScanSuccess && (

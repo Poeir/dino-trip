@@ -13,6 +13,15 @@ export function getCurrentPosition({ timeoutMs = 10000 } = {}) {
   })
 }
 
+// Shown when the visitor asked for something that uses their location ("near me",
+// "current location") and we couldn't get one.
+export const GENERIC_LOCATION_ERROR = {
+  denied: 'ยังไม่ได้อนุญาตการเข้าถึงตำแหน่ง เปิดได้ที่การตั้งค่าเบราว์เซอร์ (ไอคอนแม่กุญแจข้างช่องที่อยู่เว็บ) แล้วลองอีกครั้ง',
+  timeout: 'หาตำแหน่งของคุณไม่ทันเวลา ลองเปิด GPS แล้วลองอีกครั้ง',
+  unavailable: 'ไม่สามารถระบุตำแหน่งของคุณได้ กรุณาเปิด GPS แล้วลองอีกครั้ง',
+  unsupported: 'เบราว์เซอร์นี้ไม่รองรับการระบุตำแหน่ง หรือเว็บไม่ได้เปิดผ่าน HTTPS',
+}
+
 // Shown when the server says this QR needs a location and we couldn't get one.
 export const LOCATION_ERROR_MESSAGE = {
   denied: 'ต้องอนุญาตการเข้าถึงตำแหน่งเพื่อสแกน QR นี้ เปิดได้ที่การตั้งค่าเบราว์เซอร์ (ไอคอนแม่กุญแจข้างช่องที่อยู่เว็บ) แล้วลองสแกนอีกครั้ง',

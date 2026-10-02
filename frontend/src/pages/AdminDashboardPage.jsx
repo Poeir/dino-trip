@@ -21,7 +21,7 @@ export default function AdminDashboardPage() {
       <AdminSidebar />
       <main style={{ flex: 1, padding: 0, background: '#FBF8EE', overflowY: 'auto' }}>
         <div style={{ background: '#fff', borderBottom: '1px solid #E7E3D2', padding: '16px 34px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ fontSize: 13, color: '#8a938c' }}>ผู้ดูแลระบบ · {tabLabel}</div>
+          <div style={{ fontSize: 13, color: '#626863' }}>ผู้ดูแลระบบ · {tabLabel}</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
             <span style={{ fontSize: 13, color: '#3c463f', fontWeight: 600 }}>admin@dino.go.th</span>
             <span style={{ width: 30, height: 30, borderRadius: '50%', background: 'linear-gradient(135deg,#66BB6A,#2E7D32)' }}></span>

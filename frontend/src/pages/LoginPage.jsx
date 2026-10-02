@@ -48,7 +48,7 @@ function WelcomeCard({ state }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
           <p data-font="culture" style={{ margin: 0, color: '#1B5E20', fontSize: 15, fontWeight: 800 }}>บัตรสมาชิก Dino</p>
-          <p style={{ margin: '3px 0 0', color: '#8a938c', fontSize: 12 }}>ยินดีต้อนรับกลับ</p>
+          <p style={{ margin: '3px 0 0', color: '#626863', fontSize: 12 }}>ยินดีต้อนรับกลับ</p>
         </div>
         <div style={{ transform: 'rotate(9deg)', textAlign: 'center', flexShrink: 0, animation: 'dc-pop 0.4s cubic-bezier(.34,1.56,.64,1) 0.3s both' }}>
           <div style={{ width: 42, height: 42, borderRadius: '50%', border: '2px solid #FBC02D', padding: 3, background: '#fff', animation: 'dc-pulse 2.4s ease-in-out infinite' }}>
@@ -73,7 +73,7 @@ function WelcomeCard({ state }) {
         <h2 data-font="culture" style={{ margin: 0, fontSize: 21, fontWeight: 800, color: '#1B5E20' }}>
           สวัสดี{guessedName ? `, ${guessedName}` : ''}
         </h2>
-        <p style={{ margin: '4px 0 0', fontSize: 12.5, color: '#8a938c' }}>เข้าสู่ระบบเพื่อไปต่อจากที่ค้างไว้</p>
+        <p style={{ margin: '4px 0 0', fontSize: 12.5, color: '#626863' }}>เข้าสู่ระบบเพื่อไปต่อจากที่ค้างไว้</p>
 
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center', marginTop: 16 }}>
           <PerkChip icon={GiftIcon} text="แต้มสะสม" />
@@ -108,11 +108,11 @@ export default function LoginPage() {
           <FieldLabel icon={LockIcon}>รหัสผ่าน</FieldLabel>
           <input className="dc-signup-input" type="password" value={state.authForm.password} onChange={actions.onAuthPasswordChange} placeholder="••••••••" style={{ ...inputStyle, marginBottom: 8 }} />
           <div style={{ textAlign: 'right', marginBottom: 16 }}>
-            <a href="#" onClick={(e) => { e.preventDefault(); actions.goForgotPassword() }} style={{ fontSize: 12.5, color: '#6d7a72' }}>ลืมรหัสผ่าน?</a>
+            <a href="#" onClick={(e) => { e.preventDefault(); actions.goForgotPassword() }} style={{ fontSize: 12.5, color: '#5f6a63' }}>ลืมรหัสผ่าน?</a>
           </div>
           {state.authError && <div style={{ background: '#fdecec', color: '#a33232', fontSize: 13, padding: '8px 12px', borderRadius: 8, marginBottom: 14, animation: 'dc-pop 0.25s ease both' }}>{state.authError}</div>}
           <button onClick={actions.submitLogin} disabled={state.authSubmitting} className="dc-signup-cta" style={{ width: '100%', background: 'linear-gradient(135deg,#66BB6A,#388E3C)', color: '#fff', border: 'none', padding: 12, borderRadius: 20, fontWeight: 800, fontSize: 14.5, cursor: state.authSubmitting ? 'default' : 'pointer', opacity: state.authSubmitting ? 0.7 : 1 }}>{state.authSubmitting ? 'กำลังเข้าสู่ระบบ...' : 'เข้าสู่ระบบ'}</button>
-          <div style={{ textAlign: 'center', marginTop: 16, fontSize: 13.5, color: '#6d7a72' }}>ยังไม่มีบัญชี? <a href="#" onClick={(e) => { e.preventDefault(); actions.goSignup() }} style={{ fontWeight: 700 }}>สมัครสมาชิก</a></div>
+          <div style={{ textAlign: 'center', marginTop: 16, fontSize: 13.5, color: '#5f6a63' }}>ยังไม่มีบัญชี? <a href="#" onClick={(e) => { e.preventDefault(); actions.goSignup() }} style={{ fontWeight: 700 }}>สมัครสมาชิก</a></div>
         </div>
       </div>
     </main>

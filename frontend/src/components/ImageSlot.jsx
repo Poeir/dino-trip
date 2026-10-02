@@ -60,6 +60,10 @@ export default function ImageSlot({ src: rawSrc, shape = 'rounded', radius = 12,
           <img
             src={icon}
             alt={placeholder}
+            width={iconSize}
+            height={iconSize}
+            loading="lazy"
+            decoding="async"
             style={{ maxWidth: '55%', maxHeight: '65%', width: iconSize, height: 'auto', objectFit: 'contain', opacity: 0.95 }}
           />
         ) : (

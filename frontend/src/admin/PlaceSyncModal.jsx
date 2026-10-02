@@ -5,7 +5,7 @@ import { previewPlaceSync, startPlaceSyncJob, fetchPlaceSyncJob, cancelPlaceSync
 import { SYNC_FIELDS, SYNC_FIELD_LABEL, describeFieldValue } from '../data/placeSync.js'
 
 const STATUS_LABEL = { updated: 'อัปเดตแล้ว', unchanged: 'ไม่มีการเปลี่ยนแปลง', skipped: 'ข้าม (ฟิลด์ถูกล็อก)', failed: 'ล้มเหลว' }
-const STATUS_COLOR = { updated: ['#E8F5E9', '#2E7D32'], unchanged: ['#f3f3f0', '#6d7a72'], skipped: ['#FFF8E1', '#7A5205'], failed: ['#fdecec', '#a33232'] }
+const STATUS_COLOR = { updated: ['#E8F5E9', '#2E7D32'], unchanged: ['#f3f3f0', '#5f6a63'], skipped: ['#FFF8E1', '#7A5205'], failed: ['#fdecec', '#a33232'] }
 const JOB_STATUS_LABEL = { queued: 'รอเริ่ม', running: 'กำลังซิงก์', completed: 'เสร็จสิ้น', cancelled: 'ยกเลิกแล้ว', failed: 'หยุดกะทันหัน' }
 
 const inputStyle = { border: '1px solid #DCD8C6', borderRadius: 8, padding: '7px 9px', fontSize: 13.5 }
@@ -135,7 +135,7 @@ export default function PlaceSyncModal({ open, onClose, onFinished }) {
     <Modal open={open} onClose={running || busy ? () => {} : onClose} title="ซิงก์ข้อมูลจาก Google" maxWidth={720}>
       {!job ? (
         <>
-          <div style={{ fontSize: 13, color: '#6d7a72', lineHeight: 1.6, marginBottom: 14 }}>
+          <div style={{ fontSize: 13, color: '#5f6a63', lineHeight: 1.6, marginBottom: 14 }}>
             ดึงข้อมูลล่าสุดจาก Google Places มาอัปเดตสถานที่ ฟิลด์ที่แอดมินเคยแก้ไข (🔒) จะไม่ถูกเขียนทับ — ถ้า Google มีค่าใหม่ จะแสดงให้เลือกภายหลัง
           </div>
 
@@ -156,12 +156,12 @@ export default function PlaceSyncModal({ open, onClose, onFinished }) {
             <div style={{ border: '1px solid #EFEBDB', borderRadius: 12, padding: 14, marginBottom: 14 }}>
               <input value={pickQuery} onChange={(e) => setPickQuery(e.target.value)} placeholder="ค้นหาชื่อสถานที่เพื่อเพิ่มในรายการ..." style={{ ...inputStyle, width: '100%', marginBottom: 8 }} />
               <div style={{ maxHeight: 190, overflowY: 'auto', border: '1px solid #EFEBDB', borderRadius: 8, opacity: pickLoading ? 0.5 : 1 }}>
-                {pickResults.length === 0 && <div style={{ padding: 12, fontSize: 13, color: '#8a938c' }}>{pickLoading ? 'กำลังค้นหา...' : 'ไม่พบสถานที่ที่ซิงก์ได้'}</div>}
+                {pickResults.length === 0 && <div style={{ padding: 12, fontSize: 13, color: '#626863' }}>{pickLoading ? 'กำลังค้นหา...' : 'ไม่พบสถานที่ที่ซิงก์ได้'}</div>}
                 {pickResults.map((p) => (
                   <label key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', fontSize: 13.5, cursor: 'pointer', borderTop: '1px solid #F5F2E6' }}>
                     <input type="checkbox" checked={picked.some((x) => x.id === p.id)} onChange={() => togglePick(p)} />
                     <span style={{ flex: 1 }}>{p.name}</span>
-                    <span style={{ fontSize: 11.5, color: '#8a938c' }}>{p.lastSyncedAt ? `ซิงก์ ${new Date(p.lastSyncedAt).toLocaleDateString('th-TH', { dateStyle: 'medium' })}` : 'ยังไม่เคยซิงก์'}</span>
+                    <span style={{ fontSize: 11.5, color: '#626863' }}>{p.lastSyncedAt ? `ซิงก์ ${new Date(p.lastSyncedAt).toLocaleDateString('th-TH', { dateStyle: 'medium' })}` : 'ยังไม่เคยซิงก์'}</span>
                   </label>
                 ))}
               </div>
@@ -218,7 +218,7 @@ export default function PlaceSyncModal({ open, onClose, onFinished }) {
               {preview.count === 0 ? 'ไม่พบสถานที่ที่ตรงกับเงื่อนไข' : (
                 <>
                   จะซิงก์ <strong>{preview.count}</strong> แห่ง{preview.capped ? ` (ตรงเงื่อนไขทั้งหมด ${preview.matched} แห่ง — เลือกที่ซิงก์นานที่สุดก่อน)` : ''} · เรียก Google Places API ประมาณ {preview.count} ครั้ง (คิดค่าใช้จ่ายตามแพ็กเกจ API ของคุณ)
-                  {preview.sample.length > 0 && <div style={{ color: '#6d7a72', fontSize: 12.5 }}>เช่น {preview.sample.map((s) => s.name).join(', ')}{preview.count > preview.sample.length ? ' ...' : ''}</div>}
+                  {preview.sample.length > 0 && <div style={{ color: '#5f6a63', fontSize: 12.5 }}>เช่น {preview.sample.map((s) => s.name).join(', ')}{preview.count > preview.sample.length ? ' ...' : ''}</div>}
                   {preview.needsConfirm && (
                     <label style={{ display: 'block', marginTop: 8, fontWeight: 700, color: '#7A5205' }}>
                       <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} /> ฉันยืนยันว่าจะซิงก์จำนวนมากนี้
@@ -240,7 +240,7 @@ export default function PlaceSyncModal({ open, onClose, onFinished }) {
         <>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
             <div style={{ fontWeight: 800, color: '#1B5E20' }}>{JOB_STATUS_LABEL[job.status]}{job.dryRun ? ' (ทดลองรัน — ยังไม่ได้บันทึก)' : ''}</div>
-            <div style={{ fontSize: 13, color: '#6d7a72' }}>{job.done}/{job.total} แห่ง{job.failed ? ` · ล้มเหลว ${job.failed}` : ''}</div>
+            <div style={{ fontSize: 13, color: '#5f6a63' }}>{job.done}/{job.total} แห่ง{job.failed ? ` · ล้มเหลว ${job.failed}` : ''}</div>
           </div>
           <div style={{ height: 10, background: '#EFEBDB', borderRadius: 6, overflow: 'hidden', marginBottom: 14 }} role="progressbar" aria-valuenow={job.done} aria-valuemax={job.total}>
             <div style={{ width: `${job.total ? (job.done / job.total) * 100 : 0}%`, height: '100%', background: 'linear-gradient(135deg,#66BB6A,#388E3C)', transition: 'width 0.3s ease' }} />

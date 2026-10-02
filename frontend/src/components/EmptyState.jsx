@@ -27,7 +27,7 @@ export default function EmptyState({ icon, mascot, title, desc, action, compact 
         />
       )}
       <div style={{ fontWeight: 800, fontSize: compact ? 14 : 15, color: '#1B5E20', marginBottom: desc ? 4 : 0 }}>{title}</div>
-      {desc && <div style={{ fontSize: 13, color: '#6d7a72', maxWidth: 340, margin: '0 auto' }}>{desc}</div>}
+      {desc && <div style={{ fontSize: 13, color: '#5f6a63', maxWidth: 340, margin: '0 auto' }}>{desc}</div>}
       {action && <div style={{ marginTop: 18 }}>{action}</div>}
     </div>
   )

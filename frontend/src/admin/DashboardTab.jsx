@@ -123,10 +123,10 @@ function usePendingItems(reloadKey, enabled) {
 
 function PendingList({ items, error }) {
   if (error) return <div style={{ color: '#a33232', fontSize: 12, marginTop: 10 }}>โหลดรายการไม่สำเร็จ: {error}</div>
-  if (items === null) return <div style={{ fontSize: 12.5, color: '#6d7a72', marginTop: 10 }}>กำลังโหลดรายการ...</div>
+  if (items === null) return <div style={{ fontSize: 12.5, color: '#5f6a63', marginTop: 10 }}>กำลังโหลดรายการ...</div>
 
   const sections = PENDING_SECTIONS.map((s) => ({ ...s, rows: items[s.key] || [] })).filter((s) => s.rows.length)
-  if (!sections.length) return <div style={{ fontSize: 12.5, color: '#6d7a72', marginTop: 10 }}>ไม่มีรายการค้างอัปเดตดัชนี</div>
+  if (!sections.length) return <div style={{ fontSize: 12.5, color: '#5f6a63', marginTop: 10 }}>ไม่มีรายการค้างอัปเดตดัชนี</div>
 
   return (
     <div style={{ marginTop: 12, display: 'grid', gap: 12 }}>
@@ -166,7 +166,7 @@ function ReindexCard() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
         <div>
           <div style={{ fontWeight: 800, fontSize: 15, color: '#1B5E20', marginBottom: 4 }}>ดัชนีค้นหาแชทบอท (Embedding)</div>
-          <div style={{ fontSize: 12.5, color: '#6d7a72' }}>
+          <div style={{ fontSize: 12.5, color: '#5f6a63' }}>
             {checking ? 'กำลังตรวจสอบสถานะ...' : status === null ? 'ตรวจสอบสถานะไม่สำเร็จ' : pendingCount > 0
               ? <>มี {pendingCount} รายการที่เพิ่ม/แก้ไขแล้วยังไม่อัปเดตดัชนี{' · '}
                 <span style={{ color: '#2E7D32', fontWeight: 700, cursor: 'pointer' }} onClick={() => setExpanded((v) => !v)}>
@@ -198,7 +198,7 @@ function StatCard({ value, label, tone = 'normal' }) {
   return (
     <div style={{ background: '#fff', border: `1px solid ${warn ? '#f0c6c6' : '#E7E3D2'}`, borderRadius: 16, padding: '16px 18px' }}>
       <div style={{ fontSize: 24, fontWeight: 800, color: warn ? '#a33232' : '#1B5E20' }}>{value}</div>
-      <div style={{ fontSize: 13, color: '#6d7a72' }}>{label}</div>
+      <div style={{ fontSize: 13, color: '#5f6a63' }}>{label}</div>
     </div>
   )
 }
@@ -230,7 +230,7 @@ function UsageSection({ stats, error, onRetry }) {
       <div style={{ background: '#fff', border: '1px solid #E7E3D2', borderRadius: 16, padding: 18 }}>
         <div style={{ fontWeight: 800, fontSize: 14.5, color: '#1B5E20', marginBottom: 10 }}>การแลกของรางวัลล่าสุด</div>
         {!stats ? (
-          <div style={{ fontSize: 13, color: '#8a938c' }}>กำลังโหลด...</div>
+          <div style={{ fontSize: 13, color: '#626863' }}>กำลังโหลด...</div>
         ) : stats.recentRedemptions.length === 0 ? (
           <EmptyState compact icon={REWARD_ICON} title="ยังไม่มีการแลกของรางวัล" />
         ) : (
@@ -238,7 +238,7 @@ function UsageSection({ stats, error, onRetry }) {
             {stats.recentRedemptions.map((r) => (
               <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', fontSize: 13.5, opacity: r.status === 'cancelled' ? 0.6 : 1 }}>
                 <span><b>{r.userName}</b> แลก {r.rewardName} ({r.cost} พอยท์){r.status === 'cancelled' && <span style={{ color: '#a33232' }}> · ยกเลิกแล้ว</span>}</span>
-                <span style={{ color: '#6d7a72' }}>{fmtDateTime(r.at)}</span>
+                <span style={{ color: '#5f6a63' }}>{fmtDateTime(r.at)}</span>
               </div>
             ))}
           </div>
@@ -286,7 +286,7 @@ export default function DashboardTab() {
             <span style={{ width: 11, height: 11, borderRadius: '50% 50% 50% 0', background: '#2E7D32', transform: 'rotate(-45deg)' }}></span>
           </div>
           <div style={{ fontSize: 26, fontWeight: 800, color: '#1B5E20' }}>{placesCount == null ? '–' : placesCount}</div>
-          <div style={{ fontSize: 13, color: '#6d7a72' }}>สถานที่ทั้งหมด</div>
+          <div style={{ fontSize: 13, color: '#5f6a63' }}>สถานที่ทั้งหมด</div>
         </div>
         <div style={{ background: '#fff', border: '1px solid #E7E3D2', borderRadius: 16, padding: 20, animation: 'dc-fade-up 0.35s ease 0.05s both' }}>
           <div style={{ width: 34, height: 34, borderRadius: 10, background: '#FDEEE3', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
@@ -296,14 +296,14 @@ export default function DashboardTab() {
             </span>
           </div>
           <div style={{ fontSize: 26, fontWeight: 800, color: '#1B5E20' }}>{stat(state.events.length)}</div>
-          <div style={{ fontSize: 13, color: '#6d7a72' }}>อีเวนท์ทั้งหมด</div>
+          <div style={{ fontSize: 13, color: '#5f6a63' }}>อีเวนท์ทั้งหมด</div>
         </div>
         <div style={{ background: '#fff', border: '1px solid #E7E3D2', borderRadius: 16, padding: 20, animation: 'dc-fade-up 0.35s ease 0.1s both' }}>
           <div style={{ width: 34, height: 34, borderRadius: 10, background: '#E8F5E9', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
             <span style={{ width: 15, height: 11, background: '#2E7D32', borderRadius: '4px 4px 4px 0' }}></span>
           </div>
           <div style={{ fontSize: 26, fontWeight: 800, color: '#1B5E20' }}>{stat(state.knowledgeBase.length)}</div>
-          <div style={{ fontSize: 13, color: '#6d7a72' }}>องค์ความรู้แชทบอท</div>
+          <div style={{ fontSize: 13, color: '#5f6a63' }}>องค์ความรู้แชทบอท</div>
         </div>
         <div style={{ background: '#fff', border: '1px solid #FFE082', borderRadius: 16, padding: 20, animation: 'dc-fade-up 0.35s ease 0.15s both' }}>
           <div style={{ width: 34, height: 34, borderRadius: 10, background: '#FFF8E1', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
@@ -321,7 +321,7 @@ export default function DashboardTab() {
             </span>
           </div>
           <div style={{ fontSize: 26, fontWeight: 800, color: '#1B5E20' }}>{stat(state.qrs.length)}</div>
-          <div style={{ fontSize: 13, color: '#6d7a72' }}>จำนวน QR ทั้งหมด</div>
+          <div style={{ fontSize: 13, color: '#5f6a63' }}>จำนวน QR ทั้งหมด</div>
         </div>
         <div style={{ background: '#fff', border: '1px solid #E7E3D2', borderRadius: 16, padding: 20, animation: 'dc-fade-up 0.35s ease 0.25s both' }}>
           <div style={{ width: 34, height: 34, borderRadius: 10, background: '#FFF8E1', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
@@ -331,7 +331,7 @@ export default function DashboardTab() {
             </span>
           </div>
           <div style={{ fontSize: 26, fontWeight: 800, color: '#1B5E20' }}>{stat(state.rewards.length)}</div>
-          <div style={{ fontSize: 13, color: '#6d7a72' }}>จำนวนของรางวัล</div>
+          <div style={{ fontSize: 13, color: '#5f6a63' }}>จำนวนของรางวัล</div>
         </div>
       </div>
       <UsageSection stats={stats} error={statsError} onRetry={loadStats} />

@@ -53,7 +53,7 @@ export default function ChipMultiSelect({ value, onChange, options, addPlacehold
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, maxHeight: 130, overflowY: 'auto', padding: 2, marginBottom: 10 }}>
         {availableOptions.length === 0
-          ? <span style={{ fontSize: 12, color: '#8a938c', padding: '4px 2px' }}>{q ? `ไม่พบรายการที่ตรงกับ "${search}"` : 'เลือกครบทุกรายการแล้ว'}</span>
+          ? <span style={{ fontSize: 12, color: '#626863', padding: '4px 2px' }}>{q ? `ไม่พบรายการที่ตรงกับ "${search}"` : 'เลือกครบทุกรายการแล้ว'}</span>
           : availableOptions.map((opt) => (
             <button key={opt} type="button" onClick={() => add(opt)} style={{ border: '1px solid #DCD8C6', background: '#fff', color: '#3c463f', borderRadius: 14, padding: '5px 12px', fontSize: 12.5, cursor: 'pointer' }}>
               + {opt}

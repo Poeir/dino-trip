@@ -54,7 +54,7 @@ function Badge({ children, bg, color }) {
 }
 
 function StatusBadge({ user }) {
-  if (user.deletedAt) return <Badge bg="#eee" color="#6d7a72">ลบแล้ว</Badge>
+  if (user.deletedAt) return <Badge bg="#eee" color="#5f6a63">ลบแล้ว</Badge>
   if (user.status === 'suspended') return <Badge bg="#fdecec" color="#a33232">ถูกระงับ</Badge>
   return <Badge bg="#E8F5E9" color="#2E7D32">ใช้งานอยู่</Badge>
 }
@@ -62,7 +62,7 @@ function StatusBadge({ user }) {
 function InfoRow({ label, children }) {
   return (
     <div style={{ minWidth: 0 }}>
-      <div style={{ fontSize: 12, color: '#8a938c', marginBottom: 2 }}>{label}</div>
+      <div style={{ fontSize: 12, color: '#626863', marginBottom: 2 }}>{label}</div>
       <div style={{ fontSize: 14, color: '#1f2a24', overflowWrap: 'anywhere' }}>{children || '-'}</div>
     </div>
   )
@@ -94,7 +94,7 @@ function ActionDialog({ action, user, busy, error, onSubmit, onClose }) {
         <div style={{ marginBottom: 14 }}>
           <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>จำนวนพอยท์ที่เพิ่ม (+) หรือหัก (-)</div>
           <input value={delta} onChange={(e) => setDelta(e.target.value)} inputMode="numeric" placeholder="เช่น 50 หรือ -20" style={{ ...inputStyle, width: '100%' }} />
-          <div style={{ fontSize: 12.5, color: hint ? '#a33232' : '#6d7a72', marginTop: 6 }}>
+          <div style={{ fontSize: 12.5, color: hint ? '#a33232' : '#5f6a63', marginTop: 6 }}>
             {hint || (newBalance !== null ? `ยอดปัจจุบัน ${user.pointsBalance} → หลังปรับ ${newBalance} พอยท์` : `ยอดปัจจุบัน ${user.pointsBalance} พอยท์`)}
           </div>
         </div>
@@ -124,12 +124,12 @@ function ActionDialog({ action, user, busy, error, onSubmit, onClose }) {
 }
 
 function ActivityTable({ columns, rows, empty }) {
-  if (!rows.length) return <div style={{ textAlign: 'center', padding: 24, color: '#8a938c', fontSize: 13.5 }}>{empty}</div>
+  if (!rows.length) return <div style={{ textAlign: 'center', padding: 24, color: '#626863', fontSize: 13.5 }}>{empty}</div>
   return (
     <div style={{ overflowX: 'auto', border: '1px solid #EFEBDB', borderRadius: 12 }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
         <thead>
-          <tr style={{ textAlign: 'left', color: '#6d7a72', background: '#FBF8EE' }}>
+          <tr style={{ textAlign: 'left', color: '#5f6a63', background: '#FBF8EE' }}>
             {columns.map((c) => <th key={c.label} style={{ padding: '8px 12px', fontWeight: 700 }}>{c.label}</th>)}
           </tr>
         </thead>
@@ -241,14 +241,14 @@ export default function UsersTab() {
       <ActivityTable empty="ยังไม่เคยสแกน QR" rows={detail.scans} columns={[
         { label: 'สถานที่', render: (r) => r.placeName },
         { label: 'พอยท์', render: (r) => `+${r.points}`, style: { color: '#2E7D32', fontWeight: 700 } },
-        { label: 'เมื่อ', render: (r) => fmtDateTime(r.at), style: { color: '#6d7a72' } },
+        { label: 'เมื่อ', render: (r) => fmtDateTime(r.at), style: { color: '#5f6a63' } },
       ]} />) },
     { key: 'redemptions', label: `แลกของรางวัล (${detail.totals.redemptions})`, table: (
       <ActivityTable empty="ยังไม่เคยแลกของรางวัล" rows={detail.redemptions} columns={[
         { label: 'ของรางวัล', render: (r) => r.rewardName },
-        { label: 'พอยท์ที่ใช้', render: (r) => (r.status === 'cancelled' ? <span style={{ textDecoration: 'line-through', color: '#8a938c' }}>-{r.cost}</span> : `-${r.cost}`), style: { color: '#7A5205', fontWeight: 700 } },
-        { label: 'สถานะ', render: (r) => (r.status === 'cancelled' ? 'ยกเลิกแล้ว (คืนพอยท์)' : 'แลกแล้ว'), style: { color: '#6d7a72' } },
-        { label: 'เมื่อ', render: (r) => fmtDateTime(r.at), style: { color: '#6d7a72' } },
+        { label: 'พอยท์ที่ใช้', render: (r) => (r.status === 'cancelled' ? <span style={{ textDecoration: 'line-through', color: '#626863' }}>-{r.cost}</span> : `-${r.cost}`), style: { color: '#7A5205', fontWeight: 700 } },
+        { label: 'สถานะ', render: (r) => (r.status === 'cancelled' ? 'ยกเลิกแล้ว (คืนพอยท์)' : 'แลกแล้ว'), style: { color: '#5f6a63' } },
+        { label: 'เมื่อ', render: (r) => fmtDateTime(r.at), style: { color: '#5f6a63' } },
       ]} />) },
     { key: 'adjustments', label: `ปรับพอยท์ (${detail.adjustments.length})`, table: (
       <ActivityTable empty="ยังไม่เคยมีการปรับพอยท์ด้วยมือ" rows={detail.adjustments} columns={[
@@ -256,14 +256,14 @@ export default function UsersTab() {
         { label: 'ยอดหลังปรับ', render: (r) => r.balanceAfter },
         { label: 'เหตุผล', render: (r) => r.reason },
         { label: 'โดย', render: (r) => r.adminName || '-' },
-        { label: 'เมื่อ', render: (r) => fmtDateTime(r.at), style: { color: '#6d7a72' } },
+        { label: 'เมื่อ', render: (r) => fmtDateTime(r.at), style: { color: '#5f6a63' } },
       ]} />) },
     { key: 'audit', label: `บันทึกการดำเนินการ (${detail.audit.length})`, table: (
       <ActivityTable empty="ยังไม่มีการดำเนินการจาก admin" rows={detail.audit} columns={[
         { label: 'การดำเนินการ', render: (r) => AUDIT_LABELS[r.action] || r.action },
         { label: 'รายละเอียด', render: (r) => r.details?.reason || r.details?.title || (r.details?.delta ? signed(r.details.delta) : '-') },
         { label: 'โดย', render: (r) => r.adminName || '-' },
-        { label: 'เมื่อ', render: (r) => fmtDateTime(r.at), style: { color: '#6d7a72' } },
+        { label: 'เมื่อ', render: (r) => fmtDateTime(r.at), style: { color: '#5f6a63' } },
       ]} />) },
   ]
 
@@ -274,7 +274,7 @@ export default function UsersTab() {
     <>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
         <h1 style={{ fontSize: 22, fontWeight: 800, color: '#1B5E20', margin: 0 }}>ผู้ใช้</h1>
-        <span style={{ fontSize: 13, color: '#6d7a72' }}>{paged.loading ? 'กำลังโหลด...' : `พบ ${paged.total} บัญชี`}</span>
+        <span style={{ fontSize: 13, color: '#5f6a63' }}>{paged.loading ? 'กำลังโหลด...' : `พบ ${paged.total} บัญชี`}</span>
       </div>
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
@@ -310,7 +310,7 @@ export default function UsersTab() {
           <div style={{ background: '#fff', border: '1px solid #E7E3D2', borderRadius: 14, overflowX: 'auto', opacity: paged.loading ? 0.5 : 1, transition: 'opacity 0.15s ease' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
               <thead>
-                <tr style={{ textAlign: 'left', color: '#6d7a72', background: '#FBF8EE' }}>
+                <tr style={{ textAlign: 'left', color: '#5f6a63', background: '#FBF8EE' }}>
                   {['ผู้ใช้', 'เบอร์โทร', 'สถานะ', 'พอยท์', 'สมัครเมื่อ', 'ใช้งานล่าสุด'].map((h) => <th key={h} style={{ padding: '10px 14px', fontWeight: 700, whiteSpace: 'nowrap' }}>{h}</th>)}
                 </tr>
               </thead>
@@ -327,7 +327,7 @@ export default function UsersTab() {
                         <Avatar user={u} size={38} />
                         <div style={{ minWidth: 0 }}>
                           <div style={{ fontWeight: 700, color: '#1f2a24' }}>{u.displayName} {u.role === 'admin' && <Badge bg="#FFF8E1" color="#7A5205">admin</Badge>}</div>
-                          <div style={{ fontSize: 12.5, color: '#6d7a72' }}>{u.email}</div>
+                          <div style={{ fontSize: 12.5, color: '#5f6a63' }}>{u.email}</div>
                         </div>
                       </div>
                     </td>
@@ -337,8 +337,8 @@ export default function UsersTab() {
                       {!u.emailVerified && <Badge bg="#FFF8E1" color="#7A5205">ยังไม่ยืนยันอีเมล</Badge>}
                     </td>
                     <td style={{ padding: '10px 14px', fontWeight: 700, color: '#7A5205' }}>{u.pointsBalance}</td>
-                    <td style={{ padding: '10px 14px', color: '#6d7a72', whiteSpace: 'nowrap' }}>{fmtDateTime(u.createdAt)}</td>
-                    <td style={{ padding: '10px 14px', color: '#6d7a72', whiteSpace: 'nowrap' }}>{u.lastLoginAt ? fmtDateTime(u.lastLoginAt) : 'ยังไม่เคย'}</td>
+                    <td style={{ padding: '10px 14px', color: '#5f6a63', whiteSpace: 'nowrap' }}>{fmtDateTime(u.createdAt)}</td>
+                    <td style={{ padding: '10px 14px', color: '#5f6a63', whiteSpace: 'nowrap' }}>{u.lastLoginAt ? fmtDateTime(u.lastLoginAt) : 'ยังไม่เคย'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -413,7 +413,7 @@ export default function UsersTab() {
               {activityTabs.map((t) => <button key={t.key} onClick={() => setActivityTab(t.key)} style={chipStyle(activityTab === t.key)}>{t.label}</button>)}
             </div>
             {activityTabs.find((t) => t.key === activityTab).table}
-            <div style={{ fontSize: 12, color: '#8a938c', marginTop: 8 }}>แสดงรายการล่าสุดสูงสุด 50 รายการต่อหมวด</div>
+            <div style={{ fontSize: 12, color: '#626863', marginTop: 8 }}>แสดงรายการล่าสุดสูงสุด 50 รายการต่อหมวด</div>
           </div>
         )}
       </Modal>

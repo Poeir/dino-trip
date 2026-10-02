@@ -33,7 +33,7 @@ export default function ConfirmEmailChangePage() {
   return (
     <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg,#d7ede0,#eaf6ee)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
       <div style={{ background: '#fff', borderRadius: 16, padding: 36, width: 380, maxWidth: '100%', boxShadow: '0 16px 40px rgba(0,0,0,0.1)', textAlign: 'center' }}>
-        {status === 'working' && <div style={{ color: '#6d7a72', fontSize: 14 }}>กำลังยืนยันอีเมลใหม่...</div>}
+        {status === 'working' && <div style={{ color: '#5f6a63', fontSize: 14 }}>กำลังยืนยันอีเมลใหม่...</div>}
         {status === 'done' && (
           <>
             <div style={{ fontSize: 17, fontWeight: 800, color: '#1B5E20', marginBottom: 8 }}>เปลี่ยนอีเมลเรียบร้อยแล้ว</div>

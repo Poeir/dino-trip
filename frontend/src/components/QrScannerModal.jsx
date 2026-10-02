@@ -40,7 +40,7 @@ export default function QrScannerModal({ open, onDetected, onError }) {
   return (
     <Modal open={open} onClose={() => onError(null)} title="สแกน QR Code" maxWidth={380}>
       <div id={SCANNER_ELEMENT_ID} style={{ width: '100%', borderRadius: 12, overflow: 'hidden' }} />
-      <p style={{ fontSize: 12.5, color: '#6d7a72', marginTop: 12, textAlign: 'center' }}>
+      <p style={{ fontSize: 12.5, color: '#5f6a63', marginTop: 12, textAlign: 'center' }}>
         เล็งกล้องไปที่ QR Code ที่ติดอยู่ ณ สถานที่ท่องเที่ยว
       </p>
     </Modal>

@@ -25,7 +25,7 @@ export default function TripFormPage() {
         <img src={MASCOT.map} alt="" style={{ width: 84, height: 84, objectFit: 'contain', flexShrink: 0, animation: 'dc-float 3.4s ease-in-out infinite' }} />
         <div>
           <h1 data-font="culture" style={{ fontSize: 26, fontWeight: 900, color: '#1B5E20', margin: '0 0 6px' }}>วางแผนทริปด้วย AI</h1>
-          <p style={{ color: '#8a938c', fontSize: 14, margin: 0 }}>แค่ 4 ขั้นตอน น้องไดโนจัดทริปในฝันให้คุณ</p>
+          <p style={{ color: '#626863', fontSize: 14, margin: 0 }}>แค่ 4 ขั้นตอน น้องไดโนจัดทริปในฝันให้คุณ</p>
         </div>
       </div>
 
@@ -70,15 +70,13 @@ export default function TripFormPage() {
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                 <label style={{ fontSize: 13, fontWeight: 700, color: '#1B5E20' }}>พักที่ไหน?</label>
-                {state.userLocation && (
-                  <button
-                    type="button" onClick={actions.useCurrentLocationForAccommodation}
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: 4, border: '1px solid #C8E6C9', background: '#F1F8E9', color: '#2E7D32', borderRadius: 20, padding: '5px 12px 5px 8px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
-                  >
-                    <span style={{ transform: 'scale(0.6)', display: 'flex' }}><PinIcon box={false} /></span>
-                    ตำแหน่งปัจจุบัน
-                  </button>
-                )}
+                <button
+                  type="button" onClick={actions.useCurrentLocationForAccommodation}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 4, border: '1px solid #C8E6C9', background: '#F1F8E9', color: '#2E7D32', borderRadius: 20, padding: '5px 12px 5px 8px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+                >
+                  <span style={{ transform: 'scale(0.6)', display: 'flex' }}><PinIcon box={false} /></span>
+                  ตำแหน่งปัจจุบัน
+                </button>
               </div>
               <LocationPicker
                 value={f.accommodation?.lat != null ? { lat: f.accommodation.lat, lng: f.accommodation.lng } : null}
@@ -96,7 +94,7 @@ export default function TripFormPage() {
                   {f.accommodation.name || 'ปักหมุดไว้แล้ว'}
                 </p>
               ) : (
-                <p style={{ fontSize: 11.5, color: '#8a938c', margin: '8px 0 18px' }}>ถ้าไม่ระบุ ระบบจะใช้ใจกลางเมืองขอนแก่นแทน ซึ่งอาจทำให้แผนเดินทางคลาดเคลื่อนจากที่พักจริง</p>
+                <p style={{ fontSize: 11.5, color: '#626863', margin: '8px 0 18px' }}>ถ้าไม่ระบุ ระบบจะใช้ใจกลางเมืองขอนแก่นแทน ซึ่งอาจทำให้แผนเดินทางคลาดเคลื่อนจากที่พักจริง</p>
               )}
               <label style={{ fontSize: 13, fontWeight: 700, color: '#1B5E20', display: 'block', marginBottom: 6 }}>มีสถานที่ที่อยากไปแน่ๆ มั้ย? (ถ้ามี)</label>
               {derived.mustGoChipsView.length > 0 && (
@@ -122,7 +120,7 @@ export default function TripFormPage() {
                     {derived.mustGoSuggestionsView.map((sug) => (
                       <div key={sug.id} onClick={sug.onClick} style={{ padding: '10px 14px', cursor: 'pointer', fontSize: 13.5, display: 'flex', justifyContent: 'space-between', gap: 10, borderBottom: '1px solid #F1F1EA' }}>
                         <span style={{ fontWeight: 700, color: '#1f2a24' }}>{sug.name}</span>
-                        <span style={{ color: '#8a938c', fontSize: 12 }}>{sug.category}</span>
+                        <span style={{ color: '#626863', fontSize: 12 }}>{sug.category}</span>
                       </div>
                     ))}
                   </div>
@@ -137,7 +135,7 @@ export default function TripFormPage() {
                 <HeartIcon />
                 <h2 style={{ fontSize: 20, fontWeight: 800, color: '#1B5E20', margin: 0 }}>คุณสนใจอะไรบ้าง?</h2>
               </div>
-              <p style={{ color: '#8a938c', fontSize: 13, margin: '0 0 20px' }}>เลือกได้หลายข้อ</p>
+              <p style={{ color: '#626863', fontSize: 13, margin: '0 0 20px' }}>เลือกได้หลายข้อ</p>
               <div data-role="trip-two-col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 {derived.interestOptionsView.map((opt) => (
                   <div key={opt.label} onClick={opt.onClick} style={{ display: 'flex', alignItems: 'center', gap: 12, borderRadius: 14, padding: 14, cursor: 'pointer', transition: 'all 0.2s ease', border: `2px solid ${opt.borderColor}`, background: opt.bg }}>
@@ -218,7 +216,7 @@ export default function TripFormPage() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 30 }}>
-          <button onClick={actions.prevStep} style={{ background: 'transparent', color: '#6d7a72', border: 'none', padding: '13px 10px', fontWeight: 700, fontSize: 14, cursor: 'pointer', opacity: derived.prevOpacity }}>← ย้อนกลับ</button>
+          <button onClick={actions.prevStep} style={{ background: 'transparent', color: '#5f6a63', border: 'none', padding: '13px 10px', fontWeight: 700, fontSize: 14, cursor: 'pointer', opacity: derived.prevOpacity }}>← ย้อนกลับ</button>
           <button onClick={derived.onPrimaryStep} style={{ flex: 1, background: 'linear-gradient(135deg,#66BB6A,#388E3C)', color: '#fff', border: 'none', padding: 14, borderRadius: 20, fontWeight: 800, fontSize: 15, cursor: 'pointer', boxShadow: '0 10px 22px rgba(46,125,50,0.25)' }}>{derived.primaryLabel}</button>
         </div>
       </div>

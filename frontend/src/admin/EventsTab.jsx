@@ -38,7 +38,7 @@ const todayIso = new Date().toISOString().slice(0, 10)
 // chatbot search even before that run has actually happened.
 function eventIndexStatus(e) {
   const end = e.eventEndDate || e.eventStartDate
-  if (end && end < todayIso) return { label: 'หมดงานแล้ว · ไม่อยู่ในดัชนีค้นหา', color: '#8a938c' }
+  if (end && end < todayIso) return { label: 'หมดงานแล้ว · ไม่อยู่ในดัชนีค้นหา', color: '#626863' }
   if (e.isEmbedded) return { label: 'อยู่ในดัชนีค้นหาแชทบอทแล้ว', color: '#2E7D32' }
   return { label: 'ยังไม่ได้ทำดัชนีค้นหา', color: '#b07a1e' }
 }
@@ -342,7 +342,7 @@ export default function EventsTab() {
                 }}
               />
             </div>
-            <div style={{ fontSize: 11, color: '#8a938c', marginBottom: 14 }}>เลือกถ้างานนี้จัดที่สถานที่ที่มีอยู่แล้วในระบบ -- เติมชื่อสถานที่ด้านล่างให้อัตโนมัติ (แก้ไขเพิ่มเองได้)</div>
+            <div style={{ fontSize: 11, color: '#626863', marginBottom: 14 }}>เลือกถ้างานนี้จัดที่สถานที่ที่มีอยู่แล้วในระบบ -- เติมชื่อสถานที่ด้านล่างให้อัตโนมัติ (แก้ไขเพิ่มเองได้)</div>
           </Field>
           <Field label="สถานที่จัดงาน">
             <input list="event-venue-options" value={f.venueName || ''} onChange={actions.onField_venueName} placeholder="ชื่อสถานที่/สนาม" style={{ ...inputStyle, marginBottom: 14 }} />
@@ -352,7 +352,7 @@ export default function EventsTab() {
           </datalist>
 
           <SectionHeading>รูปภาพ</SectionHeading>
-          <div style={{ fontSize: 11.5, color: '#6d7a72', marginBottom: 8 }}>อัปโหลดได้สูงสุด <strong>{MAX_PHOTOS} รูปต่ออีเวนท์</strong> รูปแรกจะใช้เป็นภาพปก</div>
+          <div style={{ fontSize: 11.5, color: '#5f6a63', marginBottom: 8 }}>อัปโหลดได้สูงสุด <strong>{MAX_PHOTOS} รูปต่ออีเวนท์</strong> รูปแรกจะใช้เป็นภาพปก</div>
           <div style={{ marginBottom: 14 }}>
             <PlacePhotoGallery
               existingPhotos={existingPhotos}
@@ -410,7 +410,7 @@ export default function EventsTab() {
           <option value="name-desc">ชื่อ (ฮ-ก)</option>
           <option value="status">สถานะ</option>
         </select>
-        <span style={{ fontSize: 12.5, color: '#8a938c' }}>{paged.loading ? 'กำลังโหลด...' : `พบ ${paged.total} รายการ`}</span>
+        <span style={{ fontSize: 12.5, color: '#626863' }}>{paged.loading ? 'กำลังโหลด...' : `พบ ${paged.total} รายการ`}</span>
       </div>
       {paged.loading && eventsAdminView.length === 0 && <LoadingSpinner size={32} label="กำลังโหลดอีเวนท์..." />}
       {paged.error && <LoadError message="โหลดรายการอีเวนท์ไม่สำเร็จ" onRetry={paged.refetch} />}
@@ -423,7 +423,7 @@ export default function EventsTab() {
             <ImageSlot src={e.img} shape="rect" style={{ width: '100%', height: 110 }} placeholder="ภาพงาน" icon={EVENT_ICON} />
             <div style={{ padding: 14 }}>
               <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 3 }}>{e.name}</div>
-              <div style={{ fontSize: 12.5, color: '#6d7a72', marginBottom: 4 }}>{e.dateRange} · {TIME_STATUS_LABEL[e.timeStatus] || 'ยังไม่ระบุวันที่'}</div>
+              <div style={{ fontSize: 12.5, color: '#5f6a63', marginBottom: 4 }}>{e.dateRange} · {TIME_STATUS_LABEL[e.timeStatus] || 'ยังไม่ระบุวันที่'}</div>
               <div style={{ fontSize: 11, fontWeight: 700, color: eventIndexStatus(e).color, marginBottom: 10 }}>{eventIndexStatus(e).label}</div>
               <div style={{ display: 'flex', gap: 8 }}>
                 <button onClick={e.onEdit} style={{ flex: 1, background: '#E8F5E9', color: '#2E7D32', border: 'none', padding: 7, borderRadius: 10, fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>แก้ไข</button>

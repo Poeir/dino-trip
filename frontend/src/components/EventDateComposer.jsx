@@ -101,12 +101,12 @@ export default function EventDateComposer({ mode, onModeChange, start, end, onCh
         onClick={() => setOpen((o) => !o)}
         style={{
           width: '100%', textAlign: 'left', border: '1px solid #DCD8C6', borderRadius: 8, padding: 9, fontSize: 14,
-          background: '#fff', color: displayText ? '#1B1F1C' : '#8a938c', cursor: 'pointer',
+          background: '#fff', color: displayText ? '#1B1F1C' : '#626863', cursor: 'pointer',
           display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8,
         }}
       >
         <span>{displayText || 'เลือกวันที่จัดงาน...'}</span>
-        <span style={{ color: '#8a938c', fontSize: 12 }}>▾</span>
+        <span style={{ color: '#626863', fontSize: 12 }}>▾</span>
       </button>
 
       {open && (
@@ -139,7 +139,7 @@ export default function EventDateComposer({ mode, onModeChange, start, end, onCh
             <button type="button" onClick={() => changeMonth(1)} aria-label="เดือนถัดไป" style={navBtnStyle}>›</button>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 2, marginBottom: 4 }}>
-            {WEEKDAYS.map((w) => <div key={w} style={{ textAlign: 'center', fontSize: 11, fontWeight: 700, color: '#8a938c', padding: '2px 0' }}>{w}</div>)}
+            {WEEKDAYS.map((w) => <div key={w} style={{ textAlign: 'center', fontSize: 11, fontWeight: 700, color: '#626863', padding: '2px 0' }}>{w}</div>)}
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 2, userSelect: 'none' }}>
             {cells.map((d, i) => {
@@ -170,7 +170,7 @@ export default function EventDateComposer({ mode, onModeChange, start, end, onCh
           </div>
 
           {mode === 'custom' && (
-            <div style={{ fontSize: 11, color: '#8a938c', marginTop: 10 }}>ลากเลือกช่วงครอบคลุมทั้งหมด (ไม่บังคับ) -- ใช้บอกระบบว่างานนี้ผ่านไปหรือยัง ส่วนวันที่จริงที่จัดงาน พิมพ์เองในช่องข้อความด้านล่าง</div>
+            <div style={{ fontSize: 11, color: '#626863', marginTop: 10 }}>ลากเลือกช่วงครอบคลุมทั้งหมด (ไม่บังคับ) -- ใช้บอกระบบว่างานนี้ผ่านไปหรือยัง ส่วนวันที่จริงที่จัดงาน พิมพ์เองในช่องข้อความด้านล่าง</div>
           )}
           {(start || end) && (
             <button

@@ -41,7 +41,7 @@ function PointsIntro({ places, placesLoading, rewards, onSignup, onLogin }) {
             <button onClick={onSignup} style={primaryBtn}>สมัครสมาชิกฟรี</button>
             <button onClick={onLogin} style={ghostBtn}>เข้าสู่ระบบ</button>
           </div>
-          <div style={{ fontSize: 13, color: '#6d7a72' }}>QR แต่ละจุดรับพอยท์ได้ครั้งเดียวต่อบัญชี</div>
+          <div style={{ fontSize: 13, color: '#5f6a63' }}>QR แต่ละจุดรับพอยท์ได้ครั้งเดียวต่อบัญชี</div>
         </div>
 
         <div style={{ flex: '1 1 320px', minWidth: 0, position: 'relative', paddingTop: 72 }}>
@@ -49,12 +49,12 @@ function PointsIntro({ places, placesLoading, rewards, onSignup, onLogin }) {
           <div style={{ background: '#FFFCF0', border: '2px dashed #E0B94A', borderRadius: 18, padding: '20px 20px 22px', boxShadow: '0 10px 28px rgba(122,82,5,0.10)', minHeight: 310 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 16 }}>
               <span data-font="culture" style={{ fontSize: 18, fontWeight: 800, color: '#7A5205' }}>บัตรสะสมพอยท์</span>
-              <span style={{ fontSize: 12.5, color: '#8a938c' }}>{placesLoading ? '' : `${places.length} สถานที่ร่วมรายการ`}</span>
+              <span style={{ fontSize: 12.5, color: '#626863' }}>{placesLoading ? '' : `${places.length} สถานที่ร่วมรายการ`}</span>
             </div>
             {placesLoading ? (
               <LoadingSpinner size={28} label="กำลังโหลดสถานที่..." />
             ) : stamps.length === 0 ? (
-              <div style={{ textAlign: 'center', color: '#8a938c', fontSize: 13.5, padding: '24px 0' }}>เร็วๆ นี้จะมีสถานที่ให้สะสมพอยท์</div>
+              <div style={{ textAlign: 'center', color: '#626863', fontSize: 13.5, padding: '24px 0' }}>เร็วๆ นี้จะมีสถานที่ให้สะสมพอยท์</div>
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px 10px' }}>
                 {stamps.map((p, i) => (
@@ -86,7 +86,7 @@ function PointsIntro({ places, placesLoading, rewards, onSignup, onLogin }) {
               <span style={{ flexShrink: 0, width: 34, height: 34, borderRadius: '50%', background: '#2E7D32', color: '#fff', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{i + 1}</span>
               <div>
                 <div style={{ fontWeight: 800, fontSize: 15.5, color: '#1f2a24', marginBottom: 3 }}>{s.title}</div>
-                <div style={{ fontSize: 14, lineHeight: 1.55, color: '#6d7a72' }}>{s.desc}</div>
+                <div style={{ fontSize: 14, lineHeight: 1.55, color: '#5f6a63' }}>{s.desc}</div>
               </div>
             </li>
           ))}
@@ -175,7 +175,7 @@ export default function PointsPage() {
             <span style={{ flexShrink: 0, width: 26, height: 26, borderRadius: '50%', background: '#2E7D32', color: '#fff', fontWeight: 800, fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{i + 1}</span>
             <div>
               <div style={{ fontWeight: 800, fontSize: 14, color: '#1f2a24' }}>{st.title}</div>
-              <div style={{ fontSize: 12.5, lineHeight: 1.5, color: '#6d7a72' }}>{st.desc}</div>
+              <div style={{ fontSize: 12.5, lineHeight: 1.5, color: '#5f6a63' }}>{st.desc}</div>
             </div>
           </li>
         ))}
@@ -186,7 +186,7 @@ export default function PointsPage() {
       {derived.isScanProcessing && (
         <div style={{ textAlign: 'center', padding: 28, border: '1px dashed #C8E6C9', borderRadius: 14, marginBottom: 28 }}>
           <div style={{ width: 40, height: 40, borderRadius: '50%', border: '4px solid #C8E6C9', borderTopColor: '#2E7D32', margin: '0 auto 14px', animation: 'dc-spin 0.8s linear infinite' }}></div>
-          <div style={{ color: '#6d7a72', fontSize: 14 }}>กำลังตรวจสอบ QR Code...</div>
+          <div style={{ color: '#5f6a63', fontSize: 14 }}>กำลังตรวจสอบ QR Code...</div>
         </div>
       )}
       {derived.isScanError && (
@@ -213,7 +213,7 @@ export default function PointsPage() {
         <PinIcon />
         <h2 style={{ fontSize: 17, fontWeight: 800, color: '#1B5E20', margin: 0 }}>สถานที่ที่มี QR รับพอยท์</h2>
       </div>
-      <p style={{ fontSize: 13.5, color: '#6d7a72', margin: '0 0 14px' }}>ไปที่สถานที่เหล่านี้แล้วสแกน QR เพื่อรับพอยท์</p>
+      <p style={{ fontSize: 13.5, color: '#5f6a63', margin: '0 0 14px' }}>ไปที่สถานที่เหล่านี้แล้วสแกน QR เพื่อรับพอยท์</p>
       {qrPlacesLoading && <LoadingSpinner size={32} label="กำลังโหลดสถานที่..." />}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(200px,1fr))', gap: 16, marginBottom: 28 }}>
         {!qrPlacesLoading && qrPlaces.map((p) => (
@@ -225,7 +225,7 @@ export default function PointsPage() {
         <GiftIcon />
         <h2 style={{ fontSize: 17, fontWeight: 800, color: '#1B5E20', margin: 0 }}>ของรางวัล</h2>
       </div>
-      <p style={{ fontSize: 13.5, color: '#6d7a72', margin: '0 0 14px' }}>แลกของรางวัลได้ที่เคาน์เตอร์ แจ้งชื่อหรือเบอร์โทรที่ใช้สมัครกับเจ้าหน้าที่ แล้วเจ้าหน้าที่จะหักพอยท์และมอบของให้</p>
+      <p style={{ fontSize: 13.5, color: '#5f6a63', margin: '0 0 14px' }}>แลกของรางวัลได้ที่เคาน์เตอร์ แจ้งชื่อหรือเบอร์โทรที่ใช้สมัครกับเจ้าหน้าที่ แล้วเจ้าหน้าที่จะหักพอยท์และมอบของให้</p>
       {state.dataLoading && <LoadingSpinner size={32} label="กำลังโหลดของรางวัล..." />}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(200px,1fr))', gap: 16, marginBottom: 28 }}>
         {!state.dataLoading && derived.rewardsView.map((r) => (
@@ -238,7 +238,7 @@ export default function PointsPage() {
             <div style={{
               textAlign: 'center', padding: '7px 10px', borderRadius: 16, fontSize: 12.5, fontWeight: 700,
               background: r.status === 'ready' ? '#E8F5E9' : r.status === 'soldOut' ? '#fdecec' : '#F3F1E7',
-              color: r.status === 'ready' ? '#2E7D32' : r.status === 'soldOut' ? '#a33232' : '#6d7a72',
+              color: r.status === 'ready' ? '#2E7D32' : r.status === 'soldOut' ? '#a33232' : '#5f6a63',
             }}>
               {r.status === 'ready' ? 'แลกได้ที่เคาน์เตอร์' : r.status === 'soldOut' ? 'ของหมด' : `อีก ${r.shortBy} พอยท์`}
             </div>

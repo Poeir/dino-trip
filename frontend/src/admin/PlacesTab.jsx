@@ -257,7 +257,7 @@ export default function PlacesTab() {
             <StarRatingInput value={f.rating} onChange={(v) => actions.updateFormField('rating', v)} />
             {errors.rating
               ? <div style={{ color: '#a33232', fontSize: 11.5, marginTop: 4 }}>{errors.rating}</div>
-              : <div style={{ color: '#8a938c', fontSize: 11.5, marginTop: 4 }}>กรอกด้วยทศนิยม 1 ตำแหน่ง (เช่น 4.5)</div>}
+              : <div style={{ color: '#626863', fontSize: 11.5, marginTop: 4 }}>กรอกด้วยทศนิยม 1 ตำแหน่ง (เช่น 4.5)</div>}
           </fieldset>
           <Field label="ช่วงราคา">
             <input value={f.price || ''} onChange={actions.onField_price} placeholder="เช่น 100-300 บาท" style={{ ...inputStyle, marginBottom: 14 }} />
@@ -285,7 +285,7 @@ export default function PlacesTab() {
           )}
 
           <SectionHeading>รูปภาพ</SectionHeading>
-          <div style={{ fontSize: 11.5, color: '#6d7a72', marginBottom: 8 }}>อัปโหลดได้สูงสุด <strong>{MAX_PHOTOS} รูปต่อสถานที่</strong> รูปแรกจะใช้เป็นรูปหลัก</div>
+          <div style={{ fontSize: 11.5, color: '#5f6a63', marginBottom: 8 }}>อัปโหลดได้สูงสุด <strong>{MAX_PHOTOS} รูปต่อสถานที่</strong> รูปแรกจะใช้เป็นรูปหลัก</div>
           <div style={{ marginBottom: 14 }}>
             <PlacePhotoGallery
               existingPhotos={existingPhotos}
@@ -316,7 +316,7 @@ export default function PlacesTab() {
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13.5, marginBottom: 4 }}>
             <input type="checkbox" checked={f.isActive !== false} onChange={actions.onField_isActive} /> เผยแพร่บนหน้าเว็บ
           </label>
-          <div style={{ fontSize: 11.5, color: '#8a938c', marginBottom: 14 }}>ปิดไว้เพื่อกันไม่ให้สถานที่นี้ไปโผล่ในหน้ารายการสาธารณะ (เช่น สถานที่ที่เพิ่มมาแค่เป็นหมุดของ Event) โดยไม่ต้องลบทิ้ง</div>
+          <div style={{ fontSize: 11.5, color: '#626863', marginBottom: 14 }}>ปิดไว้เพื่อกันไม่ให้สถานที่นี้ไปโผล่ในหน้ารายการสาธารณะ (เช่น สถานที่ที่เพิ่มมาแค่เป็นหมุดของ Event) โดยไม่ต้องลบทิ้ง</div>
 
           <SectionHeading>คำอธิบายและแท็ก</SectionHeading>
           <Field label="คำอธิบาย">
@@ -354,7 +354,7 @@ export default function PlacesTab() {
                     <input type="number" min={0} step={1} value={f.qrPoints || ''} onChange={actions.onField_qrPoints} placeholder="เช่น 10" style={{ border: '1px solid #DCD8C6', borderRadius: 8, padding: 7, fontSize: 13.5, width: 130 }} />
                   </Field>
                 </div>
-                <div style={{ fontSize: 11.5, color: !state.editingId ? '#8a938c' : linkedQr ? '#2E7D32' : '#a33232', display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+                <div style={{ fontSize: 11.5, color: !state.editingId ? '#626863' : linkedQr ? '#2E7D32' : '#a33232', display: 'flex', gap: 6, alignItems: 'flex-start' }}>
                   <span>{!state.editingId ? 'ℹ' : linkedQr ? '✓' : '⚠'}</span>
                   <span>
                     {!state.editingId
@@ -382,7 +382,7 @@ export default function PlacesTab() {
           <option value="rating-desc">คะแนนสูง-ต่ำ</option>
           <option value="rating-asc">คะแนนต่ำ-สูง</option>
         </select>
-        <span style={{ fontSize: 12.5, color: '#8a938c' }}>{paged.loading ? 'กำลังโหลด...' : `พบ ${paged.total} รายการ`}</span>
+        <span style={{ fontSize: 12.5, color: '#626863' }}>{paged.loading ? 'กำลังโหลด...' : `พบ ${paged.total} รายการ`}</span>
       </div>
       {paged.loading && placesView.length === 0 && <LoadingSpinner size={32} label="กำลังโหลดสถานที่..." />}
       {paged.error && <LoadError message="โหลดรายการสถานที่ไม่สำเร็จ" onRetry={paged.refetch} />}
@@ -395,10 +395,10 @@ export default function PlacesTab() {
             {p.googlePlaceId && (
               <div style={{ marginBottom: 8 }}>
                 <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', fontSize: 11, fontWeight: 700 }}>
-                  {p.lockedFields.length > 0 && <span title={p.lockedFields.map((x) => SYNC_FIELD_LABEL[x]).join(', ')} style={{ background: '#f3f3f0', color: '#6d7a72', padding: '2px 8px', borderRadius: 10 }}>🔒 ล็อก {p.lockedFields.length}</span>}
+                  {p.lockedFields.length > 0 && <span title={p.lockedFields.map((x) => SYNC_FIELD_LABEL[x]).join(', ')} style={{ background: '#f3f3f0', color: '#5f6a63', padding: '2px 8px', borderRadius: 10 }}>🔒 ล็อก {p.lockedFields.length}</span>}
                   {p.hasGoogleDiff && <span style={{ background: '#FFF8E1', color: '#7A5205', padding: '2px 8px', borderRadius: 10 }}>Google มีค่าใหม่</span>}
                   {['CLOSED_TEMPORARILY', 'CLOSED_PERMANENTLY'].includes(p.businessStatus) && <span style={{ background: '#fdecec', color: '#a33232', padding: '2px 8px', borderRadius: 10 }}>{p.businessStatus === 'CLOSED_PERMANENTLY' ? 'ปิดถาวร' : 'ปิดชั่วคราว'}</span>}
-                  <span style={{ color: '#8a938c', fontWeight: 400 }}>{p.lastSyncedAt ? `ซิงก์ ${new Date(p.lastSyncedAt).toLocaleDateString('th-TH', { dateStyle: 'medium' })}` : 'ยังไม่เคยซิงก์'}</span>
+                  <span style={{ color: '#626863', fontWeight: 400 }}>{p.lastSyncedAt ? `ซิงก์ ${new Date(p.lastSyncedAt).toLocaleDateString('th-TH', { dateStyle: 'medium' })}` : 'ยังไม่เคยซิงก์'}</span>
                 </div>
               </div>
             )}
@@ -406,7 +406,7 @@ export default function PlacesTab() {
               <button onClick={p.onEdit} style={{ flex: 1, background: '#E8F5E9', color: '#2E7D32', border: 'none', padding: 7, borderRadius: 10, fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>แก้ไข</button>
               <button onClick={p.onDelete} style={{ flex: 1, background: '#fdecec', color: '#a33232', border: 'none', padding: 7, borderRadius: 10, fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>ลบ</button>
             </div>
-            <button onClick={p.onToggleActive} style={{ width: '100%', background: p.isActive ? '#fff' : '#FFF8E1', color: p.isActive ? '#6d7a72' : '#7A5205', border: '1px solid #DCD8C6', padding: 7, borderRadius: 10, fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>
+            <button onClick={p.onToggleActive} style={{ width: '100%', background: p.isActive ? '#fff' : '#FFF8E1', color: p.isActive ? '#5f6a63' : '#7A5205', border: '1px solid #DCD8C6', padding: 7, borderRadius: 10, fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>
               {p.isActive ? 'ซ่อนจากหน้าเว็บ' : 'เผยแพร่อีกครั้ง'}
             </button>
           </PlaceCard>

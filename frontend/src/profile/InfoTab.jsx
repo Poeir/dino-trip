@@ -105,7 +105,7 @@ export default function InfoTab({ profile, onSaved }) {
         <button type="submit" disabled={!dirty || saving} style={primaryBtn(!dirty || saving)}>{saving ? 'กำลังบันทึก...' : 'บันทึกการเปลี่ยนแปลง'}</button>
         {dirty && <button type="button" onClick={() => { setForm(fromProfile(profile)); setTouched(false); setError('') }} style={ghostBtn}>ยกเลิกการแก้ไข</button>}
       </div>
-      <p style={{ fontSize: 12, color: '#8a938c', marginTop: 14 }}>อีเมลแก้ไขได้ที่แท็บ “ความปลอดภัย”</p>
+      <p style={{ fontSize: 12, color: '#626863', marginTop: 14 }}>อีเมลแก้ไขได้ที่แท็บ “ความปลอดภัย”</p>
     </form>
   )
 }

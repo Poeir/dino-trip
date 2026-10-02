@@ -72,7 +72,7 @@ function UserPicker({ onPick }) {
       {loading && <LoadingSpinner size={24} label="กำลังค้นหา..." />}
       {error && <div style={{ fontSize: 13, color: '#a33232' }}>{error}</div>}
       {!loading && !error && results && results.length === 0 && (
-        <div style={{ fontSize: 13.5, color: '#8a938c' }}>ไม่พบบัญชีที่ใช้งานอยู่ตรงกับ "{query.trim()}" (บัญชีที่ถูกระงับหรือลบแล้วแลกให้ไม่ได้)</div>
+        <div style={{ fontSize: 13.5, color: '#626863' }}>ไม่พบบัญชีที่ใช้งานอยู่ตรงกับ "{query.trim()}" (บัญชีที่ถูกระงับหรือลบแล้วแลกให้ไม่ได้)</div>
       )}
       {results && results.length > 0 && (
         <div style={{ display: 'grid', gap: 8, maxWidth: 560, opacity: loading ? 0.5 : 1 }}>
@@ -84,7 +84,7 @@ function UserPicker({ onPick }) {
               <Avatar user={u} size={40} />
               <span style={{ flex: 1, minWidth: 0 }}>
                 <span style={{ display: 'block', fontWeight: 700, color: '#1f2a24' }}>{u.displayName}</span>
-                <span style={{ display: 'block', fontSize: 12.5, color: '#6d7a72', overflowWrap: 'anywhere' }}>{[u.phone, u.email].filter(Boolean).join(' · ')}</span>
+                <span style={{ display: 'block', fontSize: 12.5, color: '#5f6a63', overflowWrap: 'anywhere' }}>{[u.phone, u.email].filter(Boolean).join(' · ')}</span>
               </span>
               <span style={{ fontWeight: 800, color: '#7A5205', whiteSpace: 'nowrap' }}>{u.pointsBalance} พอยท์</span>
             </button>
@@ -189,7 +189,7 @@ export default function RedeemTab() {
     <>
       <div style={{ marginBottom: 20 }}>
         <h1 style={{ fontSize: 22, fontWeight: 800, color: '#1B5E20', margin: '0 0 4px' }}>แลกของรางวัลที่เคาน์เตอร์</h1>
-        <div style={{ fontSize: 13.5, color: '#6d7a72' }}>ค้นหาผู้ใช้ เลือกของรางวัล แล้วยืนยัน ระบบจะหักพอยท์และลดจำนวนของรางวัลให้ในขั้นตอนเดียว</div>
+        <div style={{ fontSize: 13.5, color: '#5f6a63' }}>ค้นหาผู้ใช้ เลือกของรางวัล แล้วยืนยัน ระบบจะหักพอยท์และลดจำนวนของรางวัลให้ในขั้นตอนเดียว</div>
       </div>
 
       <div style={panel}>
@@ -199,10 +199,10 @@ export default function RedeemTab() {
             <Avatar user={user} size={52} />
             <div style={{ flex: 1, minWidth: 180 }}>
               <div style={{ fontWeight: 800, fontSize: 16, color: '#1f2a24' }}>{user.displayName}</div>
-              <div style={{ fontSize: 13, color: '#6d7a72', overflowWrap: 'anywhere' }}>{[user.phone, user.email].filter(Boolean).join(' · ')}</div>
+              <div style={{ fontSize: 13, color: '#5f6a63', overflowWrap: 'anywhere' }}>{[user.phone, user.email].filter(Boolean).join(' · ')}</div>
             </div>
             <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: 12, color: '#8a938c' }}>พอยท์คงเหลือ</div>
+              <div style={{ fontSize: 12, color: '#626863' }}>พอยท์คงเหลือ</div>
               <div style={{ fontSize: 24, fontWeight: 800, color: '#7A5205' }}>{user.pointsBalance}</div>
             </div>
             <button onClick={() => setUser(null)} style={ghostBtn}>เปลี่ยนผู้ใช้</button>
@@ -220,7 +220,7 @@ export default function RedeemTab() {
           ) : rewardsError ? (
             <LoadError message="โหลดรายการของรางวัลไม่สำเร็จ" onRetry={loadRewards} />
           ) : rewards.length === 0 ? (
-            <div style={{ fontSize: 13.5, color: '#8a938c' }}>ยังไม่มีของรางวัลในระบบ เพิ่มได้ที่แท็บ "QR & พอยท์"</div>
+            <div style={{ fontSize: 13.5, color: '#626863' }}>ยังไม่มีของรางวัลในระบบ เพิ่มได้ที่แท็บ "QR & พอยท์"</div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(220px,1fr))', gap: 14, opacity: rewardsLoading ? 0.6 : 1 }}>
               {rewards.map((r) => {
@@ -230,7 +230,7 @@ export default function RedeemTab() {
                     {r.imageUrl && <ImageSlot src={r.imageUrl} radius={10} placeholder={r.name} icon={REWARD_ICON} style={{ width: '100%', height: 110, marginBottom: 10 }} />}
                     <div style={{ fontWeight: 700, fontSize: 14.5, color: '#1f2a24', marginBottom: 4 }}>{r.name}</div>
                     <div style={{ fontSize: 13, fontWeight: 700, color: '#7A5205' }}>{r.cost} พอยท์</div>
-                    <div style={{ fontSize: 12.5, fontWeight: 700, color: r.stock === 0 ? '#a33232' : '#6d7a72', marginBottom: 12 }}>{stockText(r)}</div>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: r.stock === 0 ? '#a33232' : '#5f6a63', marginBottom: 12 }}>{stockText(r)}</div>
                     <button
                       onClick={() => { setDialogError(''); setConfirmReward(r) }} disabled={!!blocked}
                       style={{ ...primaryBtn(!!blocked), marginTop: 'auto', padding: '9px 14px' }}
@@ -257,26 +257,26 @@ export default function RedeemTab() {
         ) : historyLoading && history.length === 0 ? (
           <LoadingSpinner size={32} label="กำลังโหลดประวัติ..." />
         ) : history.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 24, color: '#8a938c', fontSize: 13.5 }}>ยังไม่มีรายการ</div>
+          <div style={{ textAlign: 'center', padding: 24, color: '#626863', fontSize: 13.5 }}>ยังไม่มีรายการ</div>
         ) : (
           <div style={{ overflowX: 'auto', border: '1px solid #EFEBDB', borderRadius: 12, opacity: historyLoading ? 0.6 : 1 }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
               <thead>
-                <tr style={{ textAlign: 'left', color: '#6d7a72', background: '#FBF8EE' }}>
+                <tr style={{ textAlign: 'left', color: '#5f6a63', background: '#FBF8EE' }}>
                   {['วันเวลา', 'ผู้ใช้', 'ของรางวัล', 'พอยท์', 'ทำรายการโดย', 'สถานะ', ''].map((h, i) => <th key={i} style={{ padding: '10px 14px', fontWeight: 700, whiteSpace: 'nowrap' }}>{h}</th>)}
                 </tr>
               </thead>
               <tbody>
                 {history.map((h) => (
                   <tr key={h.id} style={{ borderTop: '1px solid #EFEBDB', opacity: h.status === 'cancelled' ? 0.65 : 1 }}>
-                    <td style={{ padding: '10px 14px', color: '#6d7a72', whiteSpace: 'nowrap' }}>{fmtDateTime(h.redeemedAt)}</td>
+                    <td style={{ padding: '10px 14px', color: '#5f6a63', whiteSpace: 'nowrap' }}>{fmtDateTime(h.redeemedAt)}</td>
                     <td style={{ padding: '10px 14px' }}>
                       <div style={{ fontWeight: 700 }}>{h.userName}</div>
-                      {h.userPhone && <div style={{ fontSize: 12, color: '#6d7a72' }}>{h.userPhone}</div>}
+                      {h.userPhone && <div style={{ fontSize: 12, color: '#5f6a63' }}>{h.userPhone}</div>}
                     </td>
                     <td style={{ padding: '10px 14px' }}>{h.rewardName}</td>
                     <td style={{ padding: '10px 14px', color: '#7A5205', fontWeight: 700 }}>{h.cost}</td>
-                    <td style={{ padding: '10px 14px', color: '#6d7a72' }}>{h.adminName || '-'}</td>
+                    <td style={{ padding: '10px 14px', color: '#5f6a63' }}>{h.adminName || '-'}</td>
                     <td style={{ padding: '10px 14px' }}>
                       {h.status === 'cancelled'
                         ? <span title={h.cancelReason || ''} style={{ fontSize: 11.5, fontWeight: 700, background: '#fdecec', color: '#a33232', padding: '3px 10px', borderRadius: 20, whiteSpace: 'nowrap' }}>ยกเลิกแล้ว</span>
@@ -293,7 +293,7 @@ export default function RedeemTab() {
             </table>
           </div>
         )}
-        <div style={{ fontSize: 12, color: '#8a938c', marginTop: 8 }}>แสดง 100 รายการล่าสุด</div>
+        <div style={{ fontSize: 12, color: '#626863', marginTop: 8 }}>แสดง 100 รายการล่าสุด</div>
       </div>
 
       <Modal open={!!confirmReward} onClose={busy ? () => {} : closeDialogs} title="ยืนยันการแลกของรางวัล" maxWidth={460}>
@@ -305,7 +305,7 @@ export default function RedeemTab() {
               <div>หักพอยท์: <b style={{ color: '#7A5205' }}>{confirmReward.cost}</b> (คงเหลือ {user.pointsBalance} → <b>{user.pointsBalance - confirmReward.cost}</b>)</div>
               {confirmReward.stock != null && <div>จำนวนของรางวัล: เหลือ {confirmReward.stock} → <b>{confirmReward.stock - 1}</b> ชิ้น</div>}
             </div>
-            <div style={{ fontSize: 13, color: '#6d7a72', marginBottom: 14 }}>กดยืนยันเมื่อพร้อมมอบของให้ผู้ใช้แล้ว หากบันทึกผิดสามารถยกเลิกรายการได้จากประวัติ</div>
+            <div style={{ fontSize: 13, color: '#5f6a63', marginBottom: 14 }}>กดยืนยันเมื่อพร้อมมอบของให้ผู้ใช้แล้ว หากบันทึกผิดสามารถยกเลิกรายการได้จากประวัติ</div>
             {dialogError && <div style={{ fontSize: 13, color: '#a33232', marginBottom: 12 }}>{dialogError}</div>}
             <div style={{ display: 'flex', gap: 10 }}>
               <button onClick={handleRedeem} disabled={busy} style={primaryBtn(busy)}>{busy ? 'กำลังบันทึก...' : 'ยืนยันแลกของรางวัล'}</button>

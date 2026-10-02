@@ -17,7 +17,7 @@ import {
   createTrip, fetchTrip, setTripItemLike,
 } from '../lib/apiClient.js'
 import { sendChatMessage, requestTripPlan } from '../lib/chatbotService.js'
-import { getCurrentPosition, LOCATION_ERROR_MESSAGE } from '../lib/geolocation.js'
+import { getCurrentPosition, LOCATION_ERROR_MESSAGE, GENERIC_LOCATION_ERROR } from '../lib/geolocation.js'
 import { isWelcomeSnoozed, snoozeWelcome } from '../lib/welcomeSnooze.js'
 
 const AppContext = createContext(null)
@@ -248,16 +248,35 @@ export function AppProvider({ children }) {
   useEffect(() => {
     loadData()
 
-    // Best-effort: ranking falls back to rating-only if the user denies/ignores
-    // the permission prompt or the browser has no geolocation support.
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => setState({ userLocation: { lat: pos.coords.latitude, lng: pos.coords.longitude } }),
-        () => {},
-        { timeout: 8000, maximumAge: 300000 }
-      )
+    // Don't pop the location permission prompt on page load -- browsers flag it
+    // and visitors distrust a site that asks before they know why. If this site
+    // was already allowed, pick the location up silently (no prompt can appear
+    // when the state is 'granted'); otherwise it's requested when the visitor
+    // uses a feature that needs it (requestUserLocation below). Ranking falls
+    // back to rating-only until then.
+    if (navigator.permissions?.query) {
+      navigator.permissions.query({ name: 'geolocation' })
+        .then((status) => { if (status.state === 'granted') return requestUserLocation() })
+        .catch(() => {})
     }
   }, [])
+
+  // Asks the browser for the visitor's position (this is what shows the
+  // permission prompt) and stores it. Rejects with an Error carrying `.reason`
+  // ('denied' | 'timeout' | 'unavailable' | 'unsupported').
+  const requestUserLocation = async () => {
+    const loc = await getCurrentPosition({ timeoutMs: 8000 })
+    setState({ userLocation: loc })
+    return loc
+  }
+  // Home page's "ดูที่ใกล้ฉัน" button.
+  const enableNearbyPlaces = async () => {
+    try {
+      await requestUserLocation()
+    } catch (err) {
+      showToast(GENERIC_LOCATION_ERROR[err.reason] ?? GENERIC_LOCATION_ERROR.unavailable, 4500)
+    }
+  }
 
   // TripFormPage's "ต้องไปให้ได้" (mustGo) autocomplete -- used to be a
   // client-side filter over the bulk-loaded `places` array, which no longer
@@ -581,13 +600,19 @@ export function AppProvider({ children }) {
   // replaces the whole accommodation, since a new search result has its own
   // name/address too.
   const onAccommodationSelect = (place) => updateTripField('accommodation', { name: place.name, address: place.address, lat: place.lat, lng: place.lng })
-  // Reuses the geolocation coordinate already sitting in state.userLocation
-  // (see the navigator.geolocation call in the app-mount effect below) --
-  // best-effort no-op if it's still null (denied/unsupported/not resolved
-  // yet), same as every other consumer of userLocation in this file.
-  const useCurrentLocationForAccommodation = () => {
-    const loc = stateRef.current.userLocation
-    if (!loc) return
+  // Uses the coordinate already in state.userLocation, or asks the browser for
+  // it now (this is the click that shows the permission prompt) and tells the
+  // visitor what to do if that fails.
+  const useCurrentLocationForAccommodation = async () => {
+    let loc = stateRef.current.userLocation
+    if (!loc) {
+      try {
+        loc = await requestUserLocation()
+      } catch (err) {
+        showToast(GENERIC_LOCATION_ERROR[err.reason] ?? GENERIC_LOCATION_ERROR.unavailable, 4500)
+        return
+      }
+    }
     updateTripField('accommodation', { name: 'ตำแหน่งปัจจุบันของฉัน', address: '', lat: loc.lat, lng: loc.lng })
   }
   const setTripDatePreset = (preset) => {
@@ -1084,7 +1109,7 @@ export function AppProvider({ children }) {
   })
 
   const actions = {
-    showToast, toggleMobileMenu, closeMobileMenu, closeWelcomeModal, snoozeWelcomeModal, welcomeGoTrip, welcomeGoPoints,
+    showToast, toggleMobileMenu, closeMobileMenu, closeWelcomeModal, snoozeWelcomeModal, enableNearbyPlaces, welcomeGoTrip, welcomeGoPoints,
     goHome, goPlaces, goEvents, goPublic, goAdminLogin, goTripForm, nextStep, prevStep, goToStep,
     goPoints, goLogin, goSignup, goForgotPassword, openPlace, openEvent, setSearchQuery, onSearchChange, setCategory,
     setEventSearchQuery, onEventSearchChange, toggleFavorite, togglePlaceActive,
@@ -1188,7 +1213,7 @@ export function AppProvider({ children }) {
     const active = b === s.tripForm.budget
     return {
       label: b, onClick: () => setBudget(b), desc: budgetMeta[b],
-      bg: active ? '#E8F5E9' : '#fff', color: active ? '#1B5E20' : '#3c463f', descColor: active ? '#2E7D32' : '#8a938c', borderColor: active ? '#2E7D32' : '#E7E3D2',
+      bg: active ? '#E8F5E9' : '#fff', color: active ? '#1B5E20' : '#3c463f', descColor: active ? '#2E7D32' : '#626863', borderColor: active ? '#2E7D32' : '#E7E3D2',
       dotBg: active ? 'linear-gradient(135deg,#66BB6A,#388E3C)' : '#fff'
     }
   })
@@ -1196,7 +1221,7 @@ export function AppProvider({ children }) {
     const active = a === s.tripForm.areaScope
     return {
       label: a, onClick: () => setAreaScope(a), desc: areaScopeMeta[a],
-      bg: active ? '#E8F5E9' : '#fff', color: active ? '#1B5E20' : '#3c463f', descColor: active ? '#2E7D32' : '#8a938c', borderColor: active ? '#2E7D32' : '#E7E3D2',
+      bg: active ? '#E8F5E9' : '#fff', color: active ? '#1B5E20' : '#3c463f', descColor: active ? '#2E7D32' : '#626863', borderColor: active ? '#2E7D32' : '#E7E3D2',
       dotBg: active ? 'linear-gradient(135deg,#66BB6A,#388E3C)' : '#fff'
     }
   })
@@ -1209,7 +1234,7 @@ export function AppProvider({ children }) {
     const active = p.key === s.tripForm.pace
     return {
       label: p.label, desc: p.desc, onClick: () => setPace(p.key),
-      bg: active ? '#E8F5E9' : '#fff', color: active ? '#1B5E20' : '#3c463f', descColor: active ? '#2E7D32' : '#8a938c', borderColor: active ? '#2E7D32' : '#E7E3D2',
+      bg: active ? '#E8F5E9' : '#fff', color: active ? '#1B5E20' : '#3c463f', descColor: active ? '#2E7D32' : '#626863', borderColor: active ? '#2E7D32' : '#E7E3D2',
       dotBg: active ? 'linear-gradient(135deg,#66BB6A,#388E3C)' : '#fff'
     }
   })
@@ -1246,8 +1271,8 @@ export function AppProvider({ children }) {
           durationLabel: isHotelReturn ? 'ถึงที่พัก' : (formatDurationMinutes(durationMin) ? `อยู่ประมาณ ${formatDurationMinutes(durationMin)}` : null),
           onLike: () => setItemLike(d.dayNum, it.placeId, true),
           onDislike: () => setItemLike(d.dayNum, it.placeId, false),
-          likeBg: it.liked === true ? '#E8F5E9' : '#fff', likeColor: it.liked === true ? '#2E7D32' : '#6d7a72', likeBorder: it.liked === true ? '#2E7D32' : '#DCD8C6',
-          dislikeBg: it.liked === false ? '#fdecec' : '#fff', dislikeColor: it.liked === false ? '#a33232' : '#6d7a72', dislikeBorder: it.liked === false ? '#a33232' : '#DCD8C6'
+          likeBg: it.liked === true ? '#E8F5E9' : '#fff', likeColor: it.liked === true ? '#2E7D32' : '#5f6a63', likeBorder: it.liked === true ? '#2E7D32' : '#DCD8C6',
+          dislikeBg: it.liked === false ? '#fdecec' : '#fff', dislikeColor: it.liked === false ? '#a33232' : '#5f6a63', dislikeBorder: it.liked === false ? '#a33232' : '#DCD8C6'
         }
       })
     }))

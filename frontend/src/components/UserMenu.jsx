@@ -35,7 +35,7 @@ export default function UserMenu() {
           <Avatar user={user} size={32} />
           <span className="dc-account-name">{state.userName}</span>
           <svg width="10" height="6" viewBox="0 0 10 6" fill="none" aria-hidden="true" style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }}>
-            <path d="M1 1l4 4 4-4" stroke="#6d7a72" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M1 1l4 4 4-4" stroke="#5f6a63" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </button>
 
@@ -45,7 +45,7 @@ export default function UserMenu() {
               <Avatar user={user} size={44} />
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontSize: 14.5, fontWeight: 800, color: '#1B5E20', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{state.userName}</div>
-                <div style={{ fontSize: 12, color: '#8a938c', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.email}</div>
+                <div style={{ fontSize: 12, color: '#626863', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.email}</div>
               </div>
             </div>
             <div className="dc-menu-rule" />

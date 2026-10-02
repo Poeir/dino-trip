@@ -25,11 +25,11 @@ function Row({ item }) {
     <li style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderBottom: '1px solid #F0EDE0' }}>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 14.5, fontWeight: 700, color: '#1f2a24', textDecoration: cancelled ? 'line-through' : 'none', wordBreak: 'break-word' }}>{item.title}</div>
-        <div style={{ fontSize: 12, color: '#8a938c' }}>
+        <div style={{ fontSize: 12, color: '#626863' }}>
           {TYPE_LABEL[item.type]} · {fmt(item.at)}
           {cancelled && <span style={{ color: '#a33232', fontWeight: 700 }}> · ยกเลิกแล้ว (คืนพอยท์)</span>}
         </div>
-        {item.note && <div style={{ fontSize: 12.5, color: '#6d7a72', marginTop: 2 }}>เหตุผล: {item.note}</div>}
+        {item.note && <div style={{ fontSize: 12.5, color: '#5f6a63', marginTop: 2 }}>เหตุผล: {item.note}</div>}
       </div>
       <div data-font="culture" style={{ fontWeight: 900, fontSize: 16, color: cancelled ? '#a9b3ac' : positive ? '#2E7D32' : '#a33232', textDecoration: cancelled ? 'line-through' : 'none', whiteSpace: 'nowrap' }}>
         {positive ? '+' : ''}{item.delta}

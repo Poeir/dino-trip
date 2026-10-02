@@ -36,10 +36,10 @@ export default function EventDetailPage() {
   const ev = foundEvent || { suitableFor: [] }
   return (
     <main style={{ maxWidth: 1360, margin: '0 auto', padding: '28px 32px 60px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5, color: '#8a938c', flexWrap: 'wrap' }}>
-        <a href="#" onClick={(e) => { e.preventDefault(); actions.goHome() }} style={{ color: '#8a938c', fontWeight: 600 }}>หน้าแรก</a>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5, color: '#626863', flexWrap: 'wrap' }}>
+        <a href="#" onClick={(e) => { e.preventDefault(); actions.goHome() }} style={{ color: '#626863', fontWeight: 600 }}>หน้าแรก</a>
         <span>/</span>
-        <a href="#" onClick={(e) => { e.preventDefault(); actions.goEvents() }} style={{ color: '#8a938c', fontWeight: 600 }}>กิจกรรม &amp; เทศกาล</a>
+        <a href="#" onClick={(e) => { e.preventDefault(); actions.goEvents() }} style={{ color: '#626863', fontWeight: 600 }}>กิจกรรม &amp; เทศกาล</a>
         <span>/</span>
         <span style={{ color: '#1B5E20', fontWeight: 700 }}>{ev.name}</span>
       </div>

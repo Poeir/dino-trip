@@ -4,6 +4,7 @@ import ScrollToTop from './components/ScrollToTop.jsx'
 import Header from './components/Header.jsx'
 import BottomNav from './components/BottomNav.jsx'
 import WelcomeModal from './components/WelcomeModal.jsx'
+import Toast from './components/Toast.jsx'
 import Footer from './components/Footer.jsx'
 import ChatWidget from './components/ChatWidget.jsx'
 
@@ -33,6 +34,10 @@ function PublicLayout() {
     <div data-role="public-layout" style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
       <Header />
       <WelcomeModal />
+      {/* Public pages call showToast() too ("link copied", "please log in", ...);
+          the toast used to be mounted only inside the admin dashboard, so none of
+          those were ever shown to visitors. */}
+      <Toast />
       <main style={{ flex: 1 }}>
         <Outlet />
       </main>

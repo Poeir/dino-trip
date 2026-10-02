@@ -40,7 +40,7 @@ function Badge({ children, bg, color }) {
 
 const OwnerBadge = ({ owner }) => owner
   ? <Badge bg="#E8F5E9" color="#2E7D32">เข้าสู่ระบบ</Badge>
-  : <Badge bg="#f3f3f0" color="#6d7a72">ไม่ได้เข้าสู่ระบบ</Badge>
+  : <Badge bg="#f3f3f0" color="#5f6a63">ไม่ได้เข้าสู่ระบบ</Badge>
 
 // What (if anything) is wrong with a stop's place today.
 function placeIssue(item) {
@@ -53,7 +53,7 @@ function placeIssue(item) {
 function InfoRow({ label, children }) {
   return (
     <div style={{ minWidth: 0 }}>
-      <div style={{ fontSize: 12, color: '#8a938c', marginBottom: 2 }}>{label}</div>
+      <div style={{ fontSize: 12, color: '#626863', marginBottom: 2 }}>{label}</div>
       <div style={{ fontSize: 14, color: '#1f2a24', overflowWrap: 'anywhere' }}>{children || '-'}</div>
     </div>
   )
@@ -95,8 +95,8 @@ function TripDetail({ trip }) {
               <div key={it.id} style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', padding: '8px 14px', borderTop: '1px solid #EFEBDB', fontSize: 13.5 }}>
                 <span style={{ width: 92, color: '#2E7D32', fontWeight: 700, flexShrink: 0 }}>{it.arrivalTime}{it.departureTime !== it.arrivalTime ? ` – ${it.departureTime}` : ''}</span>
                 <span style={{ flex: 1, minWidth: 140, color: '#1f2a24' }}>{it.place?.name || it.placeName}</span>
-                {it.kind === 'hotel' && <Badge bg="#f3f3f0" color="#6d7a72">กลับที่พัก</Badge>}
-                {it.kind === 'free_time' && <Badge bg="#f3f3f0" color="#6d7a72">เวลาว่าง</Badge>}
+                {it.kind === 'hotel' && <Badge bg="#f3f3f0" color="#5f6a63">กลับที่พัก</Badge>}
+                {it.kind === 'free_time' && <Badge bg="#f3f3f0" color="#5f6a63">เวลาว่าง</Badge>}
                 {issue && <Badge bg="#fdecec" color="#a33232">⚠ {issue}</Badge>}
                 {it.liked === true && <Badge bg="#E8F5E9" color="#2E7D32">ถูกใจ</Badge>}
                 {it.liked === false && <Badge bg="#fdecec" color="#a33232">ไม่ถูกใจ</Badge>}
@@ -162,7 +162,7 @@ export default function TripsTab() {
     <>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
         <h1 style={{ fontSize: 22, fontWeight: 800, color: '#1B5E20', margin: 0 }}>ทริป</h1>
-        <span style={{ fontSize: 13, color: '#6d7a72' }}>{paged.loading ? 'กำลังโหลด...' : `พบ ${paged.total} แผน`}</span>
+        <span style={{ fontSize: 13, color: '#5f6a63' }}>{paged.loading ? 'กำลังโหลด...' : `พบ ${paged.total} แผน`}</span>
       </div>
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
@@ -181,7 +181,7 @@ export default function TripsTab() {
           <div style={{ background: '#fff', border: '1px solid #E7E3D2', borderRadius: 14, overflowX: 'auto', opacity: paged.loading ? 0.5 : 1, transition: 'opacity 0.15s ease' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
               <thead>
-                <tr style={{ textAlign: 'left', color: '#6d7a72', background: '#FBF8EE' }}>
+                <tr style={{ textAlign: 'left', color: '#5f6a63', background: '#FBF8EE' }}>
                   {['ทริป', 'ผู้สร้าง', 'วันที่เดินทาง', 'สถานที่', 'ค่าใช้จ่าย', 'สร้างเมื่อ'].map((h) => <th key={h} style={{ padding: '10px 14px', fontWeight: 700, whiteSpace: 'nowrap' }}>{h}</th>)}
                 </tr>
               </thead>
@@ -194,12 +194,12 @@ export default function TripsTab() {
                     </td>
                     <td style={{ padding: '10px 14px' }}>
                       <OwnerBadge owner={t.owner} />
-                      {t.owner && <div style={{ fontSize: 12.5, color: '#6d7a72', marginTop: 3 }}>{t.owner.name}</div>}
+                      {t.owner && <div style={{ fontSize: 12.5, color: '#5f6a63', marginTop: 3 }}>{t.owner.name}</div>}
                     </td>
-                    <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', color: '#3c463f' }}>{fmtRange(t)} <span style={{ color: '#8a938c' }}>({t.dayCount} วัน)</span></td>
+                    <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', color: '#3c463f' }}>{fmtRange(t)} <span style={{ color: '#626863' }}>({t.dayCount} วัน)</span></td>
                     <td style={{ padding: '10px 14px' }}>{t.placeCount}</td>
                     <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>฿{Math.round(t.totalCostEstimate).toLocaleString('th-TH')}</td>
-                    <td style={{ padding: '10px 14px', color: '#6d7a72', whiteSpace: 'nowrap' }}>{fmtDateTime(t.createdAt)}</td>
+                    <td style={{ padding: '10px 14px', color: '#5f6a63', whiteSpace: 'nowrap' }}>{fmtDateTime(t.createdAt)}</td>
                   </tr>
                 ))}
               </tbody>

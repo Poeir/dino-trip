@@ -45,7 +45,7 @@ function PasswordCard() {
         <Field label="รหัสผ่านปัจจุบัน" required><input type="password" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} style={inputStyle} /></Field>
         <Field label="รหัสผ่านใหม่" required><input type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} style={inputStyle} /></Field>
         <ul style={{ listStyle: 'none', margin: '-6px 0 0', padding: 0, fontSize: 12 }}>
-          {RULES.map((r) => <li key={r.label} style={{ color: r.test(next) ? '#2E7D32' : '#8a938c' }}>{r.test(next) ? '✓' : '○'} {r.label}</li>)}
+          {RULES.map((r) => <li key={r.label} style={{ color: r.test(next) ? '#2E7D32' : '#626863' }}>{r.test(next) ? '✓' : '○'} {r.label}</li>)}
         </ul>
         <Field label="ยืนยันรหัสผ่านใหม่" required error={confirm && !matches ? 'รหัสผ่านไม่ตรงกัน' : undefined}>
           <input type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} style={inputStyle} />

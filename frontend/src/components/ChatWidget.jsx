@@ -135,7 +135,7 @@ export default function ChatWidget() {
                   </div>
                 </div>
                 {msg.from === 'bot' && msg.places && msg.places.length > 0 && (
-                  <div style={{ paddingLeft: 29, fontSize: 10.5, color: '#8a938c' }}>
+                  <div style={{ paddingLeft: 29, fontSize: 10.5, color: '#626863' }}>
                     อ้างอิงจาก {msg.places.length} สถานที่
                   </div>
                 )}
@@ -144,14 +144,14 @@ export default function ChatWidget() {
                     {msg.places.map((p) => (
                       <div key={p.id} onClick={() => actions.openPlace(p.id)} style={{ flexShrink: 0, width: 140, background: '#fff', border: '1px solid #E7E3D2', borderRadius: 12, padding: 10, cursor: 'pointer' }}>
                         <div style={{ fontWeight: 700, fontSize: 12, color: '#1f2a24', marginBottom: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</div>
-                        <div style={{ fontSize: 11, color: '#6d7a72', marginBottom: 3 }}>★ {p.rating ?? '-'}</div>
-                        <div style={{ fontSize: 10.5, color: '#8a938c', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.address}</div>
+                        <div style={{ fontSize: 11, color: '#5f6a63', marginBottom: 3 }}>★ {p.rating ?? '-'}</div>
+                        <div style={{ fontSize: 10.5, color: '#626863', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.address}</div>
                       </div>
                     ))}
                   </div>
                 )}
                 {msg.from === 'bot' && msg.events && msg.events.length > 0 && (
-                  <div style={{ paddingLeft: 29, fontSize: 10.5, color: '#8a938c' }}>
+                  <div style={{ paddingLeft: 29, fontSize: 10.5, color: '#626863' }}>
                     อ้างอิงจาก {msg.events.length} อีเวนท์
                   </div>
                 )}
@@ -160,8 +160,8 @@ export default function ChatWidget() {
                     {msg.events.map((e) => (
                       <div key={e.id} onClick={() => actions.openEvent(e.id)} style={{ flexShrink: 0, width: 150, background: '#fff', border: '1px solid #E7E3D2', borderRadius: 12, padding: 10, cursor: 'pointer' }}>
                         <div style={{ fontWeight: 700, fontSize: 12, color: '#1f2a24', marginBottom: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.name}</div>
-                        <div style={{ fontSize: 11, color: '#6d7a72', marginBottom: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.venueName || '-'}</div>
-                        <div style={{ fontSize: 10.5, color: '#8a938c', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.dateRange || 'ไม่มีข้อมูลวันที่'}</div>
+                        <div style={{ fontSize: 11, color: '#5f6a63', marginBottom: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.venueName || '-'}</div>
+                        <div style={{ fontSize: 10.5, color: '#626863', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.dateRange || 'ไม่มีข้อมูลวันที่'}</div>
                       </div>
                     ))}
                   </div>

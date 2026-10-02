@@ -28,7 +28,7 @@ function StatCard({ value, label, tone = 'normal' }) {
   return (
     <div style={{ background: '#fff', border: `1px solid ${warn ? '#f0c6c6' : '#E7E3D2'}`, borderRadius: 16, padding: '16px 18px' }}>
       <div style={{ fontSize: 24, fontWeight: 800, color: warn ? '#a33232' : '#1B5E20' }}>{value}</div>
-      <div style={{ fontSize: 13, color: '#6d7a72' }}>{label}</div>
+      <div style={{ fontSize: 13, color: '#5f6a63' }}>{label}</div>
     </div>
   )
 }
@@ -37,7 +37,7 @@ function Panel({ title, note, children }) {
   return (
     <div style={{ background: '#fff', border: '1px solid #E7E3D2', borderRadius: 16, padding: 18 }}>
       <div style={{ fontWeight: 800, fontSize: 14.5, color: '#1B5E20', marginBottom: note ? 2 : 12 }}>{title}</div>
-      {note && <div style={{ fontSize: 12, color: '#8a938c', marginBottom: 12 }}>{note}</div>}
+      {note && <div style={{ fontSize: 12, color: '#626863', marginBottom: 12 }}>{note}</div>}
       {children}
     </div>
   )
@@ -46,7 +46,7 @@ function Panel({ title, note, children }) {
 // Ranked horizontal bars: label, bar scaled to the largest row, printed value
 // (and share of `total` when given). Text stays in ink colors; only the mark is green.
 function HBars({ rows, total, unit = '' }) {
-  if (!rows.length) return <div style={{ fontSize: 13, color: '#8a938c' }}>ยังไม่มีข้อมูล</div>
+  if (!rows.length) return <div style={{ fontSize: 13, color: '#626863' }}>ยังไม่มีข้อมูล</div>
   const max = Math.max(...rows.map((r) => r.count), 1)
   return (
     <div style={{ display: 'grid', gap: 9 }}>
@@ -54,7 +54,7 @@ function HBars({ rows, total, unit = '' }) {
         <div key={r.key ?? r.label} title={`${r.label}: ${num(r.count)}${unit}${total ? ` (${Math.round((r.count / total) * 100)}%)` : ''}`}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 12.5, color: '#3c463f', marginBottom: 3 }}>
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.label}</span>
-            <span style={{ color: '#6d7a72', flexShrink: 0 }}>{num(r.count)}{unit}{total ? ` · ${Math.round((r.count / total) * 100)}%` : ''}</span>
+            <span style={{ color: '#5f6a63', flexShrink: 0 }}>{num(r.count)}{unit}{total ? ` · ${Math.round((r.count / total) * 100)}%` : ''}</span>
           </div>
           <div style={{ height: 8, background: '#F1F8E9', borderRadius: 4 }}>
             <div style={{ width: `${(r.count / max) * 100}%`, height: '100%', background: BAR, borderRadius: 4 }}></div>
@@ -77,7 +77,7 @@ function DailyChart({ daily }) {
     <div>
       <div style={{ position: 'relative', display: 'flex', alignItems: 'flex-end', height: 150, borderBottom: '1px solid #DCD8C6', paddingTop: 18 }}
         role="img" aria-label={`จำนวนแผนทริปที่สร้างต่อวัน ตั้งแต่ ${fmtLong(daily[0].day)} ถึง ${fmtLong(daily[daily.length - 1].day)} สูงสุด ${max} แผนต่อวัน`}>
-        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, borderTop: '1px dashed #EFEBDB', fontSize: 10.5, color: '#8a938c', lineHeight: 1 }}><span style={{ background: '#fff', paddingRight: 4 }}>{num(max)}</span></div>
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, borderTop: '1px dashed #EFEBDB', fontSize: 10.5, color: '#626863', lineHeight: 1 }}><span style={{ background: '#fff', paddingRight: 4 }}>{num(max)}</span></div>
         {daily.map((d, i) => (
           <div key={d.day} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}
             style={{ flex: 1, height: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', padding: `0 ${gap / 2}px`, cursor: 'default', background: hover === i ? 'rgba(46,125,50,0.06)' : 'transparent' }}>
@@ -90,7 +90,7 @@ function DailyChart({ daily }) {
           </div>
         )}
       </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5, color: '#8a938c', marginTop: 5 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5, color: '#626863', marginTop: 5 }}>
         <span>{fmtShort(daily[0].day)}</span>
         {daily.length > 6 && <span>{fmtShort(mid.day)}</span>}
         <span>{fmtShort(daily[daily.length - 1].day)}</span>
@@ -99,7 +99,7 @@ function DailyChart({ daily }) {
         <summary style={{ fontSize: 12.5, color: '#2E7D32', fontWeight: 700, cursor: 'pointer' }}>ดูเป็นตาราง</summary>
         <div style={{ maxHeight: 220, overflowY: 'auto', marginTop: 8, border: '1px solid #EFEBDB', borderRadius: 10 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
-            <thead><tr style={{ textAlign: 'left', color: '#6d7a72', background: '#FBF8EE', position: 'sticky', top: 0 }}><th style={{ padding: '6px 12px' }}>วันที่</th><th style={{ padding: '6px 12px' }}>จำนวนแผน</th></tr></thead>
+            <thead><tr style={{ textAlign: 'left', color: '#5f6a63', background: '#FBF8EE', position: 'sticky', top: 0 }}><th style={{ padding: '6px 12px' }}>วันที่</th><th style={{ padding: '6px 12px' }}>จำนวนแผน</th></tr></thead>
             <tbody>
               {[...daily].reverse().map((d) => (
                 <tr key={d.day} style={{ borderTop: '1px solid #EFEBDB' }}><td style={{ padding: '5px 12px' }}>{fmtLong(d.day)}</td><td style={{ padding: '5px 12px' }}>{num(d.count)}</td></tr>
@@ -161,7 +161,7 @@ export default function TripStatsSection() {
       ) : (
         <div style={{ display: 'grid', gap: 16 }}>
           <Panel title="แผนที่สร้างต่อวัน" note="นับทั้งแผนที่บันทึกในบัญชีและที่บันทึกเพื่อสถิติ (วันตามเวลาไทย)">
-            {stats ? <DailyChart daily={stats.daily} /> : <div style={{ fontSize: 13, color: '#8a938c' }}>กำลังโหลด...</div>}
+            {stats ? <DailyChart daily={stats.daily} /> : <div style={{ fontSize: 13, color: '#626863' }}>กำลังโหลด...</div>}
           </Panel>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(300px,1fr))', gap: 16 }}>
             <Panel title="สถานที่ที่ถูกวางในแผนบ่อยสุด" note="จำนวนแผนที่มีสถานที่นั้น (10 อันดับ)">

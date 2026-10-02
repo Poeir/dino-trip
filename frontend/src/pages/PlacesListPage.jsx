@@ -14,7 +14,7 @@ import { placeCategoryIcon, MASCOT } from '../data/categoryImages.js'
 // >=1500 reviews reads as "popular" -- mirrors the badge PlacesTab/PlaceCard
 // used to compute in AppContext.jsx before this page moved to its own
 // server-paginated fetch.
-const placeBadge = (p) => p.reviews >= 1500 ? { label: 'ยอดนิยม', bg: '#FDEEE3', color: '#E07B39' } : { label: '', bg: '', color: '' }
+const placeBadge = (p) => p.reviews >= 1500 ? { label: 'ยอดนิยม', bg: '#FDEEE3', color: '#9b5527' } : { label: '', bg: '', color: '' }
 
 function CategoryIcon({ cat }) {
   const props = { size: 15, color: cat.iconBorder, box: false }
@@ -88,7 +88,7 @@ export default function PlacesListPage() {
   return (
     <main style={{ maxWidth: 1360, margin: '0 auto', padding: '36px 32px 60px' }}>
       <h1 data-font="culture" style={{ fontSize: 27, fontWeight: 800, color: '#1B5E20', margin: '0 0 6px' }}>สถานที่ท่องเที่ยวทั้งหมด</h1>
-      <p style={{ color: '#6d7a72', fontSize: 14, margin: '0 0 22px' }}>รวมสถานที่แนะนำในขอนแก่น เลือกดูตามหมวดหมู่ได้เลย</p>
+      <p style={{ color: '#5f6a63', fontSize: 14, margin: '0 0 22px' }}>รวมสถานที่แนะนำในขอนแก่น เลือกดูตามหมวดหมู่ได้เลย</p>
       <input
         value={state.searchQuery}
         onChange={actions.onSearchChange}
@@ -123,7 +123,7 @@ export default function PlacesListPage() {
               aria-label="บันทึกรายการโปรด"
               style={{ position: 'absolute', top: 10, right: 10, zIndex: 2, width: 30, height: 30, borderRadius: '50%', border: 'none', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 2px 6px rgba(0,0,0,0.15)' }}
             >
-              <HeartIcon size={15} color={place.isFavorite ? '#E53935' : '#8a938c'} box={false} />
+              <HeartIcon size={15} color={place.isFavorite ? '#E53935' : '#626863'} box={false} />
             </button>
             <ImageSlot src={place.img} shape="rect" style={{ width: '100%', height: 170, flexShrink: 0 }} placeholder="ภาพสถานที่" icon={placeCategoryIcon(place.category)} />
             <div style={{ padding: 16, flex: 1, overflow: 'hidden' }}>
@@ -132,8 +132,8 @@ export default function PlacesListPage() {
                 {place.hasQR && <span style={{ fontSize: 11, fontWeight: 700, color: '#7A5205', background: '#FFF8E1', padding: '3px 9px', borderRadius: 10 }}>+{place.qrPoints} พอยท์</span>}
               </div>
               <div style={{ fontWeight: 400, fontSize: 16, color: '#1f2a24', marginBottom: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{place.name}</div>
-              <div style={{ fontWeight: 300, fontSize: 13, color: '#6d7a72', marginBottom: 8, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>★ {place.rating} ({place.reviews}) · {place.price}</div>
-              <div style={{ fontWeight: 300, fontSize: 12.5, color: '#8a938c', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{place.address}</div>
+              <div style={{ fontWeight: 300, fontSize: 13, color: '#5f6a63', marginBottom: 8, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>★ {place.rating} ({place.reviews}) · {place.price}</div>
+              <div style={{ fontWeight: 300, fontSize: 12.5, color: '#626863', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{place.address}</div>
             </div>
           </div>
         ))}

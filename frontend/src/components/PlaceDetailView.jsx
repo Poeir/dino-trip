@@ -61,11 +61,11 @@ export default function PlaceDetailView({ place: p, imageHeight = 460 }) {
             {p.businessStatus === 'CLOSED_PERMANENTLY' && <span style={{ fontSize: 12, fontWeight: 700, color: '#B91C1C', background: '#FEE2E2', padding: '4px 11px', borderRadius: 10 }}>ปิดถาวรแล้ว</span>}
           </div>
           <h1 style={{ fontSize: 26, fontWeight: 700, color: '#1B5E20', margin: '0 0 8px', lineHeight: 1.25 }}>{p.name}</h1>
-          <div style={{ fontWeight: 300, fontSize: 14, color: '#6d7a72', marginBottom: 16 }}>★ {p.rating} ({p.reviews} รีวิว) · {p.price}</div>
+          <div style={{ fontWeight: 300, fontSize: 14, color: '#5f6a63', marginBottom: 16 }}>★ {p.rating} ({p.reviews} รีวิว) · {p.price}</div>
           {(p.tags || []).length > 0 && (
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 }}>
               {p.tags.map((tag, i) => (
-                <span key={i} style={{ fontSize: 11.5, fontWeight: 600, color: '#6d7a72', background: '#F4F2E8', border: '1px solid #E7E3D2', padding: '3px 10px', borderRadius: 12 }}>#{tag}</span>
+                <span key={i} style={{ fontSize: 11.5, fontWeight: 600, color: '#5f6a63', background: '#F4F2E8', border: '1px solid #E7E3D2', padding: '3px 10px', borderRadius: 12 }}>#{tag}</span>
               ))}
             </div>
           )}
@@ -87,7 +87,7 @@ export default function PlaceDetailView({ place: p, imageHeight = 460 }) {
             )}
             <button onClick={() => setReviewFormOpen((v) => !v)} style={{ display: 'flex', alignItems: 'center', gap: 7, background: '#fff', color: '#1f2a24', border: '1px solid #DCD8C6', padding: '10px 18px', borderRadius: 20, fontSize: 13.5, fontWeight: 700, cursor: 'pointer' }}><PencilIcon size={16} color="#1f2a24" box={false} />เขียนรีวิว</button>
             <button onClick={handleShare} style={{ display: 'flex', alignItems: 'center', gap: 7, background: '#fff', color: '#1f2a24', border: '1px solid #DCD8C6', padding: '10px 18px', borderRadius: 20, fontSize: 13.5, fontWeight: 700, cursor: 'pointer' }}><ShareArrowIcon size={16} color="#1f2a24" box={false} />แชร์</button>
-            <button onClick={handleReport} style={{ display: 'flex', alignItems: 'center', gap: 7, background: '#fff', color: '#6d7a72', border: '1px solid #DCD8C6', padding: '10px 18px', borderRadius: 20, fontSize: 13.5, fontWeight: 700, cursor: 'pointer' }}>⚑ แจ้งข้อมูลไม่ถูกต้อง</button>
+            <button onClick={handleReport} style={{ display: 'flex', alignItems: 'center', gap: 7, background: '#fff', color: '#5f6a63', border: '1px solid #DCD8C6', padding: '10px 18px', borderRadius: 20, fontSize: 13.5, fontWeight: 700, cursor: 'pointer' }}>⚑ แจ้งข้อมูลไม่ถูกต้อง</button>
           </div>
         </div>
         <div>
@@ -107,7 +107,7 @@ export default function PlaceDetailView({ place: p, imageHeight = 460 }) {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '14px 20px', marginBottom: 28 }}>
             {groupAmenities(p.amenities || []).map(({ group, items }) => (
               <div key={group}>
-                <div style={{ fontSize: 11.5, fontWeight: 700, color: '#6d7a72', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 7 }}>{group}</div>
+                <div style={{ fontSize: 11.5, fontWeight: 700, color: '#5f6a63', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 7 }}>{group}</div>
                 <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
                   {items.map((am, i) => (
                     <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12.5, background: '#F1F8E9', border: '1px solid #C8E6C9', padding: '5px 10px', borderRadius: 12, color: '#2E7D32' }}>
@@ -145,12 +145,12 @@ export default function PlaceDetailView({ place: p, imageHeight = 460 }) {
           )}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 14 }}>
             {reviewsToShow.length === 0 && (
-              <div style={{ border: '1px solid #E7E3D2', borderRadius: 12, padding: 16, fontWeight: 300, fontSize: 13.5, color: '#6d7a72', textAlign: 'center' }}>ยังไม่มีรีวิวสำหรับสถานที่นี้</div>
+              <div style={{ border: '1px solid #E7E3D2', borderRadius: 12, padding: 16, fontWeight: 300, fontSize: 13.5, color: '#5f6a63', textAlign: 'center' }}>ยังไม่มีรีวิวสำหรับสถานที่นี้</div>
             )}
             {reviewsToShow.map((r, i) => (
               <div key={i} style={{ border: '1px solid #E7E3D2', borderRadius: 12, padding: 16 }}>
                 <div style={{ fontWeight: 400, fontSize: 14, color: '#1f2a24' }}>{'★'.repeat(r.stars)}{'☆'.repeat(5 - r.stars)} {r.name}</div>
-                <div style={{ fontWeight: 300, fontSize: 13.5, color: '#6d7a72', marginTop: 6 }}>{r.text}</div>
+                <div style={{ fontWeight: 300, fontSize: 13.5, color: '#5f6a63', marginTop: 6 }}>{r.text}</div>
               </div>
             ))}
           </div>

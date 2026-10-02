@@ -55,7 +55,7 @@ export default function PageControls({ page, totalPages, total, onChange }) {
           <Chevron direction="left" />
         </PagerButton>
         {pageList(page, totalPages).map((p, i) => p === '…' ? (
-          <span key={`dots-${i}`} style={{ width: PILL, textAlign: 'center', color: '#8a938c', fontSize: 13 }}>…</span>
+          <span key={`dots-${i}`} style={{ width: PILL, textAlign: 'center', color: '#626863', fontSize: 13 }}>…</span>
         ) : (
           <PagerButton key={p} active={p === page} onClick={() => onChange(p)} ariaLabel={`ไปหน้า ${p}`}>
             {p}
@@ -65,7 +65,7 @@ export default function PageControls({ page, totalPages, total, onChange }) {
           <Chevron direction="right" />
         </PagerButton>
       </div>
-      <div style={{ fontSize: 12, color: '#8a938c' }}>หน้า {page} จาก {totalPages} · ทั้งหมด {total} รายการ</div>
+      <div style={{ fontSize: 12, color: '#626863' }}>หน้า {page} จาก {totalPages} · ทั้งหมด {total} รายการ</div>
     </nav>
   )
 }

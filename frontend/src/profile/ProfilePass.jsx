@@ -30,7 +30,7 @@ export default function ProfilePass({ profile, onEditAvatar }) {
             <div data-font="culture" style={{ fontSize: 46, lineHeight: 1.1, fontWeight: 900, color: '#7A5205' }}>{profile.pointsBalance ?? 0}</div>
           </div>
           {stats && (
-            <div style={{ fontSize: 12, color: '#8a938c', lineHeight: 1.7, marginTop: 4 }}>
+            <div style={{ fontSize: 12, color: '#626863', lineHeight: 1.7, marginTop: 4 }}>
               สแกนแล้ว {stats.scans} จุด<br />แลกรางวัลแล้ว {stats.redemptions} ครั้ง
             </div>
           )}

@@ -37,8 +37,8 @@ export default function PlaceSyncInfo({ placeId, dirty, onChanged }) {
   }
 
   if (error) return <div style={{ fontSize: 12.5, color: '#a33232', marginBottom: 14 }}>โหลดสถานะการซิงก์ไม่สำเร็จ</div>
-  if (!info) return <div style={{ fontSize: 12.5, color: '#8a938c', marginBottom: 14 }}>กำลังโหลดสถานะการซิงก์...</div>
-  if (!info.hasGoogleId) return <div style={{ fontSize: 12.5, color: '#8a938c', marginBottom: 14 }}>สถานที่นี้ไม่ได้มาจาก Google จึงไม่มีการซิงก์</div>
+  if (!info) return <div style={{ fontSize: 12.5, color: '#626863', marginBottom: 14 }}>กำลังโหลดสถานะการซิงก์...</div>
+  if (!info.hasGoogleId) return <div style={{ fontSize: 12.5, color: '#626863', marginBottom: 14 }}>สถานที่นี้ไม่ได้มาจาก Google จึงไม่มีการซิงก์</div>
 
   const diffs = Object.entries(info.googleDiff || {})
   const pending = Object.entries(info.pendingReports || {})
@@ -47,14 +47,14 @@ export default function PlaceSyncInfo({ placeId, dirty, onChanged }) {
   return (
     <div style={{ border: '1px solid #E7E3D2', borderRadius: 12, padding: 14, marginBottom: 14, fontSize: 13 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
-        <span style={{ color: '#6d7a72' }}>ซิงก์ล่าสุด: {fmtDateTime(info.lastSyncedAt)}</span>
+        <span style={{ color: '#5f6a63' }}>ซิงก์ล่าสุด: {fmtDateTime(info.lastSyncedAt)}</span>
         <button disabled={anyBusy} onClick={() => act('sync', () => syncOnePlace(placeId), (r) => (r.changedFields.length ? `อัปเดตจาก Google แล้ว: ${r.changedFields.map((f) => SYNC_FIELD_LABEL[f]).join(', ')}` : r.skippedLocked.length ? 'Google มีค่าใหม่ในฟิลด์ที่ล็อกไว้ — ดูด้านล่าง' : 'ข้อมูลตรงกับ Google แล้ว'))} style={{ ...btn('#E3F2FD', '#1565C0'), marginLeft: 'auto' }}>{busy === 'sync' ? 'กำลังซิงก์...' : 'ซิงก์จาก Google ตอนนี้'}</button>
       </div>
 
       <div style={{ marginBottom: 10 }}>
         <div style={{ fontWeight: 700, marginBottom: 6 }}>ฟิลด์ที่ล็อก (ซิงก์จะไม่เขียนทับ)</div>
         {info.lockedFields.length === 0
-          ? <span style={{ color: '#8a938c' }}>ไม่มี — ทุกฟิลด์อัปเดตตาม Google ได้ (เมื่อแอดมินแก้ฟิลด์ไหน ฟิลด์นั้นจะถูกล็อกอัตโนมัติ)</span>
+          ? <span style={{ color: '#626863' }}>ไม่มี — ทุกฟิลด์อัปเดตตาม Google ได้ (เมื่อแอดมินแก้ฟิลด์ไหน ฟิลด์นั้นจะถูกล็อกอัตโนมัติ)</span>
           : (
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {info.lockedFields.map((f) => (

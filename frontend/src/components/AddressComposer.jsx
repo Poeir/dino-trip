@@ -3,7 +3,7 @@ import thaiAddress from '../data/thaiAddress.json'
 import Field from './Field.jsx'
 
 const fieldStyle = { width: '100%', border: '1px solid #DCD8C6', borderRadius: 8, padding: 9, fontSize: 14 }
-const fixedFieldStyle = { ...fieldStyle, background: '#F5F4EE', color: '#6d7a72', cursor: 'not-allowed' }
+const fixedFieldStyle = { ...fieldStyle, background: '#F5F4EE', color: '#5f6a63', cursor: 'not-allowed' }
 
 // This app only covers Khon Kaen (see areaScopeMeta in data/seed.js -- even
 // "ทั่วขอนแก่น" is districts of this one province, e.g. ภูเวียง/อุบลรัตน์), so

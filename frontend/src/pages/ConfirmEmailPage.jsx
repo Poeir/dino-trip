@@ -27,7 +27,7 @@ export default function ConfirmEmailPage() {
     <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg,#d7ede0,#eaf6ee)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ background: '#fff', borderRadius: 16, padding: 36, width: 360, boxShadow: '0 16px 40px rgba(0,0,0,0.1)', textAlign: 'center' }}>
         {status === 'working' ? (
-          <div style={{ color: '#6d7a72', fontSize: 14 }}>กำลังยืนยันอีเมล...</div>
+          <div style={{ color: '#5f6a63', fontSize: 14 }}>กำลังยืนยันอีเมล...</div>
         ) : (
           <>
             <div style={{ background: '#fdecec', color: '#a33232', fontSize: 13, padding: '8px 12px', borderRadius: 8, marginBottom: 16, textAlign: 'left' }}>{message}</div>

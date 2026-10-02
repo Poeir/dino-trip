@@ -27,7 +27,7 @@ export default function PlaceCard({ place, onClick, selected, dim, badge, childr
       </div>
       <div style={{ padding: 14 }}>
         <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{place.name}</div>
-        <div style={{ fontSize: 12.5, color: '#6d7a72', marginBottom: children ? 10 : 0 }}>{place.category}{place.rating ? ` · ★ ${place.rating}` : ''}</div>
+        <div style={{ fontSize: 12.5, color: '#5f6a63', marginBottom: children ? 10 : 0 }}>{place.category}{place.rating ? ` · ★ ${place.rating}` : ''}</div>
         {children}
       </div>
     </div>

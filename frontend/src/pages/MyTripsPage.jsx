@@ -65,7 +65,7 @@ export default function MyTripsPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 16, flexWrap: 'wrap', marginBottom: 22 }}>
         <div>
           <h1 data-font="culture" style={{ fontSize: 27, fontWeight: 800, color: '#1B5E20', margin: '0 0 6px' }}>ทริปของฉัน</h1>
-          <p style={{ color: '#6d7a72', fontSize: 14, margin: 0 }}>แผนการเดินทางที่น้องไดโนจัดให้และคุณบันทึกไว้</p>
+          <p style={{ color: '#5f6a63', fontSize: 14, margin: 0 }}>แผนการเดินทางที่น้องไดโนจัดให้และคุณบันทึกไว้</p>
         </div>
         <button onClick={actions.goTripForm} style={{ background: 'linear-gradient(135deg,#66BB6A,#2E7D32)', color: '#fff', border: 'none', padding: '11px 22px', borderRadius: 20, fontWeight: 800, fontSize: 14, cursor: 'pointer' }}>+ สร้างแผนใหม่</button>
       </div>
@@ -95,16 +95,16 @@ export default function MyTripsPage() {
               <ImageSlot src={t.coverImg} shape="rect" style={{ width: '100%', height: 150 }} placeholder="แผนทริป" />
               <button aria-label={t.isFavorite ? 'เอาออกจากรายการโปรด' : 'เพิ่มในรายการโปรด'} disabled={busy}
                 onClick={(e) => { e.stopPropagation(); run(() => updateTrip(t.id, { isFavorite: !t.isFavorite })) }}
-                style={{ position: 'absolute', top: 10, right: 10, width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.92)', color: t.isFavorite ? '#f9a825' : '#8a938c', fontSize: 18, cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}>
+                style={{ position: 'absolute', top: 10, right: 10, width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.92)', color: t.isFavorite ? '#f9a825' : '#626863', fontSize: 18, cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}>
                 {t.isFavorite ? '★' : '☆'}
               </button>
             </div>
             <div style={{ padding: 16, flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
               <Link to={`/trip/${t.id}`} style={{ fontWeight: 800, fontSize: 16, color: '#1f2a24', textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</Link>
-              <div style={{ fontSize: 13, color: '#6d7a72' }}>
+              <div style={{ fontSize: 13, color: '#5f6a63' }}>
                 {fmtDay(t.startDate)}{t.dayCount > 1 ? ` – ${fmtDay(t.startDate, t.dayCount - 1)}` : ''} · {t.dayCount} วัน
               </div>
-              <div style={{ fontSize: 12.5, color: '#8a938c' }}>
+              <div style={{ fontSize: 12.5, color: '#626863' }}>
                 {t.placeCount} สถานที่ · {t.totalDistanceKm} กม. · ≈ ฿{Math.round(t.totalCostEstimate).toLocaleString('th-TH')}
               </div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 'auto', paddingTop: 10 }}>

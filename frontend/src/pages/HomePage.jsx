@@ -94,7 +94,7 @@ export default function HomePage() {
                 <img src="/assets/dino-logo-mark.png" alt="" style={{ width: 28, height: 28 }} />
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 800, color: '#1B5E20', lineHeight: 1.2 }}>Khon Kaen</div>
-                  <div style={{ fontSize: 11, color: '#6d7a72' }}>ประเทศไทย</div>
+                  <div style={{ fontSize: 11, color: '#5f6a63' }}>ประเทศไทย</div>
                 </div>
               </div>
             </div>
@@ -118,9 +118,9 @@ export default function HomePage() {
               <div key={event.id} onClick={event.onOpen} style={{ display: 'flex', gap: 16, background: '#fff', border: '1px solid #E7E3D2', borderRadius: 16, overflow: 'hidden', cursor: 'pointer', transition: 'transform 0.22s ease,box-shadow 0.22s ease', animation: 'dc-fade-up 0.45s ease both' }}>
                 <ImageSlot src={event.img} shape="rect" style={{ width: 130, alignSelf: 'stretch', flexShrink: 0 }} placeholder="ภาพงาน" icon={EVENT_ICON} />
                 <div style={{ padding: '14px 14px 14px 0', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: '#E07B39', marginBottom: 12 }}>{event.category}</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: '#9b5527', marginBottom: 12 }}>{event.category}</span>
                   <div style={{ fontWeight: 400, fontSize: 15, color: '#1f2a24', marginBottom: 6, lineHeight: 1.35 }}>{event.name}</div>
-                  <div style={{ fontWeight: 300, fontSize: 12.5, color: '#6d7a72' }}>{event.dateRange} · {event.venueName}</div>
+                  <div style={{ fontWeight: 300, fontSize: 12.5, color: '#5f6a63' }}>{event.dateRange} · {event.venueName}</div>
                 </div>
               </div>
             ))}
@@ -132,6 +132,17 @@ export default function HomePage() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <PinIcon />
               <h2 data-font="culture" style={{ fontSize: 23, fontWeight: 800, color: '#1B5E20', margin: 0 }}>สถานที่แนะนำ</h2>
+              {state.userLocation
+                ? <span style={{ fontSize: 12.5, fontWeight: 700, color: '#2E7D32', background: '#E8F5E9', padding: '4px 11px', borderRadius: 20 }}>เรียงตามที่ใกล้คุณ</span>
+                : (
+                  <button
+                    type="button" onClick={actions.enableNearbyPlaces}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 4, border: '1px solid #C8E6C9', background: '#F1F8E9', color: '#2E7D32', borderRadius: 20, padding: '4px 12px 4px 8px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}
+                  >
+                    <span style={{ transform: 'scale(0.6)', display: 'flex' }}><PinIcon box={false} /></span>
+                    ดูที่ใกล้ฉัน
+                  </button>
+                )}
             </div>
             <a href="#" onClick={(e) => { e.preventDefault(); actions.goPlaces() }} style={{ fontSize: 13.5, fontWeight: 700, color: '#2E7D32' }}>ดูสถานที่ทั้งหมด →</a>
           </div>
@@ -146,8 +157,8 @@ export default function HomePage() {
                     {place.hasQR && <span style={{ fontSize: 11, fontWeight: 700, color: '#7A5205', background: '#FFF8E1', padding: '3px 9px', borderRadius: 10 }}>+{place.qrPoints} พอยท์</span>}
                   </div>
                   <div style={{ fontWeight: 400, fontSize: 16, color: '#1f2a24', marginBottom: 4 }}>{place.name}</div>
-                  <div style={{ fontWeight: 300, fontSize: 13, color: '#6d7a72', marginBottom: 8 }}>★ {place.rating} ({place.reviews}) · {place.price}{place.distanceKm != null && ` · ${place.distanceKm} กม.`}</div>
-                  <div style={{ fontWeight: 300, fontSize: 12.5, color: '#8a938c', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{place.address}</div>
+                  <div style={{ fontWeight: 300, fontSize: 13, color: '#5f6a63', marginBottom: 8 }}>★ {place.rating} ({place.reviews}) · {place.price}{place.distanceKm != null && ` · ${place.distanceKm} กม.`}</div>
+                  <div style={{ fontWeight: 300, fontSize: 12.5, color: '#626863', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{place.address}</div>
                 </div>
               </div>
             ))}

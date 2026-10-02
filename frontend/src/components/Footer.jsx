@@ -53,7 +53,7 @@ export default function Footer() {
           <FacebookIcon />
           <InstagramIcon />
           <LineIcon />
-          <a href="#" onClick={(e) => { e.preventDefault(); actions.goAdminLogin() }} style={{ fontSize: 12, color: '#6d7a72', marginLeft: 8 }}>สำหรับผู้ดูแลระบบ</a>
+          <a href="#" onClick={(e) => { e.preventDefault(); actions.goAdminLogin() }} style={{ fontSize: 12, color: '#5f6a63', marginLeft: 8 }}>สำหรับผู้ดูแลระบบ</a>
         </div>
       </div>
     </footer>

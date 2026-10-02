@@ -76,7 +76,7 @@ export default function AdminSidebar() {
     const active = t.key === tab
     return {
       key: t.key, label: t.label, onClick: () => { actions.cancelForm(); navigate(`/admin/${t.key}`) },
-      bg: active ? '#E8F5E9' : 'transparent', color: active ? '#1B5E20' : '#6d7a72',
+      bg: active ? '#E8F5E9' : 'transparent', color: active ? '#1B5E20' : '#5f6a63',
       iconBg: active ? 'linear-gradient(135deg,#66BB6A,#2E7D32)' : '#F1F8E9',
       iconColor: active ? '#fff' : '#7d8a80',
       isDashboard: t.icon === 'dashboard', isPlaces: t.icon === 'places', isEvents: t.icon === 'events', isKnowledge: t.icon === 'knowledge', isQr: t.icon === 'qr', isRedeem: t.icon === 'redeem', isUsers: t.icon === 'users', isTrips: t.icon === 'trips', isReports: t.icon === 'reports',
@@ -104,7 +104,7 @@ export default function AdminSidebar() {
         </div>
       ))}
       <div style={{ marginTop: 'auto', padding: '16px 20px 0', borderTop: '1px solid #F0EDE0' }}>
-        <div onClick={actions.adminLogout} style={{ cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#8a938c' }}>← ออกจากระบบ</div>
+        <div onClick={actions.adminLogout} style={{ cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#626863' }}>← ออกจากระบบ</div>
       </div>
     </aside>
   )

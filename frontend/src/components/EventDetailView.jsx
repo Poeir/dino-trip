@@ -25,30 +25,30 @@ export default function EventDetailView({ event: ev, place, imageHeight = 460 })
       <ReportEventModal open={reportOpen} onClose={() => setReportOpen(false)} event={ev} />
       <div data-role="event-detail-grid" style={{ display: 'grid', gridTemplateColumns: '400px 1fr', gap: 32, alignItems: 'start' }}>
         <div data-role="place-detail-media" style={{ position: 'sticky', top: 88 }}>
-          <span style={{ display: 'inline-block', fontSize: 12, fontWeight: 700, color: '#E07B39', background: '#FDEEE3', padding: '4px 12px', borderRadius: 10, marginBottom: 10 }}>{ev.category}</span>
+          <span style={{ display: 'inline-block', fontSize: 12, fontWeight: 700, color: '#9b5527', background: '#FDEEE3', padding: '4px 12px', borderRadius: 10, marginBottom: 10 }}>{ev.category}</span>
           <h1 style={{ fontSize: 24, fontWeight: 700, color: '#1B5E20', margin: '0 0 16px', lineHeight: 1.3 }}>{ev.name}</h1>
           <div style={{ borderRadius: 16, overflow: 'hidden' }}>
             <ImageSlot src={ev.img} shape="rect" style={{ width: '100%', height: imageHeight }} placeholder="ภาพปกงาน" icon={EVENT_ICON} />
           </div>
-          <button onClick={handleReport} style={{ width: '100%', marginTop: 20, background: '#fff', color: '#6d7a72', border: '1px solid #DCD8C6', padding: '10px 18px', borderRadius: 20, fontSize: 13.5, fontWeight: 700, cursor: 'pointer' }}>⚑ แจ้งข้อมูลไม่ถูกต้อง</button>
+          <button onClick={handleReport} style={{ width: '100%', marginTop: 20, background: '#fff', color: '#5f6a63', border: '1px solid #DCD8C6', padding: '10px 18px', borderRadius: 20, fontSize: 13.5, fontWeight: 700, cursor: 'pointer' }}>⚑ แจ้งข้อมูลไม่ถูกต้อง</button>
         </div>
         <div>
           <p style={{ fontSize: 15, lineHeight: 1.75, color: '#3c463f', margin: '0 0 24px' }}>{ev.desc}</p>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
             <div style={{ border: '1px solid #E7E3D2', borderRadius: 12, padding: 16 }}>
-              <div style={{ fontWeight: 300, fontSize: 12.5, color: '#8a938c', marginBottom: 4 }}>วันจัดงาน</div>
+              <div style={{ fontWeight: 300, fontSize: 12.5, color: '#626863', marginBottom: 4 }}>วันจัดงาน</div>
               <div style={{ fontWeight: 400, fontSize: 14.5 }}>{ev.dateRange}</div>
             </div>
             <div style={{ border: '1px solid #E7E3D2', borderRadius: 12, padding: 16 }}>
-              <div style={{ fontWeight: 300, fontSize: 12.5, color: '#8a938c', marginBottom: 4 }}>สถานที่จัดงาน</div>
+              <div style={{ fontWeight: 300, fontSize: 12.5, color: '#626863', marginBottom: 4 }}>สถานที่จัดงาน</div>
               <div style={{ fontWeight: 400, fontSize: 14.5 }}>{ev.venueName}</div>
             </div>
             <div style={{ border: '1px solid #E7E3D2', borderRadius: 12, padding: 16 }}>
-              <div style={{ fontWeight: 300, fontSize: 12.5, color: '#8a938c', marginBottom: 4 }}>ค่าเข้าชม</div>
+              <div style={{ fontWeight: 300, fontSize: 12.5, color: '#626863', marginBottom: 4 }}>ค่าเข้าชม</div>
               <div style={{ fontWeight: 400, fontSize: 14.5 }}>{ev.admission}</div>
             </div>
             <div style={{ border: '1px solid #E7E3D2', borderRadius: 12, padding: 16 }}>
-              <div style={{ fontWeight: 300, fontSize: 12.5, color: '#8a938c', marginBottom: 4 }}>ผู้จัดงาน</div>
+              <div style={{ fontWeight: 300, fontSize: 12.5, color: '#626863', marginBottom: 4 }}>ผู้จัดงาน</div>
               <div style={{ fontWeight: 400, fontSize: 14.5 }}>{ev.organizer}</div>
             </div>
           </div>

@@ -48,7 +48,7 @@ const localInputToIso = (v) => (v ? new Date(v).toISOString() : '')
 const formatDateTime = (iso) => new Date(iso).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })
 
 function qrStatus(q) {
-  if (!q.isActive) return { label: 'ปิดใช้งาน', bg: '#eee', color: '#6d7a72' }
+  if (!q.isActive) return { label: 'ปิดใช้งาน', bg: '#eee', color: '#5f6a63' }
   if (q.expiresAt && new Date(q.expiresAt) <= new Date()) return { label: 'หมดอายุ', bg: '#fdecec', color: '#a33232' }
   return { label: 'ใช้งานอยู่', bg: '#E8F5E9', color: '#2E7D32' }
 }
@@ -100,7 +100,7 @@ function StatCard({ icon, value, label }) {
       <IconBadge size={40}>{icon}</IconBadge>
       <div>
         <div style={{ fontSize: 22, fontWeight: 800, color: '#1B5E20', lineHeight: 1.2 }}>{value}</div>
-        <div style={{ fontSize: 12.5, color: '#6d7a72' }}>{label}</div>
+        <div style={{ fontSize: 12.5, color: '#5f6a63' }}>{label}</div>
       </div>
     </div>
   )
@@ -164,7 +164,7 @@ function PointsPicker({ value, onChange, presets, hint }) {
           style={{ width: '100%', border: '1px solid #DCD8C6', borderRadius: 8, padding: 9, fontSize: 14, marginTop: 8 }}
         />
       )}
-      {hint && <div style={{ fontSize: 12, color: '#8a938c', marginTop: 8 }}>{hint}</div>}
+      {hint && <div style={{ fontSize: 12, color: '#626863', marginTop: 8 }}>{hint}</div>}
     </div>
   )
 }
@@ -405,10 +405,10 @@ export default function QrTab() {
         </Field>
         <Field label="รัศมีที่สแกนได้ (เมตร)">
           <input value={f.radiusM ?? ''} onChange={(e) => actions.updateFormField('radiusM', e.target.value.replace(/\D/g, ''))} placeholder="200" style={{ width: '100%', border: '1px solid #DCD8C6', borderRadius: 8, padding: 9, fontSize: 14 }} />
-          <div style={{ fontSize: 12, color: '#8a938c', margin: '4px 0 10px' }}>ผู้สแกนต้องอยู่ในรัศมีนี้จากพิกัดสถานที่ ({QR_RADIUS_MIN_M}–{QR_RADIUS_MAX_M} เมตร เว้นว่าง = 200) สถานที่ที่ไม่มีพิกัดจะไม่เช็คระยะ</div>
+          <div style={{ fontSize: 12, color: '#626863', margin: '4px 0 10px' }}>ผู้สแกนต้องอยู่ในรัศมีนี้จากพิกัดสถานที่ ({QR_RADIUS_MIN_M}–{QR_RADIUS_MAX_M} เมตร เว้นว่าง = 200) สถานที่ที่ไม่มีพิกัดจะไม่เช็คระยะ</div>
           <div style={{ marginBottom: 14 }}>
             {!f.placeId ? (
-              <div style={{ fontSize: 12.5, color: '#8a938c' }}>เลือกสถานที่เพื่อดูรัศมีบนแผนที่</div>
+              <div style={{ fontSize: 12.5, color: '#626863' }}>เลือกสถานที่เพื่อดูรัศมีบนแผนที่</div>
             ) : formPlaceLocation === undefined ? (
               <LoadingSpinner size={24} label="กำลังโหลดพิกัด..." />
             ) : formPlaceLocation === 'error' ? (
@@ -445,7 +445,7 @@ export default function QrTab() {
                   <button type="button" onClick={handleRemoveRewardImage} style={{ background: '#fdecec', color: '#a33232', border: 'none', padding: '7px 14px', borderRadius: 10, fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>ลบรูป</button>
                 )}
               </div>
-              <div style={{ fontSize: 12, color: '#8a938c' }}>jpg, png, webp, gif ขนาดไม่เกิน 2MB</div>
+              <div style={{ fontSize: 12, color: '#626863' }}>jpg, png, webp, gif ขนาดไม่เกิน 2MB</div>
               {rewardImageError && <div style={{ fontSize: 12.5, color: '#a33232', marginTop: 4 }}>{rewardImageError}</div>}
             </div>
           </div>
@@ -458,7 +458,7 @@ export default function QrTab() {
         </Field>
         <Field label="จำนวนของรางวัลที่เหลือ (เว้นว่าง = ไม่จำกัด)">
           <input value={f.stock ?? ''} onChange={(e) => actions.updateFormField('stock', e.target.value.replace(/D/g, ''))} inputMode="numeric" placeholder="เช่น 20" style={{ width: '100%', border: '1px solid #DCD8C6', borderRadius: 8, padding: 9, fontSize: 14 }} />
-          <div style={{ fontSize: 12, color: '#8a938c', margin: '4px 0 14px' }}>ลดลงเองทุกครั้งที่แลกที่เคาน์เตอร์ และคืนให้เมื่อยกเลิกรายการแลก ใส่ 0 = ของหมด</div>
+          <div style={{ fontSize: 12, color: '#626863', margin: '4px 0 14px' }}>ลดลงเองทุกครั้งที่แลกที่เคาน์เตอร์ และคืนให้เมื่อยกเลิกรายการแลก ใส่ 0 = ของหมด</div>
         </Field>
         {rewardFormError && <div style={{ fontSize: 12.5, color: '#a33232', marginBottom: 12 }}>{rewardFormError}</div>}
         <div style={{ display: 'flex', gap: 10 }}>
@@ -513,7 +513,7 @@ export default function QrTab() {
               <option value="points-desc">พอยท์มาก-น้อย</option>
               <option value="points-asc">พอยท์น้อย-มาก</option>
             </select>
-            <span style={{ fontSize: 12.5, color: '#8a938c' }}>พบ {filteredQrsView.length} รายการ</span>
+            <span style={{ fontSize: 12.5, color: '#626863' }}>พบ {filteredQrsView.length} รายการ</span>
             {placeNamesError && (
               <span style={{ fontSize: 12.5, color: '#a33232' }}>
                 โหลดชื่อสถานที่ไม่สำเร็จ{' '}
@@ -530,7 +530,7 @@ export default function QrTab() {
           {filteredQrsView.length === 0 ? (
             state.dataLoading
               ? <LoadingSpinner size={32} label="กำลังโหลด QR..." />
-              : <div style={{ textAlign: 'center', padding: 28, color: '#8a938c', fontSize: 13.5, marginBottom: 28 }}>ไม่พบ QR ที่ตรงกับ "{qrQuery}"</div>
+              : <div style={{ textAlign: 'center', padding: 28, color: '#626863', fontSize: 13.5, marginBottom: 28 }}>ไม่พบ QR ที่ตรงกับ "{qrQuery}"</div>
           ) : (
             <>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(220px,1fr))', gap: 16, marginBottom: 28 }}>
@@ -545,7 +545,7 @@ export default function QrTab() {
                     </div>
                     <div style={{ fontWeight: 700, fontSize: 14, margin: '12px 0 3px' }}>{q.placeName}</div>
                     <div style={{ fontSize: 12.5, color: '#7A5205', fontWeight: 700, marginBottom: 6 }}>+{q.points} พอยท์</div>
-                    <div style={{ fontSize: 12, color: '#6d7a72', lineHeight: 1.6, marginBottom: 12 }}>
+                    <div style={{ fontSize: 12, color: '#5f6a63', lineHeight: 1.6, marginBottom: 12 }}>
                       <div>{qrStatsError ? 'สแกนแล้ว - ครั้ง · แจก - พอยท์' : `สแกนแล้ว ${stat?.scans ?? 0} ครั้ง · แจก ${stat?.pointsTotal ?? 0} พอยท์`}</div>
                       <div>{q.expiresAt ? `หมดอายุ ${formatDateTime(q.expiresAt)}` : 'ไม่มีวันหมดอายุ'}</div>
                       <div>รัศมี {q.radiusM ?? 200} เมตร</div>
@@ -555,7 +555,7 @@ export default function QrTab() {
                       <button onClick={q.onDelete} style={{ flex: 1, background: '#fdecec', color: '#a33232', border: 'none', padding: 7, borderRadius: 10, fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>ลบ</button>
                     </div>
                     <div style={{ display: 'flex', gap: 8 }}>
-                      <button onClick={() => setPreviewQr(q)} style={{ flex: 1, background: '#fff', color: '#6d7a72', border: '1px solid #DCD8C6', padding: 7, borderRadius: 10, fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>ดู QR Code</button>
+                      <button onClick={() => setPreviewQr(q)} style={{ flex: 1, background: '#fff', color: '#5f6a63', border: '1px solid #DCD8C6', padding: 7, borderRadius: 10, fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>ดู QR Code</button>
                       <button onClick={() => handleToggleQr(q)} disabled={togglingQrId === q.id} style={{ flex: 1, background: '#fff', color: q.isActive ? '#a33232' : '#2E7D32', border: `1px solid ${q.isActive ? '#e6b8b8' : '#A5D6A7'}`, padding: 7, borderRadius: 10, fontSize: 12.5, fontWeight: 700, cursor: togglingQrId === q.id ? 'default' : 'pointer' }}>{q.isActive ? 'ปิดใช้งาน' : 'เปิดใช้งาน'}</button>
                     </div>
                   </div>
@@ -592,12 +592,12 @@ export default function QrTab() {
               <option value="cost-desc">พอยท์มาก-น้อย</option>
               <option value="cost-asc">พอยท์น้อย-มาก</option>
             </select>
-            <span style={{ fontSize: 12.5, color: '#8a938c' }}>{pagedRewards.loading ? 'กำลังโหลด...' : `พบ ${pagedRewards.total} รายการ`}</span>
+            <span style={{ fontSize: 12.5, color: '#626863' }}>{pagedRewards.loading ? 'กำลังโหลด...' : `พบ ${pagedRewards.total} รายการ`}</span>
           </div>
           {rewardsView.length === 0 ? (
             pagedRewards.loading
               ? <LoadingSpinner size={32} label="กำลังโหลดของรางวัล..." />
-              : <div style={{ textAlign: 'center', padding: 28, color: '#8a938c', fontSize: 13.5 }}>ไม่พบของรางวัลที่ตรงกับ "{pagedRewards.query}"</div>
+              : <div style={{ textAlign: 'center', padding: 28, color: '#626863', fontSize: 13.5 }}>ไม่พบของรางวัลที่ตรงกับ "{pagedRewards.query}"</div>
           ) : (
             <>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(220px,1fr))', gap: 16, opacity: pagedRewards.loading ? 0.5 : 1, transition: 'opacity 0.15s ease', pointerEvents: pagedRewards.loading ? 'none' : 'auto' }}>
@@ -607,8 +607,8 @@ export default function QrTab() {
                       ? <ImageSlot src={r.imageUrl} radius={10} placeholder={r.name} icon={REWARD_ICON} style={{ width: '100%', height: 120 }} />
                       : <IconBadge><GiftGlyph /></IconBadge>}
                     <div style={{ fontWeight: 700, fontSize: 14, margin: '12px 0 3px' }}>{r.name}</div>
-                    <div style={{ fontSize: 12.5, color: '#6d7a72', marginBottom: 4 }}>{r.cost} พอยท์</div>
-                    <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 12, color: r.stock === 0 ? '#a33232' : '#6d7a72' }}>{r.stock == null ? 'ไม่จำกัดจำนวน' : r.stock === 0 ? 'ของหมด' : `เหลือ ${r.stock} ชิ้น`}</div>
+                    <div style={{ fontSize: 12.5, color: '#5f6a63', marginBottom: 4 }}>{r.cost} พอยท์</div>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 12, color: r.stock === 0 ? '#a33232' : '#5f6a63' }}>{r.stock == null ? 'ไม่จำกัดจำนวน' : r.stock === 0 ? 'ของหมด' : `เหลือ ${r.stock} ชิ้น`}</div>
                     <div style={{ display: 'flex', gap: 8 }}>
                       <button onClick={r.onEdit} style={{ flex: 1, background: '#E8F5E9', color: '#2E7D32', border: 'none', padding: 7, borderRadius: 10, fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>แก้ไข</button>
                       <button onClick={r.onDelete} style={{ flex: 1, background: '#fdecec', color: '#a33232', border: 'none', padding: 7, borderRadius: 10, fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>ลบ</button>
