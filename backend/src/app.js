@@ -25,6 +25,7 @@ import { eventRequestsRouter, adminEventRequestsRouter } from './routes/eventReq
 import { notFoundHandler, errorHandler } from './middleware/errorHandler.js'
 import { db } from './lib/db.js'
 import { rateLimit } from './lib/rateLimit.js'
+import { seoRouter } from './routes/seo.routes.js'
 
 export const app = express()
 
@@ -62,6 +63,9 @@ app.get(['/health', '/api/health'], async (req, res) => {
 // backstop against flooding them. Loose enough for many users behind one NAT:
 // one page load fires roughly ten requests.
 app.use('/api', rateLimit({ windowMs: 60 * 1000, max: 1200, keyFn: (req) => req.ip }))
+
+// robots.txt, sitemap.xml and the crawler-only pre-rendered pages.
+app.use(seoRouter)
 
 app.use('/api/auth', authRouter)
 app.use('/api/places', placeReportsRouter)

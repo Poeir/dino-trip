@@ -3,9 +3,15 @@ import { CalendarIcon, HeartIcon, WalletIcon, ClockIcon, PinIcon } from '../comp
 import { MASCOT } from '../data/categoryImages.js'
 import TripLoadingPage from './TripLoadingPage.jsx'
 import LocationPicker from '../components/LocationPicker.jsx'
+import { useSeo } from '../lib/useSeo.js'
 
 export default function TripFormPage() {
   const { state, actions, derived } = useApp()
+  useSeo({
+    title: 'วางแผนทริปขอนแก่นด้วย AI',
+    description: 'ให้น้องไดโนผู้ช่วย AI จัดแผนเที่ยวขอนแก่นให้ตามจำนวนวัน งบประมาณ และความสนใจของคุณ ได้ตารางเที่ยวรายวัน พร้อมเส้นทางและเวลาเปิดปิดของแต่ละที่',
+    path: '/trip',
+  })
   if (state.tripPlanning) return <TripLoadingPage />
   const f = state.tripForm
   const steps = derived.stepMeta

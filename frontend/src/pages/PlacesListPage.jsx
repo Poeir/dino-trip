@@ -5,6 +5,7 @@ import { GridIcon, CupIcon, TempleIcon, MuseumIcon, TreeIcon, MountainIcon, Bask
 import PageControls from '../components/PageControls.jsx'
 import { fetchPlaces } from '../lib/apiClient.js'
 import { usePagedList } from '../lib/usePagedList.js'
+import { useSeo } from '../lib/useSeo.js'
 import LoadingSpinner from '../components/LoadingSpinner.jsx'
 import EmptyState from '../components/EmptyState.jsx'
 import LoadError from '../components/LoadError.jsx'
@@ -32,6 +33,11 @@ function CategoryIcon({ cat }) {
 
 export default function PlacesListPage() {
   const { state, actions, derived } = useApp()
+  useSeo({
+    title: 'สถานที่ท่องเที่ยวขอนแก่นทั้งหมด',
+    description: 'รวมสถานที่ท่องเที่ยว วัด คาเฟ่ ร้านอาหาร พิพิธภัณฑ์ สวนสาธารณะ และตลาดในขอนแก่น พร้อมรีวิวและแผนที่ เลือกดูตามหมวดหมู่ได้เลย',
+    path: '/places',
+  })
 
   // Debounced so typing doesn't fire a request per keystroke.
   const [debouncedSearch, setDebouncedSearch] = useState(state.searchQuery)

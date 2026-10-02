@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext.jsx'
 import PlaceDetailView from '../components/PlaceDetailView.jsx'
 import LoadingSpinner from '../components/LoadingSpinner.jsx'
 import { fetchPlace } from '../lib/apiClient.js'
+import { useSeo } from '../lib/useSeo.js'
 
 export default function PlaceDetailPage() {
   const { state, actions } = useApp()
@@ -20,6 +21,13 @@ export default function PlaceDetailPage() {
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
   }, [id])
+
+  useSeo(found ? {
+    title: found.name,
+    description: found.desc || [found.category, found.district || 'ขอนแก่น', found.address].filter(Boolean).join(' · '),
+    image: found.img,
+    path: `/places/${found.id}`,
+  } : {})
 
   // Distinguish "still loading" from "no such place" so a direct link/
   // refresh shows a spinner instead of a broken-looking blank detail view.

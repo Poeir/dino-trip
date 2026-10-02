@@ -49,6 +49,7 @@ services:
       dockerfile: deploy/Dockerfile.web
       args:
         VITE_GOOGLE_MAPS_API_KEY: ${VITE_GOOGLE_MAPS_API_KEY:-}
+        VITE_SITE_URL: https://${CHAT_DOMAIN:?set CHAT_DOMAIN in deploy/.env}
     ports:
       - "80:80"
       - "443:443"

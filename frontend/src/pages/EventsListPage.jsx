@@ -4,6 +4,7 @@ import ImageSlot from '../components/ImageSlot.jsx'
 import PageControls from '../components/PageControls.jsx'
 import { fetchEvents } from '../lib/apiClient.js'
 import { usePagedList } from '../lib/usePagedList.js'
+import { useSeo } from '../lib/useSeo.js'
 import LoadingSpinner from '../components/LoadingSpinner.jsx'
 import EmptyState from '../components/EmptyState.jsx'
 import LoadError from '../components/LoadError.jsx'
@@ -26,6 +27,11 @@ const MAX_TAGS = 3
 
 export default function EventsListPage() {
   const { state, actions } = useApp()
+  useSeo({
+    title: 'กิจกรรมและเทศกาลในขอนแก่น',
+    description: 'ตารางงานเทศกาล กิจกรรม และอีเวนต์ในขอนแก่น ทั้งที่กำลังจัดอยู่และเร็ว ๆ นี้ พร้อมวันที่ สถานที่ และค่าเข้าชม',
+    path: '/events',
+  })
   const [status, setStatus] = useState('')
 
   // Debounced so typing doesn't fire a request per keystroke.

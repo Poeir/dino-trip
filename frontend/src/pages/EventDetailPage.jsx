@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext.jsx'
 import EventDetailView from '../components/EventDetailView.jsx'
 import LoadingSpinner from '../components/LoadingSpinner.jsx'
 import { fetchPlace } from '../lib/apiClient.js'
+import { useSeo } from '../lib/useSeo.js'
 
 export default function EventDetailPage() {
   const { state, actions } = useApp()
@@ -18,6 +19,13 @@ export default function EventDetailPage() {
     fetchPlace(placeId).then((p) => { if (!cancelled) setPlace(p) }).catch(() => { if (!cancelled) setPlace(null) })
     return () => { cancelled = true }
   }, [placeId])
+
+  useSeo(foundEvent ? {
+    title: foundEvent.name,
+    description: foundEvent.desc || [foundEvent.dateRange, foundEvent.venueName].filter(Boolean).join(' · '),
+    image: foundEvent.img,
+    path: `/events/${foundEvent.id}`,
+  } : {})
 
   // See PlaceDetailPage.jsx for why: a direct link/refresh would otherwise
   // render a blank event for however long the bulk fetch takes.
