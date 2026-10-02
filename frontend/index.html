@@ -3,8 +3,13 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700;800&family=Poppins:wght@500;600;700&display=swap" rel="stylesheet" />
+<!-- The site's own fonts (self-hosted WOFF2, see src/index.css) are found only
+     after the CSS is parsed, so preload the ones the first screen uses. The
+     Google Fonts stylesheet that used to be here was render-blocking and only
+     supplied fallbacks for glyphs these fonts already have. -->
+<link rel="preload" href="/font/THSarabunNew/THSarabunNew-Regular.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="/font/THSarabunNew/THSarabunNew-Bold.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="/font/KKU%20Culture/KKU-Culture-Heavy.woff2" as="font" type="font/woff2" crossorigin />
 <title>Dino - เที่ยวขอนแก่น | ที่เที่ยว ร้านอาหาร เทศกาล วางแผนทริป AI</title>
 <meta name="description" content="รวมที่เที่ยว ร้านอาหาร คาเฟ่ และงานเทศกาลในขอนแก่น พร้อมน้องไดโนผู้ช่วย AI วางแผนทริปให้ในไม่กี่ขั้นตอน สะสมพอยท์จากการสแกน QR ตามสถานที่ท่องเที่ยว" />
 <meta name="theme-color" content="#1B5E20" />

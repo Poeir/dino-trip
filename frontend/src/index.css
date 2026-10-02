@@ -1,6 +1,6 @@
 @font-face {
   font-family: 'KKU Culture';
-  src: url('/font/KKU%20Culture/KKU%20Culture%20Bold.ttf') format('truetype');
+  src: url('/font/KKU%20Culture/KKU-Culture-Bold.woff2') format('woff2');
   font-weight: 700;
   font-style: normal;
   font-display: swap;
@@ -8,7 +8,7 @@
 }
 @font-face {
   font-family: 'KKU Culture';
-  src: url('/font/KKU%20Culture/KKU%20Culture%20Bold%20Italic.ttf') format('truetype');
+  src: url('/font/KKU%20Culture/KKU-Culture-BoldItalic.woff2') format('woff2');
   font-weight: 700;
   font-style: italic;
   font-display: swap;
@@ -16,7 +16,7 @@
 }
 @font-face {
   font-family: 'KKU Culture';
-  src: url('/font/KKU%20Culture/KKU%20Culture%20Heavy.ttf') format('truetype');
+  src: url('/font/KKU%20Culture/KKU-Culture-Heavy.woff2') format('woff2');
   font-weight: 900;
   font-style: normal;
   font-display: swap;
@@ -24,7 +24,7 @@
 }
 @font-face {
   font-family: 'KKU Culture';
-  src: url('/font/KKU%20Culture/KKU%20Culture%20Heavy%20Italic.ttf') format('truetype');
+  src: url('/font/KKU%20Culture/KKU-Culture-HeavyItalic.woff2') format('woff2');
   font-weight: 900;
   font-style: italic;
   font-display: swap;
@@ -32,7 +32,7 @@
 }
 @font-face {
   font-family: 'TH Sarabun New';
-  src: url('/font/THSarabunNew/THSarabunNew.ttf') format('truetype');
+  src: url('/font/THSarabunNew/THSarabunNew-Regular.woff2') format('woff2');
   font-weight: 400;
   font-style: normal;
   font-display: swap;
@@ -40,7 +40,7 @@
 }
 @font-face {
   font-family: 'TH Sarabun New';
-  src: url('/font/THSarabunNew/THSarabunNew%20Italic.ttf') format('truetype');
+  src: url('/font/THSarabunNew/THSarabunNew-Italic.woff2') format('woff2');
   font-weight: 400;
   font-style: italic;
   font-display: swap;
@@ -48,7 +48,7 @@
 }
 @font-face {
   font-family: 'TH Sarabun New';
-  src: url('/font/THSarabunNew/THSarabunNew%20Bold.ttf') format('truetype');
+  src: url('/font/THSarabunNew/THSarabunNew-Bold.woff2') format('woff2');
   font-weight: 700;
   font-style: normal;
   font-display: swap;
@@ -56,7 +56,7 @@
 }
 @font-face {
   font-family: 'TH Sarabun New';
-  src: url('/font/THSarabunNew/THSarabunNew%20BoldItalic.ttf') format('truetype');
+  src: url('/font/THSarabunNew/THSarabunNew-BoldItalic.woff2') format('woff2');
   font-weight: 700;
   font-style: italic;
   font-display: swap;
@@ -64,7 +64,7 @@
 }
 
 :root {
-  --font-culture: 'KKU Culture', 'Noto Sans Thai', 'Poppins', sans-serif;
+  --font-culture: 'KKU Culture', 'TH Sarabun New', sans-serif;
 }
 * { box-sizing: border-box; }
 /* Always reserve the scrollbar's width: pages that start short (spinner) and grow
@@ -74,7 +74,7 @@ html { scrollbar-gutter: stable; }
 body {
   margin: 0;
   background: #FFFDF6;
-  font-family: 'TH Sarabun New', 'Noto Sans Thai', 'Poppins', sans-serif;
+  font-family: 'TH Sarabun New', sans-serif;
   color: #1f2a24;
   -webkit-font-smoothing: antialiased;
   font-synthesis: none;
