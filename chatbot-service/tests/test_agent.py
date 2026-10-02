@@ -338,6 +338,69 @@ class TestMultiTurn:
         assert [m["role"] for m in c.answer_calls[0]["messages"]] == ["system", "user", "assistant", "user"]
 
 
+class TestLatencyGuards:
+    def test_rewrite_call_has_a_short_timeout(self):
+        from src.services.chatbot.agent import REWRITE_TIMEOUT_S
+        svc, c = make_multiturn_service()
+        svc.chat("เปิดกี่โมง", history=HISTORY)
+        assert c.rewrite_calls[0]["timeout"] == REWRITE_TIMEOUT_S
+
+    def test_rewrite_timeout_falls_back_to_raw_message(self):
+        # The SDK raises on timeout; that must never break the chat.
+        svc, _ = make_multiturn_service(fail_rewrite=True)
+        result = svc.chat("เปิดกี่โมง", history=HISTORY)
+        assert result["reply"] == "ตอบครับ"
+
+    def test_all_three_sources_are_searched_with_the_same_query(self):
+        svc, _ = make_multiturn_service(rewrite_text="ร้าน X เปิดกี่โมง")
+        svc.chat("เปิดกี่โมง", history=HISTORY)
+        r = svc.retriever
+        assert r.place_queries == r.kb_queries == r.event_queries == ["ร้าน X เปิดกี่โมง"]
+
+    def test_a_failing_search_still_raises_instead_of_being_swallowed(self):
+        svc, _ = make_multiturn_service()
+        svc.retriever.search_events = lambda **kw: (_ for _ in ()).throw(RuntimeError("db down"))
+        with pytest.raises(RuntimeError, match="db down"):
+            svc.chat("แนะนำร้านกาแฟ")
+
+    def test_worst_case_history_stays_bounded(self):
+        from src.services.chatbot.agent import (
+            MAX_ASSISTANT_HISTORY_CHARS,
+            MAX_HISTORY_MESSAGES,
+            MAX_USER_HISTORY_CHARS,
+            clean_history,
+        )
+        h = [{"role": "assistant" if i % 2 else "user", "content": "ก" * 5000} for i in range(40)]
+        out = clean_history(h)
+        worst_turn = max(MAX_USER_HISTORY_CHARS, MAX_ASSISTANT_HISTORY_CHARS)
+        assert sum(len(m["content"]) for m in out) <= MAX_HISTORY_MESSAGES * worst_turn
+
+
+class TestEmbedCache:
+    def test_same_query_is_encoded_once(self, monkeypatch):
+        from src.services.rag import retriever
+        calls = []
+
+        class FakeModel:
+            def encode(self, text, normalize_embeddings):
+                calls.append(text)
+                return SimpleNamespace(tolist=lambda: [0.1, 0.2])
+
+        monkeypatch.setattr(retriever, "_model", FakeModel())
+        retriever._embed_cached.cache_clear()
+        assert retriever.embed("q") == retriever.embed("q") == [0.1, 0.2]
+        assert calls == ["q"]
+
+    def test_returned_vector_is_a_fresh_list(self, monkeypatch):
+        from src.services.rag import retriever
+        monkeypatch.setattr(retriever, "_model", SimpleNamespace(
+            encode=lambda text, normalize_embeddings: SimpleNamespace(tolist=lambda: [1.0])))
+        retriever._embed_cached.cache_clear()
+        a = retriever.embed("z")
+        a.append(9.9)
+        assert retriever.embed("z") == [1.0]
+
+
 class TestCleanHistory:
     def test_system_role_is_dropped(self):
         from src.services.chatbot.agent import clean_history
@@ -357,10 +420,23 @@ class TestCleanHistory:
         assert len(out) == MAX_HISTORY_MESSAGES
         assert out[-1]["content"] == str(MAX_HISTORY_MESSAGES + 3)
 
-    def test_long_content_truncated(self):
-        from src.services.chatbot.agent import MAX_HISTORY_CHARS, clean_history
-        out = clean_history([{"role": "user", "content": "ก" * (MAX_HISTORY_CHARS + 500)}])
-        assert len(out[0]["content"]) == MAX_HISTORY_CHARS
+    def test_long_user_content_truncated(self):
+        from src.services.chatbot.agent import MAX_USER_HISTORY_CHARS, clean_history
+        out = clean_history([{"role": "user", "content": "ก" * (MAX_USER_HISTORY_CHARS + 500)}])
+        assert len(out[0]["content"]) == MAX_USER_HISTORY_CHARS
+
+    def test_long_assistant_content_gets_a_bigger_budget(self):
+        # Assistant replies routinely list 3 places with full details (~1,000+
+        # chars) -- capping them at the same size as a user turn was
+        # truncating mid-name on the 2nd place and dropping the 3rd entirely.
+        from src.services.chatbot.agent import (
+            MAX_ASSISTANT_HISTORY_CHARS,
+            MAX_USER_HISTORY_CHARS,
+            clean_history,
+        )
+        assert MAX_ASSISTANT_HISTORY_CHARS > MAX_USER_HISTORY_CHARS
+        out = clean_history([{"role": "assistant", "content": "ก" * (MAX_ASSISTANT_HISTORY_CHARS + 500)}])
+        assert len(out[0]["content"]) == MAX_ASSISTANT_HISTORY_CHARS
 
     def test_none_history_is_empty(self):
         from src.services.chatbot.agent import clean_history

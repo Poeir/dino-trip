@@ -35,6 +35,8 @@ const PERSONA_AVATARS = [
   { key: 'sun', emoji: '☀️', bg: '#FFFDE7' },
 ]
 const MAX_AVATAR_FILE_BYTES = 2 * 1024 * 1024
+// Mirrors MAX_HISTORY_MESSAGES in chatbot-service agent.py.
+const CHAT_HISTORY_LIMIT = 4
 
 // Password strength checklist shown live under the field as the visitor
 // types (see derived.passwordRules) -- kept to widely-understood rules
@@ -529,8 +531,12 @@ export function AppProvider({ children }) {
     if (!text) return
     // Snapshot the conversation before the new turn is pushed; empty bot
     // placeholders (interrupted streams) carry no content and are skipped.
+    // Only the last few turns are sent: the server keeps just the tail anyway
+    // (MAX_HISTORY_MESSAGES), and the whole chat would grow every request and
+    // eventually trip the API's 50-message limit.
     const history = stateRef.current.chatMessages
       .filter((m) => m.text)
+      .slice(-CHAT_HISTORY_LIMIT)
       .map((m) => ({ role: m.from === 'user' ? 'user' : 'assistant', content: m.text }))
     // Push the user message plus an empty bot placeholder that fills in as
     // tokens stream in -- always the last message in the array while streaming.

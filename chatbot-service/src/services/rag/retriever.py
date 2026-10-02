@@ -1,3 +1,5 @@
+from functools import lru_cache
+
 from sentence_transformers import SentenceTransformer
 from src.core.config import EMBEDDING_MODEL_NAME
 from src.core.db import supabase
@@ -10,8 +12,16 @@ print("[*] Loading embedding model (once)...")
 _model = SentenceTransformer(EMBEDDING_MODEL_NAME)
 
 
+@lru_cache(maxsize=256)
+def _embed_cached(text: str) -> tuple[float, ...]:
+    return tuple(_model.encode(text, normalize_embeddings=True).tolist())
+
+
 def embed(text: str) -> list[float]:
-    return _model.encode(text, normalize_embeddings=True).tolist()
+    # A chat turn searches places, knowledge_base and events with the same
+    # query: one encode instead of three (~340ms each, about a third of
+    # retrieval time). A fresh list per call so callers can't mutate the cache.
+    return list(_embed_cached(text))
 
 
 class PlaceRetriever:

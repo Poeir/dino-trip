@@ -51,10 +51,27 @@ def match_tag(*sources: str) -> str:
 
 # Multi-turn: the client owns the conversation and resends it each request
 # (stateless server). Only the tail is kept and each turn is capped so a long
-# chat can't blow up the prompt.
-MAX_HISTORY_MESSAGES = 6
-MAX_HISTORY_CHARS = 1000
+# chat can't blow up the prompt. History only exists to resolve references
+# ("ร้านนั้น", "ที่สอง"), and the two roles need very different budgets:
+# measured real user questions in this app top out around ~50 chars, while a
+# 3-place recommendation reply routinely runs 1,000-1,400 chars (one bullet
+# list per place). A single MAX_HISTORY_CHARS=600 was truncating mid-name on
+# the 2nd place and dropping the 3rd entirely -- silently breaking "ร้านที่สอง
+# ล่ะ"/"ร้านที่สามอยู่ไหน" follow-ups, since clean_history runs before the
+# rewrite step even sees the history. User turns get a small cap (guards
+# against someone pasting a wall of text); assistant turns get enough room to
+# keep a typical 3-item list intact.
+MAX_HISTORY_MESSAGES = 4
+MAX_USER_HISTORY_CHARS = 300
+MAX_ASSISTANT_HISTORY_CHARS = 1400
 MAX_REWRITE_CHARS = 300
+
+# A hung gateway used to block a request for minutes (the SDK default is 600s
+# with 2 retries). The rewrite is optional, so it gets a short leash and falls
+# back to the raw message; the answer call gets one retry.
+LLM_TIMEOUT_S = 25
+LLM_MAX_RETRIES = 1
+REWRITE_TIMEOUT_S = 8
 _HISTORY_ROLES = ("user", "assistant")
 
 REWRITE_PROMPT = """คุณเขียนคำถามล่าสุดของผู้ใช้ใหม่ให้เป็นประโยคที่เข้าใจได้ด้วยตัวเอง โดยไม่ต้องอ่านบทสนทนาก่อนหน้า
@@ -74,7 +91,8 @@ def clean_history(history) -> list[dict]:
         content = m.get("content") if isinstance(m, dict) else None
         if role not in _HISTORY_ROLES or not isinstance(content, str):
             continue
-        content = content.strip()[:MAX_HISTORY_CHARS]
+        limit = MAX_USER_HISTORY_CHARS if role == "user" else MAX_ASSISTANT_HISTORY_CHARS
+        content = content.strip()[:limit]
         if content:
             cleaned.append({"role": role, "content": content})
     return cleaned[-MAX_HISTORY_MESSAGES:]
@@ -90,7 +108,7 @@ def _tag_sources(tag: str) -> set[str]:
 class RAGChatbotService:
     def __init__(self):
         self.retriever = PlaceRetriever()
-        self.client = OpenAI(api_key=API_KEY, base_url=BASE_URL)
+        self.client = OpenAI(api_key=API_KEY, base_url=BASE_URL, timeout=LLM_TIMEOUT_S, max_retries=LLM_MAX_RETRIES)
         self.model_name = MODEL_NAME
 
     def _rewrite_query(self, user_message: str, history: list[dict]) -> str:
@@ -112,6 +130,7 @@ class RAGChatbotService:
                     {"role": "user", "content": f"[บทสนทนาก่อนหน้า]\n{transcript}\n\n[คำถามล่าสุด]\n{user_message}"},
                 ],
                 temperature=0,
+                timeout=REWRITE_TIMEOUT_S,
             )
             rewritten = (response.choices[0].message.content or "").strip().splitlines()
             rewritten = rewritten[0].strip()[:MAX_REWRITE_CHARS] if rewritten else ""
@@ -129,6 +148,10 @@ class RAGChatbotService:
         # Retrieve from places, knowledge_base, and events -- unlike the old
         # project, which only ever searched places.
         t0 = time.time()
+        # Sequential on purpose: the shared Supabase client talks HTTP/2 over
+        # one connection, and firing these from threads made requests fail with
+        # httpx.ReadError (WinError 10035) in most runs. The embedding is
+        # cached, so the three searches only encode the query once.
         places = self.retriever.search_and_expand(query=search_query, limit=3)
         kb_entries = self.retriever.search_knowledge_base(query=search_query, limit=3)
         events = self.retriever.search_events(query=search_query, limit=3)

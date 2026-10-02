@@ -28,6 +28,31 @@ def test_multiple_tags_are_appended_without_duplicates():
     assert "หมูกระทะ/ปิ้งย่าง" in out
 
 
+def test_temple_query_maps_to_the_culture_tag():
+    assert "วัฒนธรรม/ศาสนา" in expand_query("ขอวัดในเมือง")
+
+
+def test_wai_phra_maps_to_the_culture_tag():
+    assert "วัฒนธรรม/ศาสนา" in expand_query("อยากไหว้พระ")
+
+
+def test_national_park_category_maps_to_the_nature_tag():
+    assert "ธรรมชาติ" in expand_query("ขออุทยานแห่งชาติในขอนแก่น")
+
+
+def test_spiritual_tourism_slang_maps_to_the_culture_tag():
+    assert "วัฒนธรรม/ศาสนา" in expand_query("สายมูต้องไปไหน")
+
+
+def test_fossil_query_maps_to_the_dinosaur_tag():
+    assert "ไดโนเสาร์" in expand_query("อยากดูซากดึกดำบรรพ์")
+    assert "ไดโนเสาร์" in expand_query("dino museum")
+
+
+def test_handicraft_query_maps_to_the_shopping_tag():
+    assert "ช้อปปิ้ง/หัตถกรรม" in expand_query("อยากซื้องานฝีมือ")
+
+
 def test_every_synonym_key_is_lowercase():
     # expand_query lowercases the query, so an uppercase key could never match.
     assert all(k == k.lower() for k in SYNONYMS)
