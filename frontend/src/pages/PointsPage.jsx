@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useApp } from '../context/AppContext.jsx'
 import { GiftIcon, PinIcon } from '../components/Icons.jsx'
 import QrScannerModal from '../components/QrScannerModal.jsx'
+import ScanResultModal from '../components/ScanResultModal.jsx'
 import LoadingSpinner from '../components/LoadingSpinner.jsx'
 import PlaceCard from '../components/PlaceCard.jsx'
 import ImageSlot from '../components/ImageSlot.jsx'
@@ -183,31 +184,15 @@ export default function PointsPage() {
 
       <QrScannerModal open={derived.isScanning} onDetected={actions.handleQrDetected} onError={actions.handleScanCancelled} />
 
-      {derived.isScanProcessing && (
-        <div style={{ textAlign: 'center', padding: 28, border: '1px dashed #C8E6C9', borderRadius: 14, marginBottom: 28 }}>
-          <div style={{ width: 40, height: 40, borderRadius: '50%', border: '4px solid #C8E6C9', borderTopColor: '#2E7D32', margin: '0 auto 14px', animation: 'dc-spin 0.8s linear infinite' }}></div>
-          <div style={{ color: '#5f6a63', fontSize: 14 }}>กำลังตรวจสอบ QR Code...</div>
-        </div>
-      )}
-      {derived.isScanError && (
-        <div style={{ textAlign: 'center', padding: 24, background: '#fdecec', borderRadius: 14, marginBottom: 28 }}>
-          <div style={{ color: '#a33232', fontSize: 14, fontWeight: 700, marginBottom: 12 }}>{state.scanError || 'สแกนไม่สำเร็จ'}</div>
-          <button onClick={actions.resetScan} style={{ background: '#fff', border: '1px solid #a33232', color: '#a33232', padding: '8px 18px', borderRadius: 16, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>ปิด</button>
-        </div>
-      )}
-      {derived.isScanSuccess && (
-        <div style={{ textAlign: 'center', padding: 24, background: '#E8F5E9', borderRadius: 14, marginBottom: 28, animation: 'dc-pop 0.4s ease both' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontWeight: 800, fontSize: 16, color: '#1B5E20', marginBottom: 4 }}>
-            <span style={{ width: 20, height: 20, borderRadius: '50%', background: '#2E7D32', position: 'relative', flexShrink: 0 }}>
-              <span style={{ position: 'absolute', left: 5, top: 9, width: 6, height: 2.5, background: '#fff', transform: 'rotate(45deg)' }}></span>
-              <span style={{ position: 'absolute', left: 8, top: 6, width: 10, height: 2.5, background: '#fff', transform: 'rotate(-45deg)' }}></span>
-            </span>
-            สแกนสำเร็จที่ {state.scanResultPlace}!
-          </div>
-          <div style={{ color: '#2E7D32', fontSize: 14, marginBottom: 12 }}>คุณได้รับ +{state.scanResultPoints} พอยท์</div>
-          <button onClick={actions.resetScan} style={{ background: '#fff', border: '1px solid #2E7D32', color: '#2E7D32', padding: '8px 18px', borderRadius: 16, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>ปิด</button>
-        </div>
-      )}
+      <ScanResultModal
+        processing={derived.isScanProcessing}
+        success={derived.isScanSuccess}
+        error={derived.isScanError}
+        place={state.scanResultPlace}
+        points={state.scanResultPoints}
+        message={state.scanError}
+        onClose={actions.resetScan}
+      />
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
         <PinIcon />
