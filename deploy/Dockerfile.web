@@ -9,6 +9,8 @@ COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 
 COPY frontend/ ./
+# vite.config.js reads ../VERSION (= /VERSION here) unless APP_VERSION is passed.
+COPY VERSION /VERSION
 
 # Empty API/chatbot URLs = same origin: the browser calls /api/... and /chat/
 # on the very host that served the page, so the session cookie is first-party.
@@ -21,7 +23,9 @@ ARG GIT_SHA=""
 ENV VITE_API_URL="" \
     VITE_CHATBOT_SERVICE_URL="" \
     VITE_GOOGLE_MAPS_API_KEY=${VITE_GOOGLE_MAPS_API_KEY} \
-    VITE_SITE_URL=${VITE_SITE_URL}     VITE_APP_VERSION=${APP_VERSION}     VITE_GIT_SHA=${GIT_SHA}
+    VITE_SITE_URL=${VITE_SITE_URL} \
+    VITE_APP_VERSION=${APP_VERSION} \
+    VITE_GIT_SHA=${GIT_SHA}
 RUN npm run build
 
 FROM caddy:2

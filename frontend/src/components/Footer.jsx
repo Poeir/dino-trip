@@ -57,7 +57,7 @@ export default function Footer() {
         </div>
       </div>
       <div style={{ maxWidth: 1360, margin: '0 auto', padding: '0 0 12px', textAlign: 'center', fontSize: 11.5, color: '#7a847d' }}>
-        เวอร์ชัน Preview v{__APP_VERSION__}
+        เวอร์ชัน Preview {/^\d/.test(__APP_VERSION__) ? `v${__APP_VERSION__}` : __APP_VERSION__}
       </div>
     </footer>
   )
