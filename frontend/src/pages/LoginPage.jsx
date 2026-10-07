@@ -95,7 +95,7 @@ function WelcomeCard({ state }) {
 export default function LoginPage() {
   const { state, actions } = useApp()
   return (
-    <main style={{ maxWidth: 820, margin: '0 auto', padding: '70px 32px' }}>
+    <main style={{ maxWidth: 820, margin: '0 auto', padding: 'var(--page-pv-center) var(--page-gutter)' }}>
       <h1 data-font="culture" style={{ fontSize: 22, fontWeight: 800, color: '#1B5E20', margin: '0 0 22px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, animation: 'dc-fade-up 0.4s ease both' }}>
         <img src="/assets/dino-logo-mark.png" alt="" style={{ width: 26, height: 26 }} />
         เข้าสู่ระบบ Dino

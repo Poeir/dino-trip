@@ -47,7 +47,7 @@ export default function EventsListPage() {
   })
 
   return (
-    <main style={{ maxWidth: 1360, margin: '0 auto', padding: '36px 32px 60px' }}>
+    <main style={{ maxWidth: 1360, margin: '0 auto', padding: 'var(--page-pt) var(--page-gutter) var(--page-pb)' }}>
       <h1 data-font="culture" style={{ fontSize: 27, fontWeight: 800, color: '#1B5E20', margin: '0 0 6px' }}>กิจกรรมและเทศกาลทั้งหมด</h1>
       <p style={{ color: '#5f6a63', fontSize: 14, margin: '0 0 26px' }}>อัปเดตงานเทศกาล คอนเสิร์ต และกิจกรรมพิเศษทั่วขอนแก่น</p>
       <input

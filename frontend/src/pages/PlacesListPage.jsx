@@ -86,7 +86,7 @@ export default function PlacesListPage() {
   }, [derived.categoriesViewIcons.length])
 
   return (
-    <main style={{ maxWidth: 1360, margin: '0 auto', padding: '36px 32px 60px' }}>
+    <main data-role="places-page" style={{ maxWidth: 1360, margin: '0 auto', padding: 'var(--page-pt) var(--page-gutter) var(--page-pb)' }}>
       <h1 data-font="culture" style={{ fontSize: 27, fontWeight: 800, color: '#1B5E20', margin: '0 0 6px' }}>สถานที่ท่องเที่ยวทั้งหมด</h1>
       <p style={{ color: '#5f6a63', fontSize: 14, margin: '0 0 22px' }}>รวมสถานที่แนะนำในขอนแก่น เลือกดูตามหมวดหมู่ได้เลย</p>
       <input
@@ -126,7 +126,7 @@ export default function PlacesListPage() {
               <HeartIcon size={15} color={place.isFavorite ? '#E53935' : '#626863'} box={false} />
             </button>
             <ImageSlot src={place.img} shape="rect" style={{ width: '100%', height: 170, flexShrink: 0 }} placeholder="ภาพสถานที่" icon={placeCategoryIcon(place.category)} />
-            <div style={{ padding: 16, flex: 1, overflow: 'hidden' }}>
+            <div data-role="place-card-body" style={{ padding: 16, flex: 1, overflow: 'hidden' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
                 <span style={{ fontSize: 11, fontWeight: 700, color: '#2E7D32', background: '#E8F5E9', padding: '3px 9px', borderRadius: 10 }}>{place.category}</span>
                 {place.hasQR && <span style={{ fontSize: 11, fontWeight: 700, color: '#7A5205', background: '#FFF8E1', padding: '3px 9px', borderRadius: 10 }}>+{place.qrPoints} พอยท์</span>}

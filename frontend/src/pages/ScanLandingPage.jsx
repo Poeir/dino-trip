@@ -30,7 +30,7 @@ export default function ScanLandingPage() {
   }, [state.authChecked, state.loggedIn, qrId])
 
   return (
-    <main style={{ maxWidth: 480, margin: '0 auto', padding: '60px 32px' }}>
+    <main style={{ maxWidth: 480, margin: '0 auto', padding: 'var(--page-pv-center) var(--page-gutter)' }}>
       {(!state.authChecked || !state.loggedIn) && (
         <div style={{ textAlign: 'center', padding: 28, border: '1px dashed #C8E6C9', borderRadius: 14 }}>
           <img src={MASCOT.map} alt="" width={130} height={130} style={heroIcon} />

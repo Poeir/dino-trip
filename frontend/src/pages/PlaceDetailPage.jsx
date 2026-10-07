@@ -32,14 +32,14 @@ export default function PlaceDetailPage() {
   // Distinguish "still loading" from "no such place" so a direct link/
   // refresh shows a spinner instead of a broken-looking blank detail view.
   if (!found && loading) {
-    return <main style={{ maxWidth: 1360, margin: '0 auto', padding: '90px 32px' }}><LoadingSpinner size={40} label="กำลังโหลดข้อมูลสถานที่..." /></main>
+    return <main style={{ maxWidth: 1360, margin: '0 auto', padding: 'var(--page-pv-center) var(--page-gutter)' }}><LoadingSpinner size={40} label="กำลังโหลดข้อมูลสถานที่..." /></main>
   }
 
   const p = found
     ? { ...found, isFavorite: state.favoriteIds.includes(found.id), onToggleFavorite: () => actions.toggleFavorite(found.id) }
     : { amenities: [] }
   return (
-    <main style={{ maxWidth: 1360, margin: '0 auto', padding: '28px 32px 60px' }}>
+    <main style={{ maxWidth: 1360, margin: '0 auto', padding: 'var(--page-pt) var(--page-gutter) var(--page-pb)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5, color: '#626863', flexWrap: 'wrap' }}>
         <a href="#" onClick={(e) => { e.preventDefault(); actions.goHome() }} style={{ color: '#626863', fontWeight: 600 }}>หน้าแรก</a>
         <span>/</span>

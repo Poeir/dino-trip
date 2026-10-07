@@ -204,7 +204,7 @@ export default function SignupPage() {
   useThaiAddress() // starts loading the address table; derived.*Options fill in when it arrives
   const isPending = state.authPendingConfirmation
   return (
-    <main style={{ maxWidth: isPending ? 420 : 980, margin: '0 auto', padding: '70px 32px' }}>
+    <main style={{ maxWidth: isPending ? 420 : 980, margin: '0 auto', padding: 'var(--page-pv-center) var(--page-gutter)' }}>
       <h1 data-font="culture" style={{ fontSize: 22, fontWeight: 800, color: '#1B5E20', margin: '0 0 22px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, animation: 'dc-fade-up 0.4s ease both' }}>
         <img src="/assets/dino-logo-mark.png" alt="" style={{ width: 26, height: 26 }} />
         สมัครสมาชิก Dino

@@ -19,7 +19,7 @@ export default function TripFormPage() {
   const progressFrac = state.tripStep / (steps.length - 1)
 
   return (
-    <main style={{ maxWidth: 720, margin: '0 auto', padding: '48px 24px 70px' }}>
+    <main style={{ maxWidth: 720, margin: '0 auto', padding: 'var(--page-pt) var(--page-gutter) var(--page-pb)' }}>
       <AiNotice />
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14, marginBottom: 30, animation: 'dc-fade-up 0.4s ease both' }}>
         <img src={MASCOT.map} alt="" style={{ width: 84, height: 84, objectFit: 'contain', flexShrink: 0, animation: 'dc-float 3.4s ease-in-out infinite' }} />

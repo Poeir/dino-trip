@@ -30,12 +30,12 @@ export default function EventDetailPage() {
   // See PlaceDetailPage.jsx for why: a direct link/refresh would otherwise
   // render a blank event for however long the bulk fetch takes.
   if (!foundEvent && state.dataLoading) {
-    return <main style={{ maxWidth: 1360, margin: '0 auto', padding: '90px 32px' }}><LoadingSpinner size={40} label="กำลังโหลดข้อมูลกิจกรรม..." /></main>
+    return <main style={{ maxWidth: 1360, margin: '0 auto', padding: 'var(--page-pv-center) var(--page-gutter)' }}><LoadingSpinner size={40} label="กำลังโหลดข้อมูลกิจกรรม..." /></main>
   }
 
   const ev = foundEvent || { suitableFor: [] }
   return (
-    <main style={{ maxWidth: 1360, margin: '0 auto', padding: '28px 32px 60px' }}>
+    <main style={{ maxWidth: 1360, margin: '0 auto', padding: 'var(--page-pt) var(--page-gutter) var(--page-pb)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5, color: '#626863', flexWrap: 'wrap' }}>
         <a href="#" onClick={(e) => { e.preventDefault(); actions.goHome() }} style={{ color: '#626863', fontWeight: 600 }}>หน้าแรก</a>
         <span>/</span>

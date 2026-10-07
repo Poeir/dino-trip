@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useApp } from '../context/AppContext.jsx'
 import ImageSlot from '../components/ImageSlot.jsx'
+import HeroSearch from '../components/HeroSearch.jsx'
 import LoadingSpinner from '../components/LoadingSpinner.jsx'
 import { CalendarIcon, PinIcon } from '../components/Icons.jsx'
 import { fetchPlaces } from '../lib/apiClient.js'
@@ -51,7 +52,7 @@ export default function HomePage() {
   return (
     <>
       <main>
-        <section data-role="hero-section" style={{ background: 'linear-gradient(135deg,#1B5E20,#2E7D32)', padding: '52px 32px 76px', position: 'relative', overflow: 'hidden' }}>
+        <section data-role="hero-section" style={{ background: 'linear-gradient(135deg,#1B5E20,#2E7D32)', padding: '52px var(--page-gutter) 76px', position: 'relative', overflowX: 'clip', zIndex: 2 }}>
           <div style={{ position: 'absolute', inset: 0, backgroundImage: 'url(/assets/hero-pattern-bg.webp)', backgroundSize: 'cover', backgroundRepeat: 'no-repeat', backgroundPosition: 'center 30%', opacity: 0.25, zIndex: 0, pointerEvents: 'none' }} />
           {heroParticles.map((p, i) => (
             <span
@@ -70,10 +71,7 @@ export default function HomePage() {
               <h1 data-role="hero-heading" data-font="culture" style={{ color: '#FBC02D', fontSize: 76, fontWeight: 900, margin: 0, lineHeight: 1.05, letterSpacing: 0.5 }}>ขอนแก่น</h1>
               <p data-font="culture" style={{ color: '#fff', fontSize: 22, fontWeight: 700, margin: '4px 0 18px' }}>ดินแดนอีสานสร้างสรรค์</p>
               <p style={{ color: '#C8E6C9', fontSize: 15.5, margin: '0 0 26px', maxWidth: 440 }}>ค้นหาสถานที่ที่เกี่ยวข้อง กิจกรรม เทศกาล และประสบการณ์สุดประทับใจ <br />สุดประทับใจในจังหวัดขอนแก่น จังหวัดแห่งผ้าไหมมัดหมี่และวัฒนธรรมอีสาน</p>
-              <div style={{ display: 'flex', background: '#fff', borderRadius: 16, padding: '6px 6px 6px 18px', maxWidth: 480, boxShadow: '0 14px 30px rgba(0,0,0,0.2)' }}>
-                <input value={state.searchQuery} onChange={actions.onSearchChange} placeholder="ค้นหาสถานที่ กิจกรรม..." style={{ flex: 1, border: 'none', outline: 'none', fontSize: 14.5, padding: '10px 0' }} />
-                <button style={{ background: 'linear-gradient(135deg,#66BB6A,#388E3C)', color: '#fff', border: 'none', borderRadius: 11, padding: '10px 22px', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>ค้นหา</button>
-              </div>
+              <HeroSearch />
               <div data-role="hero-actions" style={{ display: 'flex', gap: 12, marginTop: 14, alignItems: 'center', flexWrap: 'wrap' }}>
                 <img src={MASCOT.point} alt="" style={{ width: 84, height: 84, objectFit: 'contain', flexShrink: 0, marginRight: -4, pointerEvents: 'none' }} />
                 <div data-role="hero-chips" style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -104,7 +102,7 @@ export default function HomePage() {
           </svg>
         </section>
 
-        <section data-role="home-section" style={{ maxWidth: 1360, margin: '0 auto', padding: '44px 32px 8px' }}>
+        <section data-role="home-section" style={{ maxWidth: 1360, margin: '0 auto', padding: '44px var(--page-gutter) 8px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18, flexWrap: 'wrap', gap: 10 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <CalendarIcon />
@@ -127,7 +125,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section data-role="home-section" style={{ maxWidth: 1360, margin: '0 auto', padding: '44px 32px 56px' }}>
+        <section data-role="home-section" style={{ maxWidth: 1360, margin: '0 auto', padding: '44px var(--page-gutter) 56px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 14 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <PinIcon />

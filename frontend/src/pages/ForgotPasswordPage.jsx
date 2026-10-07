@@ -3,7 +3,7 @@ import { useApp } from '../context/AppContext.jsx'
 export default function ForgotPasswordPage() {
   const { state, actions } = useApp()
   return (
-    <main style={{ maxWidth: 420, margin: '0 auto', padding: '70px 32px' }}>
+    <main style={{ maxWidth: 420, margin: '0 auto', padding: 'var(--page-pv-center) var(--page-gutter)' }}>
       <h1 data-font="culture" style={{ fontSize: 22, fontWeight: 800, color: '#1B5E20', margin: '0 0 22px', textAlign: 'center' }}>ลืมรหัสผ่าน</h1>
       <div style={{ background: '#fff', border: '1px solid #E7E3D2', borderRadius: 16, padding: 26 }}>
         {state.forgotPasswordSent ? (

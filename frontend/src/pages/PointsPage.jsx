@@ -29,7 +29,7 @@ function PointsIntro({ places, placesLoading, rewards, onSignup, onLogin }) {
   const ghostBtn = { background: 'transparent', color: '#1B5E20', border: '2px solid #2E7D32', padding: '11px 24px', borderRadius: 22, fontWeight: 700, fontSize: 15, cursor: 'pointer' }
 
   return (
-    <main style={{ maxWidth: 960, margin: '0 auto', padding: '44px 24px 64px' }}>
+    <main style={{ maxWidth: 960, margin: '0 auto', padding: 'var(--page-pt) var(--page-gutter) var(--page-pb)' }}>
       <section style={{ display: 'flex', flexWrap: 'wrap', gap: 40, alignItems: 'center', marginBottom: 56 }}>
         <div style={{ flex: '1 1 340px', minWidth: 0 }}>
           <h1 data-font="culture" style={{ fontSize: 34, lineHeight: 1.25, fontWeight: 900, color: '#1B5E20', margin: '0 0 14px' }}>
@@ -155,7 +155,7 @@ export default function PointsPage() {
   }
 
   return (
-    <main style={{ maxWidth: 960, margin: '0 auto', padding: '36px 32px 60px' }}>
+    <main style={{ maxWidth: 960, margin: '0 auto', padding: 'var(--page-pt) var(--page-gutter) var(--page-pb)' }}>
       <h1 data-font="culture" style={{ fontSize: 24, fontWeight: 800, color: '#1B5E20', margin: '0 0 20px' }}>พอยท์สะสมของคุณ</h1>
 
       <div style={{ background: 'linear-gradient(135deg,#388E3C,#2E7D32)', borderRadius: 16, padding: 24, color: '#fff', marginBottom: 20 }}>

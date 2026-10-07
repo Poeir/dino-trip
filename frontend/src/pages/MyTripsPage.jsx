@@ -61,7 +61,7 @@ export default function MyTripsPage() {
   }
 
   return (
-    <main style={{ maxWidth: 1200, margin: '0 auto', padding: '36px 32px 60px' }}>
+    <main style={{ maxWidth: 1200, margin: '0 auto', padding: 'var(--page-pt) var(--page-gutter) var(--page-pb)' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 16, flexWrap: 'wrap', marginBottom: 22 }}>
         <div>
           <h1 data-font="culture" style={{ fontSize: 27, fontWeight: 800, color: '#1B5E20', margin: '0 0 6px' }}>ทริปของฉัน</h1>

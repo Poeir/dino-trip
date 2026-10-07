@@ -8,7 +8,8 @@ import DayRouteMap from '../components/DayRouteMap.jsx'
 import Modal from '../components/Modal.jsx'
 import PlaceDetailView from '../components/PlaceDetailView.jsx'
 import { CalendarIcon, RouteIcon, GiftIcon, PencilIcon, PinIcon } from '../components/Icons.jsx'
-import { fetchPlace } from '../lib/apiClient.js'
+import { fetchPlace, fetchPlaces } from '../lib/apiClient.js'
+import { dayDirectionsUrls } from '../utils/mapsLink.js'
 
 const sparkles = [
   { left: '6%', top: '20%', size: 7, duration: '3.2s', delay: '0s' },
@@ -62,10 +63,28 @@ export default function TripResultPage() {
     return () => { cancelled = true }
   }, [selectedPlaceId])
 
+  // The plan's places carry no Google place id, but the "open in Google Maps"
+  // links need it to land on the real Maps listing -- one batched lookup per plan.
+  const [googleIds, setGoogleIds] = useState({})
+  const planPlaceIds = [...new Set((state.tripPlan?.days || []).flatMap((d) => d.items.map((i) => i.place?.id)).filter((v) => v && !/^(hotel_dummy|free_time_dummy|removed_)/.test(v)))]
+  const planPlaceIdsKey = planPlaceIds.join(',')
+  useEffect(() => {
+    if (!planPlaceIdsKey) return undefined
+    let cancelled = false
+    fetchPlaces({ ids: planPlaceIdsKey })
+      .then((r) => {
+        if (cancelled) return
+        const rows = Array.isArray(r) ? r : r.data || []
+        setGoogleIds(Object.fromEntries(rows.filter((p) => p.googlePlaceId).map((p) => [p.id, p.googlePlaceId])))
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [planPlaceIdsKey])
+
   if (id && state.tripId !== id) {
     if (state.tripLoadError) {
       return (
-        <main style={{ maxWidth: 520, margin: '0 auto', padding: '80px 24px', textAlign: 'center' }}>
+        <main style={{ maxWidth: 520, margin: '0 auto', padding: 'var(--page-pv-center) var(--page-gutter)', textAlign: 'center' }}>
           <p style={{ fontSize: 15, color: '#3c463f', marginBottom: 18 }}>{state.tripLoadError}</p>
           <Link to="/trip" style={{ fontWeight: 800, color: '#2E7D32' }}>สร้างแผนใหม่</Link>
         </main>
@@ -79,7 +98,7 @@ export default function TripResultPage() {
     ? { ...selectedPlace, isFavorite: state.favoriteIds.includes(selectedPlace.id), onToggleFavorite: () => actions.toggleFavorite(selectedPlace.id) }
     : null
   return (
-    <main style={{ maxWidth: 1200, margin: '0 auto', padding: '28px 24px 70px' }}>
+    <main style={{ maxWidth: 1200, margin: '0 auto', padding: 'var(--page-pt) var(--page-gutter) var(--page-pb)' }}>
       <div data-role="trip-result-grid" style={{ display: 'grid', gridTemplateColumns: '340px 1fr', gap: 28, alignItems: 'start' }}>
 
         <div data-role="trip-result-summary" style={{ position: 'sticky', top: 88, display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -145,7 +164,6 @@ export default function TripResultPage() {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <a href="#" style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, fontWeight: 700, color: '#5f6a63' }}><PinIcon box={false} color="#5f6a63" />เปิดใน Google Maps</a>
             <a href="#" onClick={(e) => { e.preventDefault(); actions.goTripForm() }} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, fontWeight: 700, color: '#5f6a63' }}><RouteIcon size={15} color="#5f6a63" box={false} />สร้างแผนใหม่</a>
           </div>
         </div>
@@ -158,9 +176,16 @@ export default function TripResultPage() {
                   <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 0.5 }}>DAY</span>
                   <span style={{ fontSize: 17, fontWeight: 800 }}>{day.dayNum}</span>
                 </div>
-                <div>
+                <div style={{ minWidth: 0, flex: 1 }}>
                   <div style={{ fontSize: 15, fontWeight: 800, color: '#1B5E20' }}>วันที่ {day.dayNum}</div>
                   <div style={{ fontSize: 12.5, color: '#626863' }}>{day.date}</div>
+                </div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                  {dayDirectionsUrls(day.items, googleIds).map((url, i, all) => (
+                    <a key={url} href={url} target="_blank" rel="noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, fontWeight: 700, color: '#2E7D32', background: '#E8F5E9', border: '1px solid #C8E6C9', borderRadius: 14, padding: '6px 12px', whiteSpace: 'nowrap' }}>
+                      <PinIcon box={false} color="#2E7D32" />เปิดใน Google Maps{all.length > 1 ? ` (${i + 1}/${all.length})` : ''}
+                    </a>
+                  ))}
                 </div>
               </div>
 
