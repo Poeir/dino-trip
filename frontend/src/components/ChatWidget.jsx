@@ -71,6 +71,15 @@ const bubbleMessages = [
   'มีคำถามเกี่ยวกับขอนแก่นมั้ยครับ ถามได้เลยนะ',
 ]
 
+const BUBBLE_FIRST_MS = 8000
+const BUBBLE_EVERY_MS = 60000
+const BUBBLE_SHOW_MS = 7000
+const BUBBLE_SNOOZE_MS = 6 * 60 * 60 * 1000
+const SNOOZE_KEY = 'dino-chat-bubble-snooze-until'
+const readSnoozeUntil = () => {
+  try { return Number(localStorage.getItem(SNOOZE_KEY)) || 0 } catch { return 0 }
+}
+
 const sparkles = [
   { left: '10%', top: '20%', size: 4, duration: '2.6s', delay: '0s' },
   { left: '85%', top: '55%', size: 5, duration: '3s', delay: '0.5s' },
@@ -85,15 +94,22 @@ export default function ChatWidget() {
   useEffect(() => {
     if (state.chatOpen) { setBubbleVisible(false); return }
     let hideTimer
-    const interval = setInterval(() => {
+    const show = () => {
+      if (Date.now() < readSnoozeUntil()) return
       setBubbleIndex((i) => (i + 1) % bubbleMessages.length)
       setBubbleVisible(true)
-      hideTimer = setTimeout(() => setBubbleVisible(false), 6000)
-    }, 15000)
-    const firstShow = setTimeout(() => setBubbleVisible(true), 4000)
-    const firstHide = setTimeout(() => setBubbleVisible(false), 10000)
-    return () => { clearInterval(interval); clearTimeout(hideTimer); clearTimeout(firstShow); clearTimeout(firstHide) }
+      hideTimer = setTimeout(() => setBubbleVisible(false), BUBBLE_SHOW_MS)
+    }
+    const interval = setInterval(show, BUBBLE_EVERY_MS)
+    const firstShow = setTimeout(show, BUBBLE_FIRST_MS)
+    return () => { clearInterval(interval); clearTimeout(hideTimer); clearTimeout(firstShow) }
   }, [state.chatOpen])
+
+  // Closing the bubble with x silences it for a good while (kept across reloads).
+  const dismissBubble = () => {
+    setBubbleVisible(false)
+    try { localStorage.setItem(SNOOZE_KEY, String(Date.now() + BUBBLE_SNOOZE_MS)) } catch { /* private mode: snooze only lasts until reload */ }
+  }
 
   return (
     <div data-role="chat-widget" style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 60, display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
@@ -212,7 +228,7 @@ export default function ChatWidget() {
       {!state.chatOpen && bubbleVisible && (
         <div onClick={() => { actions.toggleChat(); setBubbleVisible(false) }} className="dc-chat-bubble" style={{ position: 'absolute', bottom: 76, right: 6, width: 216, background: '#fff', borderRadius: 16, padding: '12px 30px 12px 14px', boxShadow: '0 14px 32px rgba(0,0,0,0.18)', fontSize: 13, color: '#1f2a24', lineHeight: 1.45, cursor: 'pointer', animation: 'dc-pop 0.3s ease both' }}>
           {bubbleMessages[bubbleIndex]}
-          <button onClick={(e) => { e.stopPropagation(); setBubbleVisible(false) }} style={{ position: 'absolute', top: 6, right: 8, background: 'none', border: 'none', color: '#aaa', fontSize: 14, cursor: 'pointer', lineHeight: 1 }}>×</button>
+          <button onClick={(e) => { e.stopPropagation(); dismissBubble() }} aria-label="ปิด" style={{ position: 'absolute', top: 6, right: 8, background: 'none', border: 'none', color: '#aaa', fontSize: 14, cursor: 'pointer', lineHeight: 1 }}>×</button>
           <div style={{ position: 'absolute', bottom: -6, right: 24, width: 12, height: 12, background: '#fff', transform: 'rotate(45deg)', boxShadow: '2px 2px 4px rgba(0,0,0,0.05)' }}></div>
         </div>
       )}
