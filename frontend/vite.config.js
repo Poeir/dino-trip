@@ -1,5 +1,20 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { readFileSync } from 'node:fs'
+
+// One version for the whole system: the repo-root VERSION file. Docker builds
+// pass it in as VITE_APP_VERSION (the build context there is only frontend/);
+// a build with neither falls back to this package's own version.
+function readVersion() {
+  for (const read of [
+    () => readFileSync(new URL('../VERSION', import.meta.url), 'utf8').trim(),
+    () => JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')).version,
+  ]) {
+    try { return read() } catch { /* try the next source */ }
+  }
+  return 'dev'
+}
+const appVersion = process.env.VITE_APP_VERSION || readVersion()
 
 // index.html carries absolute canonical / Open Graph URLs (link-preview
 // crawlers don't resolve relative ones). Fill the %SITE_URL% token from
@@ -13,6 +28,10 @@ const siteUrlPlugin = {
 
 export default defineConfig({
   plugins: [react(), siteUrlPlugin],
+  define: {
+    __APP_VERSION__: JSON.stringify(appVersion),
+    __GIT_SHA__: JSON.stringify(process.env.VITE_GIT_SHA || ''),
+  },
   build: {
     rollupOptions: {
       output: {

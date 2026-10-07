@@ -56,6 +56,9 @@ export default function Footer() {
           <a href="#" onClick={(e) => { e.preventDefault(); actions.goAdminLogin() }} style={{ fontSize: 12, color: '#5f6a63', marginLeft: 8 }}>สำหรับผู้ดูแลระบบ</a>
         </div>
       </div>
+      <div style={{ maxWidth: 1360, margin: '0 auto', padding: '0 0 12px', textAlign: 'center', fontSize: 11.5, color: '#7a847d' }}>
+        เวอร์ชัน Preview v{__APP_VERSION__}
+      </div>
     </footer>
   )
 }

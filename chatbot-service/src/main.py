@@ -3,6 +3,8 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from src.core.config import (
+    APP_VERSION,
+    GIT_SHA,
     CORS_ORIGINS,
     RATE_LIMIT_CHAT_PER_HOUR,
     RATE_LIMIT_CHAT_PER_MINUTE,
@@ -20,7 +22,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
 
-app = FastAPI(title="Khon Kaen AI Trip Planner")
+app = FastAPI(title="Khon Kaen AI Trip Planner", version=APP_VERSION)
 
 # Added BEFORE CORSMiddleware on purpose: the last middleware added is the
 # outermost, and a 429 has to pass back through CORS to get its headers --
@@ -52,6 +54,13 @@ def health():
     # Deliberately cheap (no DB / model call) so frequent uptime pings
     # keep the container awake without costing LLM or DB quota.
     return {"status": "ok"}
+
+
+@app.get("/version")
+def version():
+    # Not routed by Caddy (only /health, /chat and /trip/llm are), so it is
+    # reachable from the backend's admin system card but not from the internet.
+    return {"version": APP_VERSION, "sha": GIT_SHA}
 
 
 @app.get("/")

@@ -19,6 +19,8 @@ services:
     env_file: ./chatbot.env
     environment:
       PORT: "8000"
+      APP_VERSION: ${APP_VERSION:-dev}
+      GIT_SHA: ${GIT_SHA:-}
     volumes:
       # Keeps the downloaded embedding model across rebuilds/restarts.
       - hf_cache:/app/.cache/huggingface
@@ -33,6 +35,8 @@ services:
     environment:
       NODE_ENV: production
       PORT: "4000"
+      APP_VERSION: ${APP_VERSION:-dev}
+      GIT_SHA: ${GIT_SHA:-}
       # Set here rather than in backend.env so they can't drift from the
       # setup this file describes. FRONTEND_ORIGIN must equal the browser's
       # Origin exactly (CORS + links in emails).
@@ -50,6 +54,8 @@ services:
       args:
         VITE_GOOGLE_MAPS_API_KEY: ${VITE_GOOGLE_MAPS_API_KEY:-}
         VITE_SITE_URL: https://${CHAT_DOMAIN:?set CHAT_DOMAIN in deploy/.env}
+        APP_VERSION: ${APP_VERSION:-dev}
+        GIT_SHA: ${GIT_SHA:-}
     ports:
       - "80:80"
       - "443:443"

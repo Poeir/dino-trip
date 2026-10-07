@@ -17,6 +17,9 @@ main() {
   git fetch origin main
   git merge --ff-only origin/main
 
+  # Build identity for every service (compose reads these from the environment).
+  export APP_VERSION="$(cat VERSION)" GIT_SHA="$(git rev-parse --short HEAD)"
+
   cd deploy
   # One build at a time: torch (chatbot) and vite (frontend) are both heavy,
   # and building them in parallel can run a 4GB box out of memory.

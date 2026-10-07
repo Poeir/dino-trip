@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useApp } from '../context/AppContext.jsx'
-import { triggerReindex, fetchReindexStatus, fetchReindexPending, fetchPlaces, fetchAdminStats } from '../lib/apiClient.js'
+import { triggerReindex, fetchReindexStatus, fetchReindexPending, fetchPlaces, fetchAdminStats, fetchAdminSystem } from '../lib/apiClient.js'
 import LoadError from '../components/LoadError.jsx'
 import EmptyState from '../components/EmptyState.jsx'
 import { REWARD_ICON } from '../data/categoryImages.js'
@@ -248,6 +248,49 @@ function UsageSection({ stats, error, onRetry }) {
   )
 }
 
+// Which build each service is running. The frontend's own build is known
+// client-side; backend and chatbot are asked via the admin API. Differing
+// commit SHAs mean a deploy only partly landed.
+function SystemVersionCard() {
+  const [system, setSystem] = useState(null)
+  const [error, setError] = useState(false)
+
+  useEffect(() => {
+    fetchAdminSystem().then(setSystem).catch(() => setError(true))
+  }, [])
+
+  const frontend = { version: __APP_VERSION__, sha: __GIT_SHA__ || null }
+  const rows = [
+    { label: 'Frontend', info: frontend },
+    { label: 'Backend', info: system?.backend },
+    { label: 'Chatbot', info: system?.chatbot },
+  ]
+  const shas = rows.map((r) => r.info?.sha).filter(Boolean)
+  const drifted = system && new Set(shas).size > 1
+  const chatbotDown = system && !system.chatbot
+
+  return (
+    <div style={{ background: '#fff', border: '1px solid #E7E3D2', borderRadius: 16, padding: 20, marginTop: 16, animation: 'dc-fade-up 0.35s ease 0.35s both' }}>
+      <div style={{ fontWeight: 800, fontSize: 15, color: '#1B5E20', marginBottom: 10 }}>เวอร์ชันระบบ</div>
+      <div style={{ display: 'grid', gap: 6, fontSize: 13 }}>
+        {rows.map(({ label, info }) => (
+          <div key={label} style={{ display: 'flex', gap: 10, alignItems: 'baseline' }}>
+            <span style={{ width: 80, color: '#5f6a63' }}>{label}</span>
+            {info
+              ? <span style={{ fontWeight: 700 }}>v{info.version}{info.sha && <span style={{ fontWeight: 400, color: '#7a847d', fontFamily: 'monospace' }}> ({info.sha})</span>}</span>
+              : <span style={{ color: '#a33232' }}>{error || system ? 'ติดต่อไม่ได้' : 'กำลังตรวจสอบ...'}</span>}
+          </div>
+        ))}
+      </div>
+      {(drifted || chatbotDown || error) && (
+        <div style={{ marginTop: 10, fontSize: 12.5, color: '#a33232' }}>
+          {error ? 'โหลดข้อมูลเวอร์ชันไม่สำเร็จ' : drifted ? 'แต่ละส่วนรันคนละ commit — การ deploy อาจยังไม่ครบ' : 'ติดต่อ chatbot-service ไม่ได้'}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function DashboardTab() {
   const { state, actions } = useApp()
   const [placesCount, setPlacesCount] = useState(null)
@@ -337,6 +380,7 @@ export default function DashboardTab() {
       <UsageSection stats={stats} error={statsError} onRetry={loadStats} />
       <TripStatsSection />
       <ReindexCard />
+      <SystemVersionCard />
     </>
   )
 }

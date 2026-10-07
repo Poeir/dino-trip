@@ -15,10 +15,13 @@ COPY frontend/ ./
 ARG VITE_GOOGLE_MAPS_API_KEY=""
 # Absolute site URL baked into index.html's canonical / Open Graph tags.
 ARG VITE_SITE_URL=""
+# Build identity for the footer / admin system card (see vite.config.js).
+ARG APP_VERSION=""
+ARG GIT_SHA=""
 ENV VITE_API_URL="" \
     VITE_CHATBOT_SERVICE_URL="" \
     VITE_GOOGLE_MAPS_API_KEY=${VITE_GOOGLE_MAPS_API_KEY} \
-    VITE_SITE_URL=${VITE_SITE_URL}
+    VITE_SITE_URL=${VITE_SITE_URL}     VITE_APP_VERSION=${APP_VERSION}     VITE_GIT_SHA=${GIT_SHA}
 RUN npm run build
 
 FROM caddy:2

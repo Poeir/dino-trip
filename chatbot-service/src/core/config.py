@@ -76,3 +76,8 @@ RATE_LIMIT_TRIP_PER_HOUR = int(os.environ.get("RATE_LIMIT_TRIP_PER_HOUR", "20"))
 # open "*" behaviour so local dev works; set it in production -- this service
 # has no auth of its own, so CORS is the only thing limiting browser callers.
 CORS_ORIGINS = [o.strip().rstrip("/") for o in os.environ.get("CORS_ORIGINS", "*").split(",") if o.strip()]
+
+# Set by deploy/deploy.sh (from the repo-root VERSION file and git); "dev" when
+# running from a checkout. Shown on /docs and returned by /version.
+APP_VERSION = os.environ.get("APP_VERSION", "dev")
+GIT_SHA = os.environ.get("GIT_SHA") or None
