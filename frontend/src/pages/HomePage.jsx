@@ -1,3 +1,5 @@
+import { ArrowRight } from 'lucide-react'
+import { StarGlyph } from '../components/Icons.jsx'
 import { useEffect, useState } from 'react'
 import { useApp } from '../context/AppContext.jsx'
 import ImageSlot from '../components/ImageSlot.jsx'
@@ -108,7 +110,7 @@ export default function HomePage() {
               <CalendarIcon />
               <h2 data-font="culture" style={{ fontSize: 23, fontWeight: 800, color: '#1B5E20', margin: 0 }}>กิจกรรมและเทศกาลที่กำลังจะมาถึง</h2>
             </div>
-            <a href="#" onClick={(e) => { e.preventDefault(); actions.goEvents() }} style={{ fontSize: 13.5, fontWeight: 700, color: '#2E7D32' }}>ดูทั้งหมด →</a>
+            <a href="#" onClick={(e) => { e.preventDefault(); actions.goEvents() }} style={{ fontSize: 13.5, fontWeight: 700, color: '#2E7D32' }}>ดูทั้งหมด <ArrowRight size={14} strokeWidth={2.4} style={{ verticalAlign: '-2px' }} /></a>
           </div>
           {state.dataLoading && <LoadingSpinner size={32} label="กำลังโหลดกิจกรรม..." />}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(320px,1fr))', gap: 22 }}>
@@ -142,7 +144,7 @@ export default function HomePage() {
                   </button>
                 )}
             </div>
-            <a href="#" onClick={(e) => { e.preventDefault(); actions.goPlaces() }} style={{ fontSize: 13.5, fontWeight: 700, color: '#2E7D32' }}>ดูสถานที่ทั้งหมด →</a>
+            <a href="#" onClick={(e) => { e.preventDefault(); actions.goPlaces() }} style={{ fontSize: 13.5, fontWeight: 700, color: '#2E7D32' }}>ดูสถานที่ทั้งหมด <ArrowRight size={14} strokeWidth={2.4} style={{ verticalAlign: '-2px' }} /></a>
           </div>
           {placesLoading && <LoadingSpinner size={32} label="กำลังโหลดสถานที่แนะนำ..." />}
           <div data-role="card-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: 24 }}>
@@ -155,7 +157,7 @@ export default function HomePage() {
                     {place.hasQR && <span style={{ fontSize: 11, fontWeight: 700, color: '#7A5205', background: '#FFF8E1', padding: '3px 9px', borderRadius: 10 }}>+{place.qrPoints} พอยท์</span>}
                   </div>
                   <div style={{ fontWeight: 400, fontSize: 16, color: '#1f2a24', marginBottom: 4 }}>{place.name}</div>
-                  <div style={{ fontWeight: 300, fontSize: 13, color: '#5f6a63', marginBottom: 8 }}>★ {place.rating} ({place.reviews}) · {place.price}{place.distanceKm != null && ` · ${place.distanceKm} กม.`}</div>
+                  <div style={{ fontWeight: 300, fontSize: 13, color: '#5f6a63', marginBottom: 8 }}><StarGlyph /> {place.rating} ({place.reviews}) · {place.price}{place.distanceKm != null && ` · ${place.distanceKm} กม.`}</div>
                   <div style={{ fontWeight: 300, fontSize: 12.5, color: '#626863', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{place.address}</div>
                 </div>
               </div>

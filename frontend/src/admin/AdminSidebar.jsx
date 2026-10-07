@@ -1,3 +1,4 @@
+import { ArrowLeft } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext.jsx'
@@ -104,7 +105,7 @@ export default function AdminSidebar() {
         </div>
       ))}
       <div style={{ marginTop: 'auto', padding: '16px 20px 0', borderTop: '1px solid #F0EDE0' }}>
-        <div onClick={actions.adminLogout} style={{ cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#626863' }}>← ออกจากระบบ</div>
+        <div onClick={actions.adminLogout} style={{ cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#626863' }}><ArrowLeft size={14} strokeWidth={2.4} style={{ verticalAlign: '-2px' }} /> ออกจากระบบ</div>
       </div>
     </aside>
   )

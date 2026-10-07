@@ -1,3 +1,4 @@
+import { X } from 'lucide-react'
 import { useState } from 'react'
 
 const parseList = (v) => (v || '').split(',').map((s) => s.trim()).filter(Boolean)
@@ -38,7 +39,7 @@ export default function ChipMultiSelect({ value, onChange, options, addPlacehold
           {selected.map((tag) => (
             <span key={tag} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: '#2E7D32', color: '#fff', borderRadius: 14, padding: '4px 6px 4px 12px', fontSize: 12.5, fontWeight: 600 }}>
               {tag}
-              <button type="button" onClick={() => remove(tag)} aria-label={`ลบ ${tag}`} style={{ background: 'rgba(255,255,255,0.3)', border: 'none', borderRadius: '50%', width: 16, height: 16, cursor: 'pointer', color: '#fff', fontSize: 11, lineHeight: '16px', padding: 0 }}>×</button>
+              <button type="button" onClick={() => remove(tag)} aria-label={`ลบ ${tag}`} style={{ background: 'rgba(255,255,255,0.3)', border: 'none', borderRadius: '50%', width: 16, height: 16, cursor: 'pointer', color: '#fff', fontSize: 11, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={11} strokeWidth={3} /></button>
             </span>
           ))}
         </div>

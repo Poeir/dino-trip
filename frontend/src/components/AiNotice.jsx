@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import { MASCOT } from '../data/categoryImages.js'
+import Modal from './Modal.jsx'
 
 // Flip to false (or delete the <AiNotice /> usages) once the AI trip planner
 // and chatbot are stable again.
@@ -9,7 +11,26 @@ export const AI_NOTICE_TEXT = 'น้องไดโนกำลังพัฒ�
 // A sad-dino notice. variant "card" is the roomy one (trip planner page);
 // "compact" fits inside the welcome popup and the chat window.
 export default function AiNotice({ variant = 'card' }) {
+  const [open, setOpen] = useState(true)
   if (!SHOW_AI_NOTICE) return null
+  if (variant === 'popup') {
+    return (
+      <Modal open={open} onClose={() => setOpen(false)} maxWidth={400}>
+        <div role="note" style={{ textAlign: 'center' }}>
+          <img src={MASCOT.sad} alt="" width={110} height={110} style={{ width: 110, height: 'auto', margin: '0 auto 8px' }} />
+          <div style={{ fontWeight: 800, fontSize: 17, color: '#7A5205', marginBottom: 6 }}>ประกาศจากน้องไดโน</div>
+          <p style={{ fontSize: 14, lineHeight: 1.6, color: '#7A5205', margin: '0 0 18px' }}>{AI_NOTICE_TEXT}</p>
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            style={{ border: 'none', background: '#2E7D32', color: '#fff', borderRadius: 20, padding: '9px 28px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}
+          >
+            รับทราบ
+          </button>
+        </div>
+      </Modal>
+    )
+  }
   const compact = variant === 'compact'
   return (
     <div

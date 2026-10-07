@@ -1,3 +1,4 @@
+import { X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useApp } from '../context/AppContext.jsx'
 import Modal from '../components/Modal.jsx'
@@ -175,7 +176,7 @@ export default function PlaceSyncModal({ open, onClose, onFinished }) {
                   {picked.map((p) => (
                     <span key={p.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#E3F2FD', color: '#1565C0', borderRadius: 20, padding: '3px 4px 3px 10px', fontSize: 12.5, fontWeight: 600 }}>
                       {p.name}
-                      <button onClick={() => togglePick(p)} aria-label={`เอา ${p.name} ออก`} style={{ background: 'none', border: 'none', color: '#1565C0', cursor: 'pointer', fontSize: 15, lineHeight: 1, padding: '0 4px' }}>×</button>
+                      <button onClick={() => togglePick(p)} aria-label={`เอา ${p.name} ออก`} style={{ background: 'none', border: 'none', color: '#1565C0', cursor: 'pointer', fontSize: 15, lineHeight: 1, padding: '0 4px', display: 'inline-flex', alignItems: 'center' }}><X size={14} strokeWidth={2.6} /></button>
                     </span>
                   ))}
                 </div>

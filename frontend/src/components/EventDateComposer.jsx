@@ -1,3 +1,4 @@
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 const WEEKDAYS = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส']
@@ -14,7 +15,7 @@ const toIso = (y, m, d) => `${y}-${pad2(m + 1)}-${pad2(d)}`
 const parseIso = (iso) => { const [y, m, d] = iso.split('-').map(Number); return { y, m: m - 1, d } }
 const todayIso = () => new Date().toISOString().slice(0, 10)
 
-const navBtnStyle = { border: '1px solid #DCD8C6', background: '#fff', borderRadius: 8, width: 28, height: 28, fontSize: 15, fontWeight: 700, color: '#3c463f', cursor: 'pointer' }
+const navBtnStyle = { border: '1px solid #DCD8C6', background: '#fff', borderRadius: 8, width: 28, height: 28, fontSize: 15, fontWeight: 700, color: '#3c463f', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }
 
 // A closed-by-default popup (not a permanently-open card -- keeps the form
 // from getting cluttered) that opens into a month-grid calendar. Pick a day
@@ -134,9 +135,9 @@ export default function EventDateComposer({ mode, onModeChange, start, end, onCh
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-            <button type="button" onClick={() => changeMonth(-1)} aria-label="เดือนก่อนหน้า" style={navBtnStyle}>‹</button>
+            <button type="button" onClick={() => changeMonth(-1)} aria-label="เดือนก่อนหน้า" style={navBtnStyle}><ChevronLeft size={16} /></button>
             <div style={{ fontWeight: 700, fontSize: 13.5, color: '#1B5E20' }}>{MONTHS_FULL[viewMonth]} {viewYear + 543}</div>
-            <button type="button" onClick={() => changeMonth(1)} aria-label="เดือนถัดไป" style={navBtnStyle}>›</button>
+            <button type="button" onClick={() => changeMonth(1)} aria-label="เดือนถัดไป" style={navBtnStyle}><ChevronRight size={16} /></button>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 2, marginBottom: 4 }}>
             {WEEKDAYS.map((w) => <div key={w} style={{ textAlign: 'center', fontSize: 11, fontWeight: 700, color: '#626863', padding: '2px 0' }}>{w}</div>)}

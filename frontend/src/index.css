@@ -65,7 +65,39 @@
 
 :root {
   --font-culture: 'KKU Culture', 'TH Sarabun New', sans-serif;
+
+  /* Design tokens -- use these instead of hardcoding hex values in new/edited UI. */
+  --c-primary: #388E3C;
+  --c-primary-light: #66BB6A;
+  --c-primary-dark: #2E7D32;
+  --c-primary-deep: #1B5E20;
+  --c-primary-tint: #E8F5E9;
+  --c-primary-border: #C8E6C9;
+  --c-border: #DCD8C6;
+  --c-text: #1f2a24;
+  --c-text-muted: #4a5a50;
+  /* Semantic status colors: bg / text / solid (active) / border. Same set for badges and filter pills. */
+  --s-ongoing-bg: #E8F5E9;   --s-ongoing-fg: #1B5E20;   --s-ongoing: #388E3C;   --s-ongoing-bd: #A5D6A7;
+  --s-upcoming-bg: #FFF3E0;  --s-upcoming-fg: #B26A00;  --s-upcoming: #F29100;  --s-upcoming-bd: #FFCC80;
+  --s-ended-bg: #EEEEEE;     --s-ended-fg: #616161;     --s-ended: #757575;     --s-ended-bd: #BDBDBD;
+  --s-cancelled-bg: #FDECEC; --s-cancelled-fg: #A33232; --s-cancelled: #D64545; --s-cancelled-bd: #F2B8B8;
+  --r-pill: 20px;
+  --r-card: 16px;
 }
+
+/* Shared filter pill (category / status filters). Active state is the green gradient. */
+.dc-pill { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--c-primary-border); border-radius: var(--r-pill); padding: 8px 18px; font-family: inherit; font-size: 13.5px; font-weight: 600; line-height: 1.4; cursor: pointer; background: #fff; color: var(--c-text); transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease; }
+.dc-pill.has-icon { padding-left: 13px; }
+.dc-pill:hover:not(.is-active) { background: var(--c-primary-tint); border-color: #A5D6A7; }
+.dc-pill.is-active { background: linear-gradient(135deg, var(--c-primary-light), var(--c-primary)); border-color: var(--c-primary-border); color: #fff; }
+/* Status tones: tinted when idle so the color is readable before it is selected, solid when active. */
+.dc-pill[data-tone] { background: var(--tone-bg); color: var(--tone-fg); border-color: var(--tone-bd); }
+.dc-pill[data-tone]:hover:not(.is-active) { background: var(--tone-bg); border-color: var(--tone); }
+.dc-pill[data-tone].is-active { background: var(--tone); border-color: var(--tone); color: #fff; }
+.dc-pill[data-tone="ongoing"]   { --tone-bg: var(--s-ongoing-bg);   --tone-fg: var(--s-ongoing-fg);   --tone: var(--s-ongoing);   --tone-bd: var(--s-ongoing-bd); }
+.dc-pill[data-tone="upcoming"]  { --tone-bg: var(--s-upcoming-bg);  --tone-fg: var(--s-upcoming-fg);  --tone: var(--s-upcoming);  --tone-bd: var(--s-upcoming-bd); }
+.dc-pill[data-tone="ended"]     { --tone-bg: var(--s-ended-bg);     --tone-fg: var(--s-ended-fg);     --tone: var(--s-ended);     --tone-bd: var(--s-ended-bd); }
+.dc-pill[data-tone="cancelled"] { --tone-bg: var(--s-cancelled-bg); --tone-fg: var(--s-cancelled-fg); --tone: var(--s-cancelled); --tone-bd: var(--s-cancelled-bd); }
 * { box-sizing: border-box; }
 /* Always reserve the scrollbar's width: pages that start short (spinner) and grow
    once data loads otherwise gain a scrollbar mid-load, narrowing the viewport and

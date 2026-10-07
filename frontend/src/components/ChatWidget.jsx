@@ -1,3 +1,5 @@
+import { X } from 'lucide-react'
+import { StarGlyph } from './Icons.jsx'
 import { Fragment, useEffect, useState } from 'react'
 import { useApp } from '../context/AppContext.jsx'
 import AiNotice from './AiNotice.jsx'
@@ -133,7 +135,7 @@ export default function ChatWidget() {
                   <div style={{ color: '#E8F5E9', fontSize: 11 }}>ผู้ช่วยนำเที่ยวขอนแก่น · ออนไลน์</div>
                 </div>
               </div>
-              <button onClick={actions.toggleChat} style={{ background: 'rgba(255,255,255,0.16)', border: 'none', color: '#fff', fontSize: 16, width: 26, height: 26, borderRadius: '50%', cursor: 'pointer', lineHeight: 1 }}>×</button>
+              <button onClick={actions.toggleChat} style={{ background: 'rgba(255,255,255,0.16)', border: 'none', color: '#fff', fontSize: 16, width: 26, height: 26, borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}><X size={16} /></button>
             </div>
           </div>
           <div style={{ flex: 1, overflowY: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 10, background: 'linear-gradient(180deg,#FBFAF3,#fff 40%)' }}>
@@ -160,7 +162,7 @@ export default function ChatWidget() {
                     {msg.places.map((p) => (
                       <div key={p.id} onClick={() => actions.openPlace(p.id)} style={{ flexShrink: 0, width: 140, background: '#fff', border: '1px solid #E7E3D2', borderRadius: 12, padding: 10, cursor: 'pointer' }}>
                         <div style={{ fontWeight: 700, fontSize: 12, color: '#1f2a24', marginBottom: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</div>
-                        <div style={{ fontSize: 11, color: '#5f6a63', marginBottom: 3 }}>★ {p.rating ?? '-'}</div>
+                        <div style={{ fontSize: 11, color: '#5f6a63', marginBottom: 3 }}><StarGlyph size={11} /> {p.rating ?? '-'}</div>
                         <div style={{ fontSize: 10.5, color: '#626863', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.address}</div>
                       </div>
                     ))}
@@ -228,7 +230,7 @@ export default function ChatWidget() {
       {!state.chatOpen && bubbleVisible && (
         <div onClick={() => { actions.toggleChat(); setBubbleVisible(false) }} className="dc-chat-bubble" style={{ position: 'absolute', bottom: 76, right: 6, width: 216, background: '#fff', borderRadius: 16, padding: '12px 30px 12px 14px', boxShadow: '0 14px 32px rgba(0,0,0,0.18)', fontSize: 13, color: '#1f2a24', lineHeight: 1.45, cursor: 'pointer', animation: 'dc-pop 0.3s ease both' }}>
           {bubbleMessages[bubbleIndex]}
-          <button onClick={(e) => { e.stopPropagation(); dismissBubble() }} aria-label="ปิด" style={{ position: 'absolute', top: 6, right: 8, background: 'none', border: 'none', color: '#aaa', fontSize: 14, cursor: 'pointer', lineHeight: 1 }}>×</button>
+          <button onClick={(e) => { e.stopPropagation(); dismissBubble() }} aria-label="ปิด" style={{ position: 'absolute', top: 6, right: 8, background: 'none', border: 'none', color: '#aaa', fontSize: 14, cursor: 'pointer', lineHeight: 1, display: 'flex' }}><X size={14} /></button>
           <div style={{ position: 'absolute', bottom: -6, right: 24, width: 12, height: 12, background: '#fff', transform: 'rotate(45deg)', boxShadow: '2px 2px 4px rgba(0,0,0,0.05)' }}></div>
         </div>
       )}

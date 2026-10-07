@@ -1,3 +1,4 @@
+import { ArrowRight } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useApp } from '../context/AppContext.jsx'
 import ImageSlot from './ImageSlot.jsx'
@@ -70,7 +71,7 @@ export default function HeroSearch() {
             </button>
           ))}
           {loaded && rows.length > 0 && (
-            <button type="button" onClick={() => { setOpen(false); actions.goPlaces() }} style={{ width: '100%', padding: '12px 14px', background: '#F4F9F4', border: 'none', color: '#1B5E20', fontWeight: 700, fontSize: 13.5, cursor: 'pointer' }}>ดูผลลัพธ์ทั้งหมดในสถานที่ →</button>
+            <button type="button" onClick={() => { setOpen(false); actions.goPlaces() }} style={{ width: '100%', padding: '12px 14px', background: '#F4F9F4', border: 'none', color: '#1B5E20', fontWeight: 700, fontSize: 13.5, cursor: 'pointer' }}>ดูผลลัพธ์ทั้งหมดในสถานที่ <ArrowRight size={14} strokeWidth={2.4} style={{ verticalAlign: '-2px' }} /></button>
           )}
         </div>
       )}

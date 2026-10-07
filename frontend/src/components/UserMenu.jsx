@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { ChevronDown } from 'lucide-react'
 import { useApp } from '../context/AppContext.jsx'
 import Avatar from './Avatar.jsx'
 
@@ -34,9 +35,7 @@ export default function UserMenu() {
         <button type="button" className="dc-account-btn" onClick={() => setOpen((v) => !v)} aria-haspopup="menu" aria-expanded={open}>
           <Avatar user={user} size={32} />
           <span className="dc-account-name">{state.userName}</span>
-          <svg width="10" height="6" viewBox="0 0 10 6" fill="none" aria-hidden="true" style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }}>
-            <path d="M1 1l4 4 4-4" stroke="#5f6a63" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
+          <ChevronDown size={14} strokeWidth={2.2} color="#5f6a63" aria-hidden="true" style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }} />
         </button>
 
         {open && (

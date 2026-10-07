@@ -1,3 +1,4 @@
+import { StarGlyph } from './Icons.jsx'
 import { useState } from 'react'
 import { useApp } from '../context/AppContext.jsx'
 import ImageSlot from './ImageSlot.jsx'
@@ -56,7 +57,7 @@ export default function PlaceDetailView({ place: p, imageHeight = 460 }) {
             {p.businessStatus === 'CLOSED_PERMANENTLY' && <span style={{ fontSize: 12, fontWeight: 700, color: '#B91C1C', background: '#FEE2E2', padding: '4px 11px', borderRadius: 10 }}>ปิดถาวรแล้ว</span>}
           </div>
           <h1 style={{ fontSize: 26, fontWeight: 700, color: '#1B5E20', margin: '0 0 8px', lineHeight: 1.25 }}>{p.name}</h1>
-          <div style={{ fontWeight: 300, fontSize: 14, color: '#5f6a63', marginBottom: 16 }}>★ {p.rating} ({p.reviews} รีวิว) · {p.price}</div>
+          <div style={{ fontWeight: 300, fontSize: 14, color: '#5f6a63', marginBottom: 16 }}><StarGlyph size={14} /> {p.rating} ({p.reviews} รีวิว) · {p.price}</div>
           {(p.tags || []).length > 0 && (
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 }}>
               {p.tags.map((tag, i) => (
@@ -124,7 +125,7 @@ export default function PlaceDetailView({ place: p, imageHeight = 460 }) {
             )}
             {reviewsToShow.map((r, i) => (
               <div key={i} style={{ border: '1px solid #E7E3D2', borderRadius: 12, padding: 16 }}>
-                <div style={{ fontWeight: 400, fontSize: 14, color: '#1f2a24' }}>{'★'.repeat(r.stars)}{'☆'.repeat(5 - r.stars)} {r.name}</div>
+                <div style={{ fontWeight: 400, fontSize: 14, color: '#1f2a24' }}>{Array.from({ length: 5 }, (_, i) => <StarGlyph key={i} size={14} filled={i < r.stars} />)} {r.name}</div>
                 <div style={{ fontWeight: 300, fontSize: 13.5, color: '#5f6a63', marginTop: 6 }}>{r.text}</div>
               </div>
             ))}

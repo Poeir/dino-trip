@@ -1,3 +1,4 @@
+import { ArrowLeft, Check, X } from 'lucide-react'
 import { useApp } from '../context/AppContext.jsx'
 import { CalendarIcon, HeartIcon, WalletIcon, ClockIcon, PinIcon } from '../components/Icons.jsx'
 import { MASCOT } from '../data/categoryImages.js'
@@ -20,7 +21,7 @@ export default function TripFormPage() {
 
   return (
     <main style={{ maxWidth: 720, margin: '0 auto', padding: 'var(--page-pt) var(--page-gutter) var(--page-pb)' }}>
-      <AiNotice />
+      <AiNotice variant="popup" />
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14, marginBottom: 30, animation: 'dc-fade-up 0.4s ease both' }}>
         <img src={MASCOT.map} alt="" style={{ width: 84, height: 84, objectFit: 'contain', flexShrink: 0, animation: 'dc-float 3.4s ease-in-out infinite' }} />
         <div>
@@ -36,7 +37,7 @@ export default function TripFormPage() {
           {steps.map((st) => (
             <div key={st.n} onClick={st.onClick} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
               <span style={{ width: 34, height: 34, borderRadius: '50%', background: st.circleBg, border: `2px solid ${st.circleBorder}`, color: st.circleColor, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 14, transition: 'all 0.25s ease', boxShadow: st.active ? '0 0 0 4px rgba(251,192,45,0.28)' : 'none' }}>
-                {st.done ? '✓' : st.n}
+                {st.done ? <Check size={17} strokeWidth={3} /> : st.n}
               </span>
               <span data-role="trip-stepper-label" style={{ fontSize: 12, fontWeight: st.labelWeight, color: st.labelColor, whiteSpace: 'nowrap' }}>{st.label}</span>
             </div>
@@ -102,7 +103,7 @@ export default function TripFormPage() {
                   {derived.mustGoChipsView.map((chip) => (
                     <span key={chip.name} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#E8F5E9', color: '#1B5E20', border: '1px solid #C8E6C9', borderRadius: 16, padding: '5px 6px 5px 12px', fontSize: 13, fontWeight: 700 }}>
                       {chip.name}
-                      <button type="button" onClick={chip.onRemove} aria-label={`ลบ ${chip.name}`} style={{ background: 'transparent', border: 'none', color: '#2E7D32', cursor: 'pointer', fontSize: 15, lineHeight: 1, padding: '0 4px' }}>×</button>
+                      <button type="button" onClick={chip.onRemove} aria-label={`ลบ ${chip.name}`} style={{ background: 'transparent', border: 'none', color: '#2E7D32', cursor: 'pointer', fontSize: 15, lineHeight: 1, padding: '0 4px', display: 'inline-flex', alignItems: 'center' }}><X size={14} strokeWidth={2.6} /></button>
                     </span>
                   ))}
                 </div>
@@ -216,7 +217,7 @@ export default function TripFormPage() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 30 }}>
-          <button onClick={actions.prevStep} style={{ background: 'transparent', color: '#5f6a63', border: 'none', padding: '13px 10px', fontWeight: 700, fontSize: 14, cursor: 'pointer', opacity: derived.prevOpacity }}>← ย้อนกลับ</button>
+          <button onClick={actions.prevStep} style={{ background: 'transparent', color: '#5f6a63', border: 'none', padding: '13px 10px', fontWeight: 700, fontSize: 14, cursor: 'pointer', opacity: derived.prevOpacity }}><ArrowLeft size={15} strokeWidth={2.4} style={{ verticalAlign: '-2px' }} /> ย้อนกลับ</button>
           <button onClick={derived.onPrimaryStep} style={{ flex: 1, background: 'linear-gradient(135deg,#66BB6A,#388E3C)', color: '#fff', border: 'none', padding: 14, borderRadius: 20, fontWeight: 800, fontSize: 15, cursor: 'pointer', boxShadow: '0 10px 22px rgba(46,125,50,0.25)' }}>{derived.primaryLabel}</button>
         </div>
       </div>

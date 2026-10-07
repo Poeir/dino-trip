@@ -1,3 +1,4 @@
+import { StarGlyph } from './Icons.jsx'
 import { useEffect, useState } from 'react'
 import ImageSlot from './ImageSlot.jsx'
 import PlaceCard from './PlaceCard.jsx'
@@ -61,7 +62,7 @@ export default function PlacePicker({ value, onChange, allowClear, onAddFromGoog
         <ImageSlot src={selected.img} shape="rounded" radius={10} style={{ width: 44, height: 44 }} placeholder={selected.name.slice(0, 2)} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontWeight: 700, fontSize: 13.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{selected.name}</div>
-          <div style={{ fontSize: 12, color: '#626863' }}>{selected.category}{selected.rating ? ` · ★ ${selected.rating}` : ''}</div>
+          <div style={{ fontSize: 12, color: '#626863' }}>{selected.category}{selected.rating ? <> · <StarGlyph size={12} /> {selected.rating}</> : ''}</div>
         </div>
         <button type="button" onClick={() => { paged.setQuery(''); setBrowsing(true) }} style={{ background: '#F1F8E9', color: '#2E7D32', border: 'none', padding: '7px 12px', borderRadius: 10, fontSize: 12.5, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}>เปลี่ยน</button>
         {allowClear && (

@@ -1,3 +1,4 @@
+import { X } from 'lucide-react'
 import { useEffect } from 'react'
 
 export default function Modal({ open, onClose, title, children, maxWidth = 640 }) {
@@ -23,7 +24,7 @@ export default function Modal({ open, onClose, title, children, maxWidth = 640 }
         {title && (
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
             <h2 style={{ fontSize: 17, fontWeight: 800, color: '#1B5E20', margin: 0 }}>{title}</h2>
-            <button onClick={onClose} aria-label="ปิด" style={{ background: 'none', border: 'none', fontSize: 22, color: '#626863', cursor: 'pointer', lineHeight: 1, padding: 4 }}>×</button>
+            <button onClick={onClose} aria-label="ปิด" style={{ background: 'none', border: 'none', fontSize: 22, color: '#626863', cursor: 'pointer', lineHeight: 1, padding: 4, display: 'flex' }}><X size={22} /></button>
           </div>
         )}
         {children}

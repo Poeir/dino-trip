@@ -1,3 +1,5 @@
+import { ChevronLeft, ChevronRight } from 'lucide-react'
+
 // Numbered pager -- shared by every server-paginated list (admin tables and
 // the public places/events pages, all driven by usePagedList.js). Jumps
 // straight to any page instead of forcing prev/next one click at a time,
@@ -5,11 +7,8 @@
 const PILL = 34
 
 function Chevron({ direction }) {
-  return (
-    <svg width={9} height={14} viewBox="0 0 9 14" fill="none" style={{ transform: direction === 'right' ? 'scaleX(-1)' : undefined }}>
-      <path d="M7.5 1 1.5 7l6 6" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  )
+  const Icon = direction === 'right' ? ChevronRight : ChevronLeft
+  return <Icon size={16} strokeWidth={2.4} aria-hidden="true" />
 }
 
 // e.g. page=6, totalPages=19 -> [1, '…', 5, 6, 7, '…', 19]

@@ -1,3 +1,4 @@
+import { StarGlyph } from '../components/Icons.jsx'
 import { useEffect, useState } from 'react'
 import { useApp } from '../context/AppContext.jsx'
 import Modal from '../components/Modal.jsx'
@@ -66,7 +67,7 @@ function TripDetail({ trip }) {
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14 }}>
         <OwnerBadge owner={trip.owner} />
         {trip.owner && <span style={{ fontSize: 13.5, color: '#3c463f' }}>{trip.owner.name}{trip.owner.email && trip.owner.email !== trip.owner.name ? ` · ${trip.owner.email}` : ''}{trip.owner.deleted ? ' (บัญชีถูกลบ)' : ''}</span>}
-        {trip.isFavorite && <Badge bg="#FFF8E1" color="#7A5205">★ ติดดาว</Badge>}
+        {trip.isFavorite && <Badge bg="#FFF8E1" color="#7A5205"><StarGlyph size={12} /> ติดดาว</Badge>}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(210px,1fr))', gap: '14px 20px', marginBottom: 20 }}>

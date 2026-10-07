@@ -1,3 +1,4 @@
+import { Check, Info, TriangleAlert } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useApp } from '../context/AppContext.jsx'
 import PlaceCard from '../components/PlaceCard.jsx'
@@ -355,7 +356,7 @@ export default function PlacesTab() {
                   </Field>
                 </div>
                 <div style={{ fontSize: 11.5, color: !state.editingId ? '#626863' : linkedQr ? '#2E7D32' : '#a33232', display: 'flex', gap: 6, alignItems: 'flex-start' }}>
-                  <span>{!state.editingId ? 'ℹ' : linkedQr ? '✓' : '⚠'}</span>
+                  <span style={{ flexShrink: 0, display: 'flex' }}>{!state.editingId ? <Info size={14} /> : linkedQr ? <Check size={14} strokeWidth={3} /> : <TriangleAlert size={14} />}</span>
                   <span>
                     {!state.editingId
                       ? 'บันทึกสถานที่นี้ก่อน แล้วไปสร้าง QR Code จริงผูกกับที่นี่ได้ที่แท็บ "QR & พอยท์"'

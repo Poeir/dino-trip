@@ -1,3 +1,4 @@
+import { RefreshCw } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useApp } from '../context/AppContext.jsx'
 import { triggerReindex, fetchReindexStatus, fetchReindexPending, fetchPlaces, fetchAdminStats, fetchAdminSystem } from '../lib/apiClient.js'
@@ -75,19 +76,15 @@ const PENDING_SECTIONS = [
   { key: 'knowledgeBase', label: 'องค์ความรู้' },
 ]
 
-// Plain inline SVG (no icon library in this project) instead of an emoji --
-// emoji render inconsistently across platforms/fonts and don't take a
-// currentColor/size prop the way the rest of this card's icons do.
+// Lucide icon instead of an emoji -- emoji render inconsistently across
+// platforms/fonts and don't take a currentColor/size prop the way the rest of
+// this card's icons do.
 function RefreshIcon({ size = 14, spinning = false }) {
   return (
-    <svg
-      width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
-      strokeLinecap="round" strokeLinejoin="round"
+    <RefreshCw
+      size={size} strokeWidth={2.5} aria-hidden="true"
       style={{ animation: spinning ? 'dc-spin 0.9s linear infinite' : 'none', flexShrink: 0 }}
-    >
-      <path d="M21 12a9 9 0 1 1-2.64-6.36" />
-      <path d="M21 3v6h-6" />
-    </svg>
+    />
   )
 }
 

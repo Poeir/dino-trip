@@ -1,3 +1,4 @@
+import { Star } from 'lucide-react'
 import { useState } from 'react'
 
 const STAR_COUNT = 5
@@ -29,8 +30,8 @@ export default function StarRatingInput({ value, onChange }) {
       <div style={{ display: 'flex', gap: 2 }} onMouseLeave={() => setHoverValue(null)}>
         {Array.from({ length: STAR_COUNT }, (_, i) => i + 1).map((n) => (
           <span key={n} style={{ position: 'relative', fontSize: 26, lineHeight: 1 }}>
-            <span style={{ color: emptyColor }}>★</span>
-            <span style={{ position: 'absolute', inset: 0, overflow: 'hidden', width: fillFor(n), color: filledColor, pointerEvents: 'none' }}>★</span>
+            <span style={{ color: emptyColor }}><Star size={26} strokeWidth={0} fill="currentColor" style={{ display: 'block' }} /></span>
+            <span style={{ position: 'absolute', inset: 0, overflow: 'hidden', width: fillFor(n), color: filledColor, pointerEvents: 'none' }}><Star size={26} strokeWidth={0} fill="currentColor" style={{ display: 'block', maxWidth: 'none' }} /></span>
             <span
               role="button"
               aria-label={`ให้คะแนน ${n - 0.5} ดาว`}

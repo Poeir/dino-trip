@@ -1,3 +1,4 @@
+import { ArrowRight } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { usePagedList } from '../lib/usePagedList.js'
@@ -270,7 +271,7 @@ function RequestRow({ item, onEdit, onCancel, busy }) {
         </div>
         <div style={{ fontSize: 12, color: '#626863' }}>{item.dateRange}{item.venueName ? ` · ${item.venueName}` : ''} · ส่งเมื่อ {fmt(item.createdAt)}</div>
         {item.status === 'rejected' && <div style={{ fontSize: 13, color: '#a33232', marginTop: 4 }}>เหตุผลที่ไม่อนุมัติ: {item.rejectReason}</div>}
-        {item.status === 'approved' && item.eventId && <div style={{ fontSize: 13, marginTop: 4 }}><Link to={`/events/${item.eventId}`} style={{ color: '#2E7D32', fontWeight: 700 }}>ดูกิจกรรมบนเว็บไซต์ →</Link></div>}
+        {item.status === 'approved' && item.eventId && <div style={{ fontSize: 13, marginTop: 4 }}><Link to={`/events/${item.eventId}`} style={{ color: '#2E7D32', fontWeight: 700 }}>ดูกิจกรรมบนเว็บไซต์ <ArrowRight size={14} strokeWidth={2.4} style={{ verticalAlign: '-2px' }} /></Link></div>}
         {item.status === 'pending' && (
           <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
             <button type="button" disabled={busy} onClick={() => onEdit(item)} style={smallBtn}>แก้ไข</button>

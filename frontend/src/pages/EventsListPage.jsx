@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useApp } from '../context/AppContext.jsx'
 import ImageSlot from '../components/ImageSlot.jsx'
 import PageControls from '../components/PageControls.jsx'
+import FilterPill from '../components/FilterPill.jsx'
 import { fetchEvents } from '../lib/apiClient.js'
 import { usePagedList } from '../lib/usePagedList.js'
 import { useSeo } from '../lib/useSeo.js'
@@ -18,10 +19,10 @@ const STATUS_OPTIONS = [
   { value: 'cancelled', label: 'ยกเลิก' },
 ]
 const STATUS_STYLE = {
-  ongoing: { bg: '#E8F5E9', color: '#1B5E20' },
-  upcoming: { bg: '#FFF3E0', color: '#B26A00' },
-  ended: { bg: '#EEEEEE', color: '#616161' },
-  cancelled: { bg: '#FDECEC', color: '#A33232' },
+  ongoing: { bg: 'var(--s-ongoing-bg)', color: 'var(--s-ongoing-fg)' },
+  upcoming: { bg: 'var(--s-upcoming-bg)', color: 'var(--s-upcoming-fg)' },
+  ended: { bg: 'var(--s-ended-bg)', color: 'var(--s-ended-fg)' },
+  cancelled: { bg: 'var(--s-cancelled-bg)', color: 'var(--s-cancelled-fg)' },
 }
 const MAX_TAGS = 3
 
@@ -57,12 +58,9 @@ export default function EventsListPage() {
         style={{ width: '100%', maxWidth: 420, border: '1px solid #DCD8C6', borderRadius: 20, padding: '10px 18px', fontSize: 14, marginBottom: 16, display: 'block' }}
       />
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 22 }}>
-        {STATUS_OPTIONS.map((o) => {
-          const active = status === o.value
-          return (
-            <button key={o.value} onClick={() => setStatus(o.value)} style={{ border: `1px solid ${active ? '#388E3C' : '#DCD8C6'}`, background: active ? '#388E3C' : '#fff', color: active ? '#fff' : '#4a5a50', borderRadius: 16, padding: '6px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>{o.label}</button>
-          )
-        })}
+        {STATUS_OPTIONS.map((o) => (
+          <FilterPill key={o.value} tone={o.value} active={status === o.value} onClick={() => setStatus(o.value)}>{o.label}</FilterPill>
+        ))}
       </div>
       {paged.loading && paged.rows.length === 0 && <LoadingSpinner size={36} label="กำลังโหลดกิจกรรม..." />}
       {paged.error && <LoadError message="โหลดรายการกิจกรรมไม่สำเร็จ" onRetry={paged.refetch} />}

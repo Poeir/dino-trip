@@ -1,8 +1,11 @@
+import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { StarGlyph } from '../components/Icons.jsx'
 import { useEffect, useRef, useState } from 'react'
 import { useApp } from '../context/AppContext.jsx'
 import ImageSlot from '../components/ImageSlot.jsx'
 import { GridIcon, CupIcon, TempleIcon, MuseumIcon, TreeIcon, MountainIcon, BasketIcon, CameraIcon, FoodIcon, BedIcon, HeartIcon } from '../components/Icons.jsx'
 import PageControls from '../components/PageControls.jsx'
+import FilterPill from '../components/FilterPill.jsx'
 import { fetchPlaces } from '../lib/apiClient.js'
 import { usePagedList } from '../lib/usePagedList.js'
 import { useSeo } from '../lib/useSeo.js'
@@ -96,16 +99,15 @@ export default function PlacesListPage() {
         style={{ width: '100%', maxWidth: 420, border: '1px solid #DCD8C6', borderRadius: 20, padding: '10px 18px', fontSize: 14, marginBottom: 18, display: 'block' }}
       />
       <div data-role="places-filter-wrap" data-more={canScrollMore ? 'true' : 'false'} data-back={canScrollBack ? 'true' : 'false'} style={{ position: 'relative' }}>
-      <button type="button" className="dc-filter-prev" aria-label="ดูหมวดหมู่ก่อนหน้า" onClick={() => filterRef.current?.scrollBy({ left: -180, behavior: 'smooth' })}>‹</button>
+      <button type="button" className="dc-filter-prev" aria-label="ดูหมวดหมู่ก่อนหน้า" onClick={() => filterRef.current?.scrollBy({ left: -180, behavior: 'smooth' })}><ChevronLeft size={18} /></button>
       <div ref={filterRef} data-role="places-filter-bar" data-more={canScrollMore ? 'true' : 'false'} data-back={canScrollBack ? 'true' : 'false'} onScroll={updateCanScroll} style={{ display: 'flex', gap: 9, flexWrap: 'wrap', marginBottom: 26 }}>
         {derived.categoriesViewIcons.map((cat) => (
-          <button key={cat.label} onClick={cat.onClick} style={{ display: 'flex', alignItems: 'center', gap: 7, border: '1px solid #C8E6C9', borderRadius: 20, padding: '8px 18px 8px 13px', fontSize: 13.5, fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s ease', background: cat.bg, color: cat.color }}>
-            <CategoryIcon cat={cat} />
+          <FilterPill key={cat.label} active={cat.label === state.activeCategory} onClick={cat.onClick} icon={<CategoryIcon cat={cat} />}>
             {cat.label}
-          </button>
+          </FilterPill>
         ))}
       </div>
-      <button type="button" className="dc-filter-next" aria-label="ดูหมวดหมู่ถัดไป" onClick={() => filterRef.current?.scrollBy({ left: 180, behavior: 'smooth' })}>›</button>
+      <button type="button" className="dc-filter-next" aria-label="ดูหมวดหมู่ถัดไป" onClick={() => filterRef.current?.scrollBy({ left: 180, behavior: 'smooth' })}><ChevronRight size={18} /></button>
       </div>
       {paged.loading && placesView.length === 0 && <LoadingSpinner size={36} label="กำลังโหลดสถานที่..." />}
       {paged.error && <LoadError message="โหลดรายการสถานที่ไม่สำเร็จ" onRetry={paged.refetch} />}
@@ -132,7 +134,7 @@ export default function PlacesListPage() {
                 {place.hasQR && <span style={{ fontSize: 11, fontWeight: 700, color: '#7A5205', background: '#FFF8E1', padding: '3px 9px', borderRadius: 10 }}>+{place.qrPoints} พอยท์</span>}
               </div>
               <div style={{ fontWeight: 400, fontSize: 16, color: '#1f2a24', marginBottom: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{place.name}</div>
-              <div style={{ fontWeight: 300, fontSize: 13, color: '#5f6a63', marginBottom: 8, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>★ {place.rating} ({place.reviews}) · {place.price}</div>
+              <div style={{ fontWeight: 300, fontSize: 13, color: '#5f6a63', marginBottom: 8, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}><StarGlyph /> {place.rating} ({place.reviews}) · {place.price}</div>
               <div style={{ fontWeight: 300, fontSize: 12.5, color: '#626863', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{place.address}</div>
             </div>
           </div>

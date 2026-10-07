@@ -1,3 +1,4 @@
+import { X } from 'lucide-react'
 import { useApp } from '../context/AppContext.jsx'
 import { MASCOT } from '../data/categoryImages.js'
 import AiNotice from './AiNotice.jsx'
@@ -9,7 +10,7 @@ export default function WelcomeModal() {
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,35,20,0.55)', zIndex: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, animation: 'dc-fade 0.3s ease both' }}>
       <div style={{ background: '#fff', borderRadius: 24, maxWidth: 520, width: '100%', padding: 36, position: 'relative', animation: 'dc-pop 0.32s ease both', boxShadow: '0 30px 70px rgba(0,0,0,0.3)' }}>
-        <button onClick={actions.closeWelcomeModal} style={{ position: 'absolute', top: 16, right: 16, background: '#F1F8E9', border: 'none', width: 32, height: 32, borderRadius: '50%', fontSize: 16, color: '#3c463f', cursor: 'pointer' }}>×</button>
+        <button onClick={actions.closeWelcomeModal} style={{ position: 'absolute', top: 16, right: 16, background: '#F1F8E9', border: 'none', width: 32, height: 32, borderRadius: '50%', fontSize: 16, color: '#3c463f', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}><X size={18} /></button>
         <div style={{ textAlign: 'center', marginBottom: 22 }}>
           <img src={MASCOT.wave} alt="" width={130} height={130} style={{ width: 130, height: 'auto', margin: '0 auto 8px', display: 'block', animation: 'dc-float 3.4s ease-in-out infinite' }} />
           <h2 data-font="culture" style={{ fontSize: 20, fontWeight: 800, color: '#1B5E20', margin: '0 0 4px' }}>สวัสดีครับ! ผม น้องไดโน พร้อมช่วยเหลือแล้วครับ</h2>

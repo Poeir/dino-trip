@@ -1,3 +1,4 @@
+import { Check, Circle, X } from 'lucide-react'
 import { useRef } from 'react'
 import { useApp } from '../context/AppContext.jsx'
 import { PinIcon, UserIcon, GenderIcon, CalendarIcon, BriefcaseIcon, MailIcon, PhoneIcon, LockIcon, CameraIcon, ZoomIcon } from '../components/Icons.jsx'
@@ -266,7 +267,7 @@ export default function SignupPage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 16 }}>
               {derived.passwordRules.map((r) => (
                 <span key={`${r.key}-${r.met}`} style={{ fontSize: 12, fontWeight: 600, color: r.met ? '#2E7D32' : '#a9b3ac', display: 'flex', alignItems: 'center', gap: 6, animation: 'dc-pop 0.25s ease both' }}>
-                  <span style={{ fontWeight: 800 }}>{r.met ? '✓' : '○'}</span>{r.label}
+                  <span style={{ fontWeight: 800 }}>{r.met ? <Check size={13} strokeWidth={3} style={{ verticalAlign: '-2px' }} /> : <Circle size={13} strokeWidth={2.4} style={{ verticalAlign: '-2px' }} />}</span>{r.label}
                 </span>
               ))}
             </div>
@@ -274,7 +275,7 @@ export default function SignupPage() {
             <input className="dc-signup-input" type="password" value={state.authForm.confirmPassword} onChange={actions.onAuthConfirmPasswordChange} placeholder="••••••••" style={{ ...inputStyle, marginBottom: state.authForm.confirmPassword ? 6 : 16 }} />
             {state.authForm.confirmPassword && (
               <p key={derived.passwordsMatch} style={{ margin: '0 0 16px', fontSize: 12, fontWeight: 600, color: derived.passwordsMatch ? '#2E7D32' : '#a33232', animation: 'dc-pop 0.25s ease both' }}>
-                {derived.passwordsMatch ? '✓ รหัสผ่านตรงกัน' : '✗ รหัสผ่านไม่ตรงกัน'}
+                {derived.passwordsMatch ? <><Check size={13} strokeWidth={3} style={{ verticalAlign: '-2px' }} /> รหัสผ่านตรงกัน</> : <><X size={13} strokeWidth={3} style={{ verticalAlign: '-2px' }} /> รหัสผ่านไม่ตรงกัน</>}
               </p>
             )}
 

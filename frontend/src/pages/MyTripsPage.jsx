@@ -1,3 +1,4 @@
+import { StarGlyph } from '../components/Icons.jsx'
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext.jsx'
@@ -75,7 +76,7 @@ export default function MyTripsPage() {
           style={{ width: '100%', maxWidth: 380, border: '1px solid #DCD8C6', borderRadius: 20, padding: '10px 18px', fontSize: 14 }} />
         <button onClick={() => setOnlyFavorites((v) => !v)} aria-pressed={onlyFavorites}
           style={{ ...iconBtn, borderRadius: 20, padding: '9px 16px', background: onlyFavorites ? '#FFF8E1' : '#fff', borderColor: onlyFavorites ? '#FBC02D' : '#DCD8C6', color: onlyFavorites ? '#8a6d00' : '#3c463f' }}>
-          ★ เฉพาะรายการโปรด
+          <StarGlyph size={15} /> เฉพาะรายการโปรด
         </button>
       </div>
 
@@ -95,8 +96,8 @@ export default function MyTripsPage() {
               <ImageSlot src={t.coverImg} shape="rect" style={{ width: '100%', height: 150 }} placeholder="แผนทริป" />
               <button aria-label={t.isFavorite ? 'เอาออกจากรายการโปรด' : 'เพิ่มในรายการโปรด'} disabled={busy}
                 onClick={(e) => { e.stopPropagation(); run(() => updateTrip(t.id, { isFavorite: !t.isFavorite })) }}
-                style={{ position: 'absolute', top: 10, right: 10, width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.92)', color: t.isFavorite ? '#f9a825' : '#626863', fontSize: 18, cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}>
-                {t.isFavorite ? '★' : '☆'}
+                style={{ position: 'absolute', top: 10, right: 10, width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.92)', color: t.isFavorite ? '#f9a825' : '#626863', fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}>
+                <StarGlyph size={18} filled={!!t.isFavorite} />
               </button>
             </div>
             <div style={{ padding: 16, flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
