@@ -95,7 +95,10 @@ export default function EntityCard({
     ...(onDelete ? [{ label: deleteLabel, danger: true, icon: <Trash2 size={15} aria-hidden="true" />, onClick: handleDelete }] : []),
   ]
 
+  // The dialog is a sibling of the card, not a child: the card gets `transform` on hover, which would
+  // turn it into the containing block of the modal's `position: fixed` overlay (clipped + flickering).
   return (
+    <>
     <article className={`ad-card ad-entity${dim ? ' is-dim' : ''}`}>
       {media && (
         <div className={`ad-entity__media${tile ? ' ad-entity__media--tile' : ''}`}>
@@ -119,7 +122,8 @@ export default function EntityCard({
         {actions}
         {items.length > 0 && <ActionMenu label={`ตัวเลือกเพิ่มเติมของ ${name}`} items={items} />}
       </div>
-      {confirmDialog}
     </article>
+    {confirmDialog}
+    </>
   )
 }

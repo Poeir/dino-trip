@@ -1063,7 +1063,9 @@ export function AppProvider({ children }) {
       showToast(errorLabels[formType] + reason, ERROR_TOAST_MS, 'error')
       return
     }
-    setState((s) => ({ [listKey]: editingId ? s[listKey].map((x) => x.id === editingId ? item : x) : [...s[listKey], item] }))
+    setState((s) => (s[listKey]
+      ? { [listKey]: editingId ? s[listKey].map((x) => x.id === editingId ? item : x) : [...s[listKey], item] }
+      : {}))
 
     const labels = { place: 'บันทึกสถานที่แล้ว', event: 'บันทึกอีเวนท์แล้ว', kb: 'บันทึกฐานความรู้แล้ว', qr: 'บันทึก QR แล้ว', reward: 'บันทึกของรางวัลแล้ว' }
     cancelForm()
@@ -1092,7 +1094,8 @@ export function AppProvider({ children }) {
       showToast('ลบไม่สำเร็จ: ' + (err.status === undefined ? 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาตรวจสอบอินเทอร์เน็ต' : err.message), ERROR_TOAST_MS, 'error')
       return
     }
-    setState((s) => ({ [listKey]: s[listKey].filter((x) => x.id !== id) }))
+    // places has no bulk array in state anymore (paged tabs refetch instead) -- nothing to merge.
+    setState((s) => (s[listKey] ? { [listKey]: s[listKey].filter((x) => x.id !== id) } : {}))
   }
 
   const onNewPlace = () => openCreateForm('place')

@@ -1,4 +1,4 @@
-import { X } from 'lucide-react'
+import { CalendarDays, MapPin, Send, X } from 'lucide-react'
 import { StarGlyph } from './Icons.jsx'
 import { Fragment, useEffect, useState } from 'react'
 import { useApp } from '../context/AppContext.jsx'
@@ -20,23 +20,39 @@ function renderMarkdown(text) {
   lines.forEach((rawLine) => {
     const line = rawLine.trim()
     if (!line) return
-    const numbered = line.match(/^\d+\.\s+(.*)/)
+    const numbered = line.match(/^(\d+)\.\s+(.*)/)
     const bulleted = !numbered && line.match(/^[*-]\s+(.*)/)
     const type = numbered ? 'ol' : bulleted ? 'ul' : 'p'
-    const content = numbered ? numbered[1] : bulleted ? bulleted[1] : line
+    const content = numbered ? numbered[2] : bulleted ? bulleted[1] : line
     const last = blocks[blocks.length - 1]
     if (last && last.type === type) last.items.push(content)
-    else blocks.push({ type, items: [content] })
+    // Keep the number the model wrote: detail lines between "1." and "2." split the <ol>, and each
+    // fragment would otherwise restart at 1.
+    else blocks.push({ type, items: [content], start: numbered ? Number(numbered[1]) : undefined })
   })
   return blocks.map((block, bi) => {
     if (block.type === 'ol') {
       return (
-        <ol key={bi} style={{ margin: '4px 0', paddingLeft: 20 }}>
+        <ol key={bi} start={block.start} style={{ margin: '4px 0', paddingLeft: 20 }}>
           {block.items.map((item, ii) => <li key={ii} style={{ marginBottom: 2 }}>{renderInline(item, `${bi}-${ii}`)}</li>)}
         </ol>
       )
     }
     if (block.type === 'ul') {
+      // "ป้าย: ค่า" bullets (the bot's usual detail lines) become a tidy label/value list.
+      const fields = block.items.map((item) => item.replace(/\*\*/g, '').match(/^([^:：]{1,24})[:：]\s*(.+)$/))
+      if (fields.every(Boolean)) {
+        return (
+          <div key={bi} style={{ margin: '6px 0', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {fields.map((f, ii) => (
+              <div key={ii} style={{ display: 'flex', flexDirection: 'column', background: '#fff', border: '1px solid #E3EDDD', borderRadius: 10, padding: '6px 10px' }}>
+                <span style={{ fontSize: 10.5, fontWeight: 800, color: '#2E7D32', letterSpacing: 0.2 }}>{f[1]}</span>
+                <span style={{ fontSize: 13, color: '#1f2a24' }}>{f[2]}</span>
+              </div>
+            ))}
+          </div>
+        )
+      }
       return (
         <ul key={bi} style={{ margin: '4px 0', paddingLeft: 20 }}>
           {block.items.map((item, ii) => <li key={ii} style={{ marginBottom: 2 }}>{renderInline(item, `${bi}-${ii}`)}</li>)}
@@ -116,7 +132,7 @@ export default function ChatWidget() {
   return (
     <div data-role="chat-widget" style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 60, display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
       {state.chatOpen && (
-        <div style={{ width: 340, height: 460, background: '#fff', borderRadius: 22, boxShadow: '0 20px 48px rgba(27,94,32,0.28)', display: 'flex', flexDirection: 'column', overflow: 'hidden', marginBottom: 14, animation: 'dc-pop 0.28s ease both' }}>
+        <div style={{ width: 'min(390px, calc(100vw - 32px))', height: 'min(580px, calc(100vh - 130px))', background: '#fff', borderRadius: 24, boxShadow: '0 24px 60px rgba(27,94,32,0.30), 0 0 0 1px rgba(46,125,50,0.08)', display: 'flex', flexDirection: 'column', overflow: 'hidden', marginBottom: 14, animation: 'dc-pop 0.28s ease both' }}>
           <div style={{ position: 'relative', overflow: 'hidden', background: 'linear-gradient(135deg,#66BB6A,#2E7D32 60%,#1B5E20)', padding: '16px 16px 14px' }}>
             {sparkles.map((s, i) => (
               <span key={i} style={{ position: 'absolute', left: s.left, top: s.top, width: s.size, height: s.size, borderRadius: '50%', background: '#FBC02D', animation: `dc-particle-float ${s.duration} ease-in-out infinite`, animationDelay: s.delay, pointerEvents: 'none' }}></span>
@@ -138,17 +154,19 @@ export default function ChatWidget() {
               <button onClick={actions.toggleChat} style={{ background: 'rgba(255,255,255,0.16)', border: 'none', color: '#fff', fontSize: 16, width: 26, height: 26, borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}><X size={16} /></button>
             </div>
           </div>
-          <div style={{ flex: 1, overflowY: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 10, background: 'linear-gradient(180deg,#FBFAF3,#fff 40%)' }}>
+          <div style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 14, background: 'linear-gradient(180deg,#F6F8F1,#FBFAF3 40%)' }}>
             <AiNotice variant="compact" />
             {derived.chatMessagesView.map((msg, i) => (
-              <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 8, alignSelf: msg.align, maxWidth: '85%' }}>
+              <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 8, alignSelf: msg.align, maxWidth: msg.from === 'bot' ? '94%' : '82%' }}>
                 <div style={{ display: 'flex', alignItems: 'flex-end', gap: 7 }}>
                   {msg.from === 'bot' && (
                     <span style={{ width: 22, height: 22, borderRadius: '50%', background: 'linear-gradient(135deg,#66BB6A,#2E7D32)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, padding: 3 }}>
                       <img src="/assets/icon-chatbot.webp" alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                     </span>
                   )}
-                  <div style={{ background: msg.from === 'bot' ? 'linear-gradient(135deg,#F1F8E9,#E8F5E9)' : '#2E7D32', color: msg.color, padding: '9px 13px', borderRadius: 14, fontSize: 13.5, lineHeight: 1.5, animation: 'dc-pop 0.25s ease both' }}>
+                  <div style={msg.from === 'bot'
+                    ? { background: '#fff', color: '#1f2a24', border: '1px solid #E3EDDD', boxShadow: '0 2px 8px rgba(27,94,32,0.06)', padding: '10px 14px', borderRadius: '16px 16px 16px 4px', fontSize: 13.5, lineHeight: 1.6, animation: 'dc-pop 0.25s ease both', minWidth: 0 }
+                    : { background: 'linear-gradient(135deg,#43A047,#2E7D32)', color: msg.color, boxShadow: '0 4px 12px rgba(46,125,50,0.25)', padding: '9px 14px', borderRadius: '16px 16px 4px 16px', fontSize: 13.5, lineHeight: 1.5, animation: 'dc-pop 0.25s ease both' }}>
                     {msg.from === 'bot' ? renderMarkdown(msg.text) : msg.text}
                   </div>
                 </div>
@@ -176,10 +194,16 @@ export default function ChatWidget() {
                 {msg.from === 'bot' && msg.events && msg.events.length > 0 && (
                   <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingLeft: 29 }}>
                     {msg.events.map((e) => (
-                      <div key={e.id} onClick={() => actions.openEvent(e.id)} style={{ flexShrink: 0, width: 150, background: '#fff', border: '1px solid #E7E3D2', borderRadius: 12, padding: 10, cursor: 'pointer' }}>
-                        <div style={{ fontWeight: 700, fontSize: 12, color: '#1f2a24', marginBottom: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.name}</div>
-                        <div style={{ fontSize: 11, color: '#5f6a63', marginBottom: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.venueName || '-'}</div>
-                        <div style={{ fontSize: 10.5, color: '#626863', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.dateRange || 'ไม่มีข้อมูลวันที่'}</div>
+                      <div key={e.id} onClick={() => actions.openEvent(e.id)} style={{ flexShrink: 0, width: 190, background: '#fff', border: '1px solid #E3EDDD', borderLeft: '4px solid #FBC02D', borderRadius: 12, padding: '10px 12px', cursor: 'pointer', boxShadow: '0 2px 8px rgba(27,94,32,0.06)' }}>
+                        <div style={{ fontWeight: 800, fontSize: 12.5, color: '#1f2a24', marginBottom: 6, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.name}</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#5f6a63', marginBottom: 3, minWidth: 0 }}>
+                          <MapPin size={12} color="#2E7D32" aria-hidden="true" style={{ flexShrink: 0 }} />
+                          <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.venueName || '-'}</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#5f6a63', minWidth: 0 }}>
+                          <CalendarDays size={12} color="#2E7D32" aria-hidden="true" style={{ flexShrink: 0 }} />
+                          <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.dateRange || 'ไม่มีข้อมูลวันที่'}</span>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -212,16 +236,16 @@ export default function ChatWidget() {
               </div>
             )}
           </div>
-          <div style={{ display: 'flex', gap: 8, padding: 12, borderTop: '1px solid #E7E3D2' }}>
+          <div style={{ display: 'flex', gap: 8, padding: '12px 14px', borderTop: '1px solid #E7E3D2', background: '#fff' }}>
             <input
               value={state.chatInput}
               onChange={actions.onChatInputChange}
               onKeyDown={(e) => { if (e.key === 'Enter') actions.sendChat() }}
               placeholder="พิมพ์คำถามของคุณ..."
-              style={{ flex: 1, border: '1px solid #DCD8C6', borderRadius: 16, padding: '8px 14px', fontSize: 13.5, outline: 'none' }}
+              style={{ flex: 1, minWidth: 0, border: '1px solid #DCD8C6', background: '#F8F9F4', borderRadius: 20, padding: '9px 16px', fontSize: 13.5, outline: 'none' }}
             />
             <button onClick={() => actions.sendChat()} className="dc-send-btn" style={{ background: 'linear-gradient(135deg,#66BB6A,#388E3C)', border: 'none', width: 36, height: 36, borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 6px 14px rgba(46,125,50,0.35)' }}>
-              <span style={{ width: 0, height: 0, borderTop: '6px solid transparent', borderBottom: '6px solid transparent', borderLeft: '9px solid #fff', marginLeft: 2 }}></span>
+              <Send size={16} color="#fff" aria-label="ส่ง" style={{ marginLeft: -1 }} />
             </button>
           </div>
         </div>
