@@ -113,5 +113,5 @@ export function usePhotoQueue({ open, editingId, fetchPhotos, uploadPhoto, delet
     busyText,
   }
 
-  return { galleryProps, photoError, pendingCount: pendingFiles.length }
+  return { galleryProps, photoError, pendingCount: pendingFiles.length, uploadPending }
 }
