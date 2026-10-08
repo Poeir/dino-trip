@@ -253,12 +253,10 @@ MAX_LLM_ATTEMPTS = 2  # the KKU gateway occasionally returns an empty message.co
 # tracked per underlying provider, not just per model id.
 MODEL_FALLBACK_CHAIN = [
     DESCRIPTION_MODEL_NAME,
-    "gemini-2.5-flash",
-    "gpt-5.4",
-    "claude-haiku-4.5",
-    "deepseek-v3.2",
-    "gpt-5.1",
-    "gemini-2.5-flash-lite",
+    "gemini-3.7-flash",
+    "gpt-5.6-luna",
+    "deepseek-v4-pro",
+    "gpt-5.6-terra",
     "llama-4-scout",
 ]
 # De-dupe while preserving order (DESCRIPTION_MODEL_NAME may already be one of the defaults).

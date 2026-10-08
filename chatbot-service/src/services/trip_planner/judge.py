@@ -1,11 +1,12 @@
 import json
 import logging
 import time
-from typing import List
+from typing import List, Optional
 
 from openai import OpenAI
 
 from src.core.config import API_KEY, BASE_URL, TRIP_PLANNER_MODEL_NAME
+from src.core.usage import UsageTracker
 from .json_utils import clean_json_string
 from .models import DailyItinerary, JudgeVerdict, TripInput
 
@@ -32,6 +33,9 @@ class TripItineraryJudge:
     def __init__(self):
         self.client = OpenAI(api_key=API_KEY, base_url=BASE_URL)
         self.default_model = TRIP_PLANNER_MODEL_NAME
+        # Shared with LLMTripPlanner, which assigns its own tracker here so
+        # generate + judge calls land in one per-trip total.
+        self.usage: Optional[UsageTracker] = None
 
     def _format_itinerary_for_judge(self, itinerary: List[DailyItinerary]) -> str:
         # Dummy slots ("Free Time"/"End of Day (Return to Hotel)") are
@@ -121,6 +125,8 @@ class TripItineraryJudge:
             temperature=0.0,
             response_format={"type": "json_object"},
         )
+        if self.usage:
+            self.usage.record_response("judge", self.default_model, response)
         content = response.choices[0].message.content
         return json.loads(clean_json_string(content))
 

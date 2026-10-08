@@ -31,7 +31,7 @@ TRIP_PLANNER_MODEL_NAME = os.environ.get("TRIP_PLANNER_MODEL_NAME", "gemini-2.5-
 # burns through a model's daily quota on the KKU gateway fast (~600+ calls in
 # one run), so being able to point it at a different provider (e.g. gpt-5.4)
 # without touching chat/events/trip-planner is the point, not just hygiene.
-DESCRIPTION_MODEL_NAME = os.environ.get("DESCRIPTION_MODEL_NAME", "gemini-2.5-flash")
+DESCRIPTION_MODEL_NAME = os.environ.get("DESCRIPTION_MODEL_NAME", "gemini-3.7-flash")
 
 # Not validated here (unlike SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY below) --
 # scripts/embed_content.py imports this module too and never touches the LLM,
@@ -45,6 +45,15 @@ DESCRIPTION_MODEL_NAME = os.environ.get("DESCRIPTION_MODEL_NAME", "gemini-2.5-fl
 # Search JSON API -- that's closed to new customers as of this writing
 # (existing customers only, until 2027-01-01), so this project can't get one.
 SERPER_API_KEY = os.environ.get("SERPER_API_KEY")
+
+# Token-usage tracking (src/core/usage.py). Prices are USD per 1M tokens for
+# the chat/trip model -- defaults are gemini-3.8-flash's intro rate (through
+# 2026-12-31; doubles from 2027-01-01), so update them when the model or rate
+# changes. USAGE_LOG_PATH is a JSONL file with one line per chat turn / trip
+# (read by scripts/usage_report.py); set it empty to disable the file.
+LLM_PRICE_INPUT_PER_M = float(os.environ.get("LLM_PRICE_INPUT_PER_M", "0.75"))
+LLM_PRICE_OUTPUT_PER_M = float(os.environ.get("LLM_PRICE_OUTPUT_PER_M", "3.75"))
+USAGE_LOG_PATH = os.environ.get("USAGE_LOG_PATH", "logs/usage.jsonl")
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
