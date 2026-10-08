@@ -28,7 +28,7 @@ function useDebounced(value, delay) {
 // update the separate bulk `state.events` array (used elsewhere, e.g.
 // EventDetailPage), not this hook's own paginated `rows`. Places has no
 // such bulk array anymore (see AppContext.jsx's loadData).
-export function usePagedList(fetchFn, { pageSize = 20, extraParams } = {}) {
+export function usePagedList(fetchFn, { pageSize = 20, extraParams, enabled = true } = {}) {
   const [page, setPage] = useState(1)
   const [query, setQuery] = useState('')
   const debouncedQuery = useDebounced(query, 300)
@@ -49,6 +49,7 @@ export function usePagedList(fetchFn, { pageSize = 20, extraParams } = {}) {
   useEffect(() => { window.scrollTo({ top: 0, behavior: 'smooth' }) }, [page])
 
   useEffect(() => {
+    if (!enabled) return // e.g. QrTab in 'qr' mode doesn't need the rewards list
     const id = ++requestId.current
     setLoading(true)
     setError(null)
@@ -61,7 +62,7 @@ export function usePagedList(fetchFn, { pageSize = 20, extraParams } = {}) {
       .catch((err) => { if (id === requestId.current) setError(err) })
       .finally(() => { if (id === requestId.current) setLoading(false) })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, debouncedQuery, extraKey, pageSize, refreshTick])
+  }, [page, debouncedQuery, extraKey, pageSize, refreshTick, enabled])
 
   return {
     rows, total, page, setPage, pageSize, loading, error,

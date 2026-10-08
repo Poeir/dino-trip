@@ -1,13 +1,14 @@
 import { useState } from 'react'
+import { Lock, Pencil } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext.jsx'
-import PageControls from '../components/PageControls.jsx'
-import LoadingSpinner from '../components/LoadingSpinner.jsx'
-import LoadError from '../components/LoadError.jsx'
-import EmptyState from '../components/EmptyState.jsx'
 import { fetchAdminPlaceReports, resolveAdminPlaceReports, syncOnePlace, resolvePlaceGoogleDiff, fetchPlace } from '../lib/apiClient.js'
 import { usePagedList } from '../lib/usePagedList.js'
+import { fmtDateTime } from '../lib/format.js'
 import { REPORT_FIELD_LABEL, REPORT_TO_SYNC_FIELD, SYNC_FIELD_LABEL, describeFieldValue, BUSINESS_STATUS_LABEL } from '../data/placeSync.js'
+import Badge from './ui/Badge.jsx'
+import Button from './ui/Button.jsx'
+import ReportQueueCard, { ReportQueue, ReportFieldSection } from './ReportQueueCard.jsx'
 
 const STATUS_FILTERS = [
   { key: 'pending', label: 'รอตรวจสอบ' },
@@ -16,17 +17,6 @@ const STATUS_FILTERS = [
   { key: 'rejected', label: 'ปฏิเสธ' },
 ]
 const RESOLUTION_LABEL = { edited: 'แก้ไขเอง', synced: 'ซิงก์จาก Google', no_change: 'ไม่ต้องแก้ไข' }
-
-const fmtDateTime = (iso) => (iso ? new Date(iso).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }) : '-')
-const chipStyle = (active) => ({
-  padding: '7px 16px', borderRadius: 20, fontSize: 13, fontWeight: 700, cursor: 'pointer',
-  border: `1px solid ${active ? '#2E7D32' : '#DCD8C6'}`, background: active ? '#E8F5E9' : '#fff', color: active ? '#1B5E20' : '#3c463f',
-})
-const btn = (bg, color, border = 'none') => ({ background: bg, color, border, padding: '7px 12px', borderRadius: 10, fontSize: 12.5, fontWeight: 700, cursor: 'pointer' })
-
-function Badge({ children, bg, color }) {
-  return <span style={{ display: 'inline-block', fontSize: 11.5, fontWeight: 700, background: bg, color, padding: '3px 10px', borderRadius: 20, whiteSpace: 'nowrap' }}>{children}</span>
-}
 
 // Admin queue: reports grouped per place, then per field ("hours x 5"). A user
 // report only points at a field -- here the admin either edits the place,
@@ -74,97 +64,90 @@ export function PlaceReportsPanel() {
     return msg
   })
 
-  const takeGoogle = (g, field, syncField) => run(`${g.place.id}:${field}:diff`, async () => {
-    await resolvePlaceGoogleDiff(g.place.id, syncField, 'accept')
+  const takeGoogle = (g, field, syncKey) => run(`${g.place.id}:${field}:diff`, async () => {
+    await resolvePlaceGoogleDiff(g.place.id, syncKey, 'accept')
     await resolveAdminPlaceReports({ placeId: g.place.id, field, status: 'resolved', resolution: 'synced' }).catch(() => {})
     return 'ใช้ค่าจาก Google และปลดล็อกฟิลด์แล้ว'
   })
 
-  const keepMine = (g, field, syncField) => run(`${g.place.id}:${field}:keep`, async () => {
-    await resolvePlaceGoogleDiff(g.place.id, syncField, 'dismiss')
+  const keepMine = (g, field, syncKey) => run(`${g.place.id}:${field}:keep`, async () => {
+    await resolvePlaceGoogleDiff(g.place.id, syncKey, 'dismiss')
     return 'คงค่าที่แอดมินแก้ไว้'
   })
 
   return (
-    <>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 800, color: '#1B5E20', margin: 0 }}>รายงานข้อมูลสถานที่</h1>
-        <span style={{ fontSize: 13, color: '#5f6a63' }}>{paged.loading ? 'กำลังโหลด...' : `${paged.total} สถานที่`}</span>
-      </div>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
-        {STATUS_FILTERS.map((f) => <button key={f.key} onClick={() => setStatus(f.key)} style={chipStyle(status === f.key)}>{f.label}</button>)}
-      </div>
-
-      {paged.error ? (
-        <LoadError message="โหลดรายงานไม่สำเร็จ" onRetry={paged.refetch} />
-      ) : paged.rows.length === 0 ? (
-        paged.loading ? <LoadingSpinner size={32} label="กำลังโหลดรายงาน..." /> : <EmptyState title="ไม่มีรายงานในสถานะนี้" />
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14, opacity: paged.loading ? 0.5 : 1, transition: 'opacity 0.15s ease' }}>
-          {paged.rows.map((g) => {
-            if (!g.place) return null
-            const byField = Object.entries(g.fields)
-            return (
-              <div key={g.place.id} style={{ background: '#fff', border: '1px solid #E7E3D2', borderRadius: 14, overflow: 'hidden' }}>
-                <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', padding: '12px 16px', background: '#FBF8EE' }}>
-                  <div style={{ fontWeight: 800, color: '#1B5E20', fontSize: 15 }}>{g.place.name}</div>
-                  {g.place.district && <span style={{ fontSize: 12.5, color: '#5f6a63' }}>{g.place.district}</span>}
-                  {g.place.businessStatus && g.place.businessStatus !== 'OPERATIONAL' && <Badge bg="#fdecec" color="#a33232">{BUSINESS_STATUS_LABEL[g.place.businessStatus] || g.place.businessStatus}</Badge>}
-                  {!g.place.isActive && <Badge bg="#f3f3f0" color="#5f6a63">ซ่อนอยู่</Badge>}
-                  <span style={{ marginLeft: 'auto', fontSize: 12, color: '#626863' }}>ซิงก์ล่าสุด {g.place.lastSyncedAt ? fmtDateTime(g.place.lastSyncedAt) : 'ยังไม่เคย'}</span>
-                  <button onClick={() => openEdit(g.place.id)} style={btn('#E8F5E9', '#2E7D32')}>เปิดหน้าแก้ไข</button>
-                </div>
-
-                {byField.map(([field, count]) => {
-                  const syncKey = REPORT_TO_SYNC_FIELD[field]
-                  const diff = syncKey && g.place.googleDiff?.[syncKey]
-                  const reports = g.reports.filter((r) => r.field === field)
-                  return (
-                    <div key={field} style={{ padding: '12px 16px', borderTop: '1px solid #EFEBDB' }}>
-                      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
-                        <span style={{ fontWeight: 700, fontSize: 14, color: '#1f2a24' }}>{REPORT_FIELD_LABEL[field]}</span>
-                        <Badge bg={count >= 3 ? '#fdecec' : '#FFF8E1'} color={count >= 3 ? '#a33232' : '#7A5205'}>{count} คนรายงาน</Badge>
-                        {g.place.lockedFields.includes(syncKey) && <Badge bg="#f3f3f0" color="#5f6a63">🔒 ล็อกไว้ ไม่ให้ซิงก์ทับ</Badge>}
+    <ReportQueue
+      title="รายงานข้อมูลสถานที่"
+      countText={`${paged.total} สถานที่`}
+      filters={STATUS_FILTERS}
+      status={status}
+      onStatus={setStatus}
+      paged={paged}
+      errorText="โหลดรายงานไม่สำเร็จ"
+      emptyText="ไม่มีรายงานในสถานะนี้"
+    >
+      {paged.rows.map((g) => {
+        if (!g.place) return null
+        const byField = Object.entries(g.fields)
+        return (
+          <ReportQueueCard
+            key={g.place.id}
+            title={g.place.name}
+            meta={(
+              <>
+                {g.place.district && <span className="ad-card__meta">{g.place.district}</span>}
+                {g.place.businessStatus && g.place.businessStatus !== 'OPERATIONAL' && <Badge tone="danger">{BUSINESS_STATUS_LABEL[g.place.businessStatus] || g.place.businessStatus}</Badge>}
+                {!g.place.isActive && <Badge>ซ่อนอยู่</Badge>}
+                <span className="ad-card__meta">ซิงก์ล่าสุด {g.place.lastSyncedAt ? fmtDateTime(g.place.lastSyncedAt) : 'ยังไม่เคย'}</span>
+              </>
+            )}
+            actions={<Button variant="soft" size="sm" onClick={() => openEdit(g.place.id)}><Pencil size={13} aria-hidden="true" />เปิดหน้าแก้ไข</Button>}
+          >
+            {byField.map(([field, count]) => {
+              const syncKey = REPORT_TO_SYNC_FIELD[field]
+              const diff = syncKey && g.place.googleDiff?.[syncKey]
+              const reports = g.reports.filter((r) => r.field === field)
+              const pending = status === 'pending'
+              return (
+                <ReportFieldSection
+                  key={field}
+                  label={REPORT_FIELD_LABEL[field]}
+                  badges={(
+                    <>
+                      <Badge tone={count >= 3 ? 'danger' : 'warning'}>{count} คนรายงาน</Badge>
+                      {g.place.lockedFields.includes(syncKey) && <Badge icon={<Lock size={11} aria-hidden="true" />}>ล็อกไว้ ไม่ให้ซิงก์ทับ</Badge>}
+                    </>
+                  )}
+                  reports={reports}
+                  resolutionLabel={RESOLUTION_LABEL}
+                  extra={pending && diff && (
+                    <div className="ad-callout ad-callout--diff">
+                      <div className="ad-callout__title">Google มีค่าใหม่ในฟิลด์ที่ถูกล็อก</div>
+                      <div>ค่าที่ใช้อยู่: {describeFieldValue(syncKey, diff.current)}</div>
+                      <div>ค่าจาก Google: {describeFieldValue(syncKey, diff.google)}</div>
+                      <div className="ad-actions ad-actions--top">
+                        <Button size="sm" disabled={!!busyKey} onClick={() => takeGoogle(g, field, syncKey)}>ใช้ค่าจาก Google</Button>
+                        <Button size="sm" variant="secondary" disabled={!!busyKey} onClick={() => keepMine(g, field, syncKey)}>คงค่าเดิม</Button>
                       </div>
-                      <ul style={{ margin: '0 0 10px', paddingLeft: 18, fontSize: 13, color: '#3c463f' }}>
-                        {reports.map((r) => (
-                          <li key={r.id}>
-                            {r.note ? `“${r.note}”` : <span style={{ color: '#a3ab9e' }}>(ไม่มีหมายเหตุ)</span>}
-                            <span style={{ color: '#626863' }}> — {r.reporter}, {fmtDateTime(r.createdAt)}{r.resolution ? ` · ${RESOLUTION_LABEL[r.resolution]}` : ''}</span>
-                          </li>
-                        ))}
-                      </ul>
-
-                      {status === 'pending' && diff && (
-                        <div style={{ background: '#FFFDF5', border: '1px solid #F0E4B8', borderRadius: 10, padding: '10px 12px', fontSize: 13, marginBottom: 10 }}>
-                          <div style={{ fontWeight: 700, color: '#7A5205', marginBottom: 4 }}>Google มีค่าใหม่ในฟิลด์ที่ถูกล็อก</div>
-                          <div>ค่าที่ใช้อยู่: {describeFieldValue(syncKey, diff.current)}</div>
-                          <div>ค่าจาก Google: {describeFieldValue(syncKey, diff.google)}</div>
-                          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                            <button disabled={!!busyKey} onClick={() => takeGoogle(g, field, syncKey)} style={btn('#2E7D32', '#fff')}>ใช้ค่าจาก Google</button>
-                            <button disabled={!!busyKey} onClick={() => keepMine(g, field, syncKey)} style={btn('#fff', '#3c463f', '1px solid #DCD8C6')}>คงค่าเดิม</button>
-                          </div>
-                        </div>
-                      )}
-
-                      {status === 'pending' && (
-                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                          {syncKey && g.place.hasGoogleId && (
-                            <button disabled={!!busyKey} onClick={() => syncField(g, field)} style={btn('#E3F2FD', '#1565C0')}>{busyKey === `${g.place.id}:${field}:sync` ? 'กำลังซิงก์...' : 'ซิงก์จาก Google'}</button>
-                          )}
-                          <button disabled={!!busyKey} onClick={() => resolve(g, field, { status: 'resolved', resolution: 'no_change' }, 'ปิดรายงาน: ไม่ต้องแก้ไข')} style={btn('#fff', '#3c463f', '1px solid #DCD8C6')}>ข้อมูลถูกต้องแล้ว</button>
-                          <button disabled={!!busyKey} onClick={() => resolve(g, field, { status: 'rejected' }, 'ปฏิเสธรายงานแล้ว')} style={btn('#fdecec', '#a33232')}>ปฏิเสธ</button>
-                        </div>
-                      )}
                     </div>
-                  )
-                })}
-              </div>
-            )
-          })}
-        </div>
-      )}
-      <PageControls page={paged.page} totalPages={paged.totalPages} total={paged.total} onChange={paged.setPage} />
-    </>
+                  )}
+                  actions={pending && (
+                    <>
+                      {syncKey && g.place.hasGoogleId && (
+                        <Button size="sm" variant="soft" disabled={!!busyKey} loading={busyKey === `${g.place.id}:${field}:sync`} onClick={() => syncField(g, field)}>
+                          {busyKey === `${g.place.id}:${field}:sync` ? 'กำลังซิงก์...' : 'ซิงก์จาก Google'}
+                        </Button>
+                      )}
+                      <Button size="sm" variant="secondary" disabled={!!busyKey} onClick={() => resolve(g, field, { status: 'resolved', resolution: 'no_change' }, 'ปิดรายงาน: ไม่ต้องแก้ไข')}>ข้อมูลถูกต้องแล้ว</Button>
+                      <Button size="sm" variant="dangersoft" disabled={!!busyKey} onClick={() => resolve(g, field, { status: 'rejected' }, 'ปฏิเสธรายงานแล้ว')}>ปฏิเสธ</Button>
+                    </>
+                  )}
+                />
+              )
+            })}
+          </ReportQueueCard>
+        )
+      })}
+    </ReportQueue>
   )
 }

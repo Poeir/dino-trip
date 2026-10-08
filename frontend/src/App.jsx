@@ -58,6 +58,9 @@ function PublicLayout() {
 
 function RequireAdmin({ children }) {
   const { state } = useApp()
+  // Wait for /auth/me before deciding, otherwise F5 on /admin/users bounces to
+  // the login page (adminLoggedIn is only hydrated after the session check).
+  if (!state.authChecked) return <LoadingSpinner size={36} label="กำลังตรวจสอบการเข้าสู่ระบบ..." />
   return state.adminLoggedIn ? children : <Navigate to="/admin/login" replace />
 }
 

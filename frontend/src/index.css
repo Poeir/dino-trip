@@ -83,6 +83,27 @@
   --s-cancelled-bg: #FDECEC; --s-cancelled-fg: #A33232; --s-cancelled: #D64545; --s-cancelled-bd: #F2B8B8;
   --r-pill: 20px;
   --r-card: 16px;
+  /* Admin / shared UI tokens */
+  --c-surface: #fff;
+  --c-canvas: #FBF8EE;
+  --c-line: #E7E3D2;
+  --c-line-soft: #EFEBDB;
+  --c-danger: #a33232;
+  --c-danger-bg: #fdecec;
+  --c-warn-fg: #7A5205;
+  --c-warn-bg: #FFF8E1;
+  --c-info: #1565C0;
+  --c-info-bg: #E3F2FD;
+  --c-text-subtle: #626863;
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px; --sp-6: 32px;
+  --r-sm: 8px;
+  --r-md: 12px;
+  --fs-xs: 12px;
+  --fs-sm: 13.5px;
+  --fs-h1: 22px;
+  --shadow-modal: 0 20px 60px rgba(0,0,0,0.25);
+  --z-modal: 1000;
+  --z-toast: 1100;
 }
 
 /* Shared filter pill (category / status filters). Active state is the green gradient. */
@@ -216,12 +237,6 @@ input, textarea, select, button { font-family: inherit; }
   [data-role="hero-actions"], [data-role="hero-media"] { display: none !important; }
   [data-role="place-detail-grid"] { grid-template-columns: minmax(0, 1fr) !important; }
   [data-role="place-detail-media"] { position: static !important; }
-  [data-role="admin-shell"] { flex-direction: column !important; }
-  [data-role="admin-shell"] aside { position: static !important; height: auto !important; overflow: visible !important; width: 100% !important; flex-direction: row !important; flex-wrap: wrap; align-items: center; padding: 14px 16px !important; }
-  [data-role="admin-shell"] aside > div:first-child { border-bottom: none !important; margin-bottom: 0 !important; padding: 0 !important; }
-  [data-role="admin-shell"] aside > div:nth-child(2) { display: none !important; }
-  [data-role="admin-shell"] aside > div:last-child { margin-top: 0 !important; border-top: none !important; padding: 0 !important; margin-left: auto; }
-  [data-role="admin-stats-grid"] { grid-template-columns: 1fr 1fr !important; }
   [data-role="trip-form-card"] { padding: 22px !important; }
   [data-role="trip-stepper-label"] { font-size: 9.5px !important; white-space: normal !important; max-width: 56px; text-align: center; }
   [data-role="trip-two-col"] { grid-template-columns: minmax(0, 1fr) !important; }
@@ -245,9 +260,7 @@ input, textarea, select, button { font-family: inherit; }
 }
 @media (max-width: 600px) {
   :root { --page-gutter: 16px; --page-pt: 24px; --page-pb: 32px; --page-pv-center: 40px; }
-  [data-role="admin-stats-grid"] { grid-template-columns: minmax(0, 1fr) !important; }
   [data-role="public-layout"] > main { padding-left: 0 !important; padding-right: 0 !important; }
-  [data-role="admin-shell"] main { padding-left: 8px !important; padding-right: 8px !important; }
   [data-role="card-grid"] { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 10px !important; }
   [data-role="places-page"] [data-role="places-filter-bar"] { margin: 0 calc(-1 * var(--page-gutter)) !important; padding: 2px var(--page-gutter) !important; }
   [data-role="places-page"] [data-role="card-grid"] { gap: 12px !important; }
@@ -257,9 +270,6 @@ input, textarea, select, button { font-family: inherit; }
   [data-role="places-filter-bar"]::-webkit-scrollbar { display: none; }
   footer { padding-left: 16px !important; padding-right: 16px !important; }
   [data-role="detail-card"] { padding: 16px !important; border-radius: 16px !important; }
-}
-@media (max-width: 700px) {
-  [data-role="admin-shell"] [data-role="admin-form-panel"] { position: fixed !important; inset: 0 !important; z-index: 70; border-radius: 0 !important; overflow-y: auto; margin: 0 !important; }
 }
 *:focus-visible { outline: 2.5px solid #2E7D32; outline-offset: 2px; }
 

@@ -23,7 +23,7 @@ import { EVENT_REQUEST_STATUS } from '../data/eventRequests.js'
 import { EVENT_CATEGORY_OPTIONS, SUITABLE_FOR_OPTIONS, formatDateRange, inferDateMode } from '../data/eventForm.js'
 import { Card, Notice, primaryBtn } from './ui.jsx'
 
-// Same fields (and look) as the admin form in admin/EventsTab.jsx -- minus the
+// Same fields (and look) as the admin form in admin/events/EventFormModal.jsx -- minus the
 // Facebook paste/extract box and the cancelled status, which are admin-only.
 const inputStyle = { width: '100%', border: '1px solid #DCD8C6', borderRadius: 8, padding: 9, fontSize: 14 }
 const EMPTY = { name: '', category: '', dateRange: '', eventStartDate: '', eventEndDate: '', placeId: '', venueName: '', admission: '', organizer: '', suitableFor: '', desc: '' }

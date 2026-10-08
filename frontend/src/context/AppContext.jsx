@@ -161,6 +161,7 @@ const initialState = {
   mobileMenuOpen: false,
   welcomeModalOpen: !isWelcomeSnoozed(),
   toastMsg: '',
+  toastTone: 'success',
 }
 
 function timeToMinutes(t) {
@@ -203,8 +204,9 @@ export function AppProvider({ children }) {
   }
 
   // Error messages are longer than confirmations, so callers pass a longer `ms`.
-  const showToast = (msg, ms = 2400) => {
-    setState({ toastMsg: msg })
+  // `tone` is 'success' (default, green check) or 'error' (red alert).
+  const showToast = (msg, ms = 2400, tone = 'success') => {
+    setState({ toastMsg: msg, toastTone: tone })
     clearTimeout(toastTimer.current)
     toastTimer.current = setTimeout(() => setState({ toastMsg: '' }), ms)
   }
@@ -216,7 +218,7 @@ export function AppProvider({ children }) {
   const reportError = (prefix, err) => {
     if (handleSessionExpired(err)) return true
     const reason = err?.status === undefined ? 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาตรวจสอบอินเทอร์เน็ต' : err.message
-    showToast(prefix + reason, ERROR_TOAST_MS)
+    showToast(prefix + reason, ERROR_TOAST_MS, 'error')
     return false
   }
 
@@ -354,7 +356,7 @@ export function AppProvider({ children }) {
     try {
       await updatePlace(place.id, { ...place, isActive: place.isActive === false ? true : false })
     } catch (err) {
-      showToast('อัปเดตสถานะไม่สำเร็จ: ' + err.message)
+      showToast('อัปเดตสถานะไม่สำเร็จ: ' + err.message, ERROR_TOAST_MS, 'error')
     }
   }
 
@@ -1001,7 +1003,7 @@ export function AppProvider({ children }) {
         setState({ authSubmitting: false, authError: 'บัญชีนี้ไม่มีสิทธิ์ผู้ดูแลระบบ' })
         return
       }
-      setState({ authSubmitting: false, adminLoggedIn: true })
+      setState({ authSubmitting: false, adminLoggedIn: true, currentUser: user })
       navigate('/admin')
     } catch (err) {
       setState({ authSubmitting: false, authError: err.message })
@@ -1058,7 +1060,7 @@ export function AppProvider({ children }) {
     } catch (err) {
       if (handleSessionExpired(err)) return
       const reason = err.status === undefined ? 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาตรวจสอบอินเทอร์เน็ต' : err.message
-      showToast(errorLabels[formType] + reason, ERROR_TOAST_MS)
+      showToast(errorLabels[formType] + reason, ERROR_TOAST_MS, 'error')
       return
     }
     setState((s) => ({ [listKey]: editingId ? s[listKey].map((x) => x.id === editingId ? item : x) : [...s[listKey], item] }))
@@ -1080,17 +1082,14 @@ export function AppProvider({ children }) {
     rewards: s.rewards.some((r) => r.id === item.id) ? s.rewards.map((r) => r.id === item.id ? item : r) : [...s.rewards, item],
   }))
 
+  // Callers must confirm first (admin ConfirmDialog via useConfirm); this deletes immediately.
   const deleteItem = async (type, id) => {
-    const confirmMessage = type === 'qr'
-      ? 'ลบ QR นี้ใช่หรือไม่?\n\nป้าย QR ที่พิมพ์ไปแล้วจะสแกนไม่ได้ และประวัติการสแกนของ QR นี้จะถูกลบด้วย (ถ้าแค่ต้องการหยุดชั่วคราว ให้ใช้ "ปิดใช้งาน" แทน)'
-      : 'ยืนยันการลบข้อมูลนี้หรือไม่?'
-    if (!window.confirm(confirmMessage)) return
     const { remove, listKey } = resourceApi[type]
     try {
       await remove(id)
     } catch (err) {
       if (handleSessionExpired(err)) return
-      showToast('ลบไม่สำเร็จ: ' + (err.status === undefined ? 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาตรวจสอบอินเทอร์เน็ต' : err.message), ERROR_TOAST_MS)
+      showToast('ลบไม่สำเร็จ: ' + (err.status === undefined ? 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาตรวจสอบอินเทอร์เน็ต' : err.message), ERROR_TOAST_MS, 'error')
       return
     }
     setState((s) => ({ [listKey]: s[listKey].filter((x) => x.id !== id) }))
@@ -1294,7 +1293,7 @@ export function AppProvider({ children }) {
   // against server-side. `placeName` isn't joined here anymore (no bulk
   // `s.places` to join against) -- QrTab.jsx joins it itself against a
   // fetchPlaceNames() id->name map instead.
-  const qrsView = s.qrs.map((q) => ({ ...q, onEdit: () => openEditForm('qr', q), onDelete: () => deleteItem('qr', q.id) }))
+  const qrsView = s.qrs.map((q) => ({ ...q, onEdit: () => openEditForm('qr', q) }))
 
   const stepMeta = [0, 1, 2, 3].map((i) => {
     const done = i < s.tripStep

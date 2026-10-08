@@ -1,43 +1,61 @@
-import { useParams } from 'react-router-dom'
+import { Suspense, useState } from 'react'
+import { Menu } from 'lucide-react'
+import { Navigate, useParams } from 'react-router-dom'
+import { useApp } from '../context/AppContext.jsx'
+import '../admin/admin.css'
 import AdminSidebar from '../admin/AdminSidebar.jsx'
-import DashboardTab from '../admin/DashboardTab.jsx'
-import PlacesTab from '../admin/PlacesTab.jsx'
-import ReportsTab from '../admin/ReportsTab.jsx'
-import EventsTab from '../admin/EventsTab.jsx'
-import EventRequestsTab from '../admin/EventRequestsTab.jsx'
-import KnowledgeTab from '../admin/KnowledgeTab.jsx'
-import QrTab from '../admin/QrTab.jsx'
-import UsersTab from '../admin/UsersTab.jsx'
-import RedeemTab from '../admin/RedeemTab.jsx'
-import TripsTab from '../admin/TripsTab.jsx'
+import LoadingSpinner from '../components/LoadingSpinner.jsx'
 import Toast from '../components/Toast.jsx'
+import { lazyPage } from '../lib/lazyPage.js'
 import { adminTabs } from '../data/seed.js'
+
+// One chunk per admin tab: opening /admin/users no longer downloads the places,
+// QR and event editors. (This page itself is already a lazy chunk in App.jsx.)
+const TAB_COMPONENTS = {
+  dashboard: lazyPage(() => import('../admin/DashboardTab.jsx')),
+  places: lazyPage(() => import('../admin/places/PlacesTab.jsx')),
+  events: lazyPage(() => import('../admin/events/EventsTab.jsx')),
+  knowledge: lazyPage(() => import('../admin/KnowledgeTab.jsx')),
+  reports: lazyPage(() => import('../admin/ReportsTab.jsx')),
+  'event-requests': lazyPage(() => import('../admin/EventRequestsTab.jsx')),
+  qr: lazyPage(() => import('../admin/qr/QrTab.jsx')),
+  rewards: lazyPage(() => import('../admin/rewards/RewardsTab.jsx')),
+  redeem: lazyPage(() => import('../admin/RedeemTab.jsx')),
+  users: lazyPage(() => import('../admin/users/UsersTab.jsx')),
+  trips: lazyPage(() => import('../admin/TripsTab.jsx')),
+}
 
 export default function AdminDashboardPage() {
   const { tab = 'dashboard' } = useParams()
-  const tabLabel = (adminTabs.find((t) => t.key === tab) || {}).label || ''
+  const { state } = useApp()
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const knownTab = adminTabs.find((t) => t.key === tab)
+  const TabComponent = TAB_COMPONENTS[tab]
+  // Unknown /admin/<anything> used to render a blank page.
+  if (!knownTab || !TabComponent) return <Navigate to="/admin" replace />
+  const email = state.currentUser?.email || 'ผู้ดูแลระบบ'
   return (
-    <div data-role="admin-shell" style={{ minHeight: '100vh', display: 'flex' }}>
-      <AdminSidebar />
-      <main style={{ flex: 1, padding: 0, background: '#FBF8EE', overflowY: 'auto' }}>
-        <div style={{ background: '#fff', borderBottom: '1px solid #E7E3D2', padding: '16px 34px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ fontSize: 13, color: '#626863' }}>ผู้ดูแลระบบ · {tabLabel}</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-            <span style={{ fontSize: 13, color: '#3c463f', fontWeight: 600 }}>admin@dino.go.th</span>
-            <span style={{ width: 30, height: 30, borderRadius: '50%', background: 'linear-gradient(135deg,#66BB6A,#2E7D32)' }}></span>
+    <div data-role="admin-shell" className="ad-shell">
+      <AdminSidebar open={drawerOpen} onClose={() => setDrawerOpen(false)} />
+      <main className="ad-main">
+        <div className="ad-topbar">
+          <button type="button" className="ad-topbar__menu" onClick={() => setDrawerOpen(true)} aria-label="เปิดเมนู" aria-expanded={drawerOpen}>
+            <Menu size={22} />
+          </button>
+          <div className="ad-topbar__title">ผู้ดูแลระบบ</div>
+          <div className="ad-topbar__user">
+            <span className="ad-topbar__email" title={email}>{email}</span>
+            <span className="ad-topbar__avatar" aria-hidden="true">{email.charAt(0).toUpperCase()}</span>
           </div>
         </div>
-        <div style={{ padding: '28px 34px 40px' }}>
-          {tab === 'dashboard' && <DashboardTab />}
-          {tab === 'places' && <PlacesTab />}
-          {tab === 'reports' && <ReportsTab />}
-          {tab === 'events' && <EventsTab />}
-          {tab === 'event-requests' && <EventRequestsTab />}
-          {tab === 'knowledge' && <KnowledgeTab />}
-          {tab === 'qr' && <QrTab />}
-          {tab === 'redeem' && <RedeemTab />}
-          {tab === 'users' && <UsersTab />}
-          {tab === 'trips' && <TripsTab />}
+        <div className="ad-content">
+          {/* Fallback fades in after a short delay (no flash on fast loads); the keyed wrapper replays the
+              enter animation on every tab change. Both are CSS-only (admin.css). */}
+          <Suspense fallback={<div className="ad-delayed"><LoadingSpinner size={36} label="กำลังโหลด..." /></div>}>
+            <div key={tab} className="ad-route">
+              <TabComponent />
+            </div>
+          </Suspense>
         </div>
       </main>
       <Toast />
