@@ -4,6 +4,7 @@ import { Navigate, useParams } from 'react-router-dom'
 import { useApp } from '../context/AppContext.jsx'
 import '../admin/admin.css'
 import AdminSidebar from '../admin/AdminSidebar.jsx'
+import ErrorBoundary from '../components/ErrorBoundary.jsx'
 import LoadingSpinner from '../components/LoadingSpinner.jsx'
 import Toast from '../components/Toast.jsx'
 import { lazyPage } from '../lib/lazyPage.js'
@@ -51,11 +52,13 @@ export default function AdminDashboardPage() {
         <div className="ad-content">
           {/* Fallback fades in after a short delay (no flash on fast loads); the keyed wrapper replays the
               enter animation on every tab change. Both are CSS-only (admin.css). */}
-          <Suspense fallback={<div className="ad-delayed"><LoadingSpinner size={36} label="กำลังโหลด..." /></div>}>
-            <div key={tab} className="ad-route">
-              <TabComponent />
-            </div>
-          </Suspense>
+          <ErrorBoundary key={tab}>
+            <Suspense fallback={<div className="ad-delayed"><LoadingSpinner size={36} label="กำลังโหลด..." /></div>}>
+              <div className="ad-route">
+                <TabComponent />
+              </div>
+            </Suspense>
+          </ErrorBoundary>
         </div>
       </main>
       <Toast />

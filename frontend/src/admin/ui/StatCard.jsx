@@ -15,7 +15,9 @@ function parseCountable(value) {
 function StatValue({ value }) {
   const parsed = parseCountable(value)
   const shown = useCountUp(parsed ? parsed.n : null)
-  if (!parsed || shown === parsed.n) return <span className="ad-stat__value">{value}</span>
+  // `shown` is still null on the render where `value` first becomes a number (the hook's effect
+  // hasn't run yet), so fall back to the raw value instead of formatting null.
+  if (!parsed || shown == null || shown === parsed.n) return <span className="ad-stat__value">{value}</span>
   const text = parsed.group ? shown.toLocaleString('th-TH') : String(shown)
   return (
     <span className="ad-stat__value">
