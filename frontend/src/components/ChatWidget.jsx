@@ -157,7 +157,8 @@ export default function ChatWidget() {
           <div style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 14, background: 'linear-gradient(180deg,#F6F8F1,#FBFAF3 40%)' }}>
             <AiNotice variant="compact" />
             {derived.chatMessagesView.map((msg, i) => (
-              <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 8, alignSelf: msg.align, maxWidth: msg.from === 'bot' ? '94%' : '82%' }}>
+              // sendChat appends an empty bot message as the streaming target; the typing dots cover that gap.
+              msg.from === 'bot' && !msg.text ? null : <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 8, alignSelf: msg.align, maxWidth: msg.from === 'bot' ? '94%' : '82%' }}>
                 <div style={{ display: 'flex', alignItems: 'flex-end', gap: 7 }}>
                   {msg.from === 'bot' && (
                     <span style={{ width: 22, height: 22, borderRadius: '50%', background: 'linear-gradient(135deg,#66BB6A,#2E7D32)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, padding: 3 }}>
