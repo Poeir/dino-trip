@@ -157,6 +157,36 @@ def get_visit_duration(loc: Place, pace: str) -> int:
     return TYPE_DURATION_MAP.get(loc.category, 60)
 
 
+# The day's LAST stop may be visited for less than get_visit_duration when
+# the full visit plus the trip back to the hotel would overrun the day's end
+# -- instead of dropping it. Confirmed on a real must-go: an evening market
+# (open 16:00-21:00, 120-min visit) in an 09:00-18:00 day needs 18:05 to be
+# back at the hotel, so it was dropped on EVERY run no matter what the LLM
+# picked, over a 5-minute shortfall. This is meant for small overruns like
+# that one, not for squeezing a stop into whatever time is left: a first
+# version with a 50% floor produced 30-minute dinners and 64-minute markets in
+# replays of packed-pace days, so the floor is three quarters of the normal
+# visit (and never below 30 minutes).
+MIN_TRUNCATED_VISIT_FRACTION = 0.75
+MIN_TRUNCATED_VISIT_MINUTES = 30
+
+
+def _fit_last_stop_visit(
+    place: Place, pace: str, start_activity_dt: datetime, return_travel_min: int, end_dt_bound: datetime,
+) -> Optional[int]:
+    """Visit minutes for the day's last stop so the hotel is reached by
+    `end_dt_bound`: the normal duration if it already fits, a shortened one
+    (above the floor) if that makes it fit, else None (genuinely doesn't fit).
+    Shared by _simulate_day_walk and materialize_day_schedule, which compute
+    the walk independently and must agree on what survives."""
+    nominal = get_visit_duration(place, pace)
+    available = int((end_dt_bound - start_activity_dt).total_seconds() // 60) - return_travel_min
+    if available >= nominal:
+        return nominal
+    floor = max(MIN_TRUNCATED_VISIT_MINUTES, math.ceil(nominal * MIN_TRUNCATED_VISIT_FRACTION))
+    return available if available >= floor else None
+
+
 # Average minutes per attraction INCLUDING travel to it, per pace -- divides
 # a day's usable time into a target number of attractions (pace_stop_range).
 # Estimates for sizing only; the real time at each stop still comes from
@@ -170,6 +200,10 @@ _LUNCH_WINDOW = (time(12, 0), time(13, 0))    # window must start by / end after
 _DINNER_WINDOW = (time(18, 0), time(19, 0))
 # Restaurants don't count toward a pace's attraction range.
 _NON_ATTRACTION_CATEGORIES = ("ร้านอาหาร",)
+# Categories that order_day_stops treats as a day's meals (second priority
+# tier after must-go). Same set as the non-attractions, kept as its own name
+# since "doesn't count toward the pace cap" and "is a meal" are different ideas.
+_MEAL_CATEGORIES = _NON_ATTRACTION_CATEGORIES
 
 
 def attraction_count(places: List[Place]) -> int:
@@ -340,6 +374,46 @@ def preferred_time_window(loc: Place, meal_role: Optional[str] = None) -> Option
     return None
 
 
+# --- "can this restaurant actually be eaten at on this trip?" -----------------
+# Shared by the candidate-pool builder (orchestrator) and the meal fallback
+# (llm_extractor) so both judge a restaurant the same way. A restaurant is only
+# worth a candidate slot, or a day's fallback meal, if some visit of it fits
+# inside the trip's daily window. Confirmed on real data: a 1-day 09:00-18:00
+# trip whose restaurants all opened at 17:00 or later, so no day could ever get
+# a meal. Retrieval ranks by relevance, not by whether the place is open when
+# the traveller is out.
+MEAL_MIN_OPEN_MINUTES = 45        # must still be open this long after arriving
+MEAL_RETURN_BUFFER_MINUTES = 10   # rough drive back to the hotel at day's end
+MEAL_PROBE_STEP_MINUTES = 30
+
+
+def meal_probe_minutes(start_min: int, end_min: int, window: Optional[Tuple[int, int]] = None) -> List[int]:
+    """Candidate arrival minutes-of-day for a meal inside [start_min, end_min],
+    optionally narrowed to `window` (e.g. MEAL_LUNCH_WINDOW)."""
+    lo = start_min
+    hi = end_min - MEAL_MIN_OPEN_MINUTES - MEAL_RETURN_BUFFER_MINUTES
+    if window:
+        lo, hi = max(lo, window[0]), min(hi, window[1])
+    return list(range(lo, hi + 1, MEAL_PROBE_STEP_MINUTES)) if hi >= lo else []
+
+
+def open_for_meal(
+    place: Place, trip_dates, start_min: int, end_min: int, window: Optional[Tuple[int, int]] = None,
+) -> bool:
+    """True if on at least one of `trip_dates` there is an arrival time in the
+    daily window (optionally narrowed to `window`) at which the place is open
+    now and still open MEAL_MIN_OPEN_MINUTES later. A place with no hours data
+    counts as open (same assumption check_is_open makes)."""
+    probes = meal_probe_minutes(start_min, end_min, window)
+    for day in trip_dates:
+        for minute in probes:
+            arrival = datetime(day.year, day.month, day.day, minute // 60, minute % 60)
+            if (check_is_open(place, arrival)["is_open"]
+                    and check_is_open(place, arrival + timedelta(minutes=MEAL_MIN_OPEN_MINUTES))["is_open"]):
+                return True
+    return False
+
+
 def _simulate_day_walk(
     ordered_places: List[Place], hotel: Place, day_date: date,
     start_dt: datetime, end_dt_bound: datetime, pace: str,
@@ -396,6 +470,10 @@ def _simulate_day_walk(
         last = stops[-1]
         return_travel = travel_minutes(calculate_distance(last["place"], hotel))
         if last["departure_dt"] + timedelta(minutes=return_travel) <= end_dt_bound:
+            break
+        visit = _fit_last_stop_visit(last["place"], pace, last["start_activity_dt"], return_travel, end_dt_bound)
+        if visit is not None:
+            last["departure_dt"] = last["start_activity_dt"] + timedelta(minutes=visit)
             break
         stops.pop()
     return stops
@@ -492,6 +570,7 @@ def _anchor_chain_feasible(chain: List[Tuple[Place, Tuple[int, int]]], pace: str
 
 def _build_anchor_skeleton(
     anchors: List[Tuple[Place, Tuple[int, int]]], pace: str, must_go_ids: set,
+    priority_ids: Optional[set] = None,
 ) -> Tuple[List[Place], List[Place]]:
     """Build the anchor skeleton in two must-go-first passes, mirroring
     _cheapest_insert_remaining's priority-tier policy on the flexible side.
@@ -515,8 +594,15 @@ def _build_anchor_skeleton(
     Returns (route, demoted_places); demoted anchors (must-go or optional)
     are handed back for the caller to fold into the flexible pool, same as
     the single-pass version's demotion path."""
+    priority_ids = priority_ids or set()
     must_go_anchors = [a for a in anchors if a[0].id in must_go_ids]
-    optional_anchors = [a for a in anchors if a[0].id not in must_go_ids]
+    # Optional anchors are inserted one at a time and each insertion is kept
+    # only if the whole chain stays feasible, so whoever goes first can never
+    # be bumped by someone later -- priority (meal) anchors simply go first.
+    optional_anchors = (
+        [a for a in anchors if a[0].id not in must_go_ids and a[0].id in priority_ids]
+        + [a for a in anchors if a[0].id not in must_go_ids and a[0].id not in priority_ids]
+    )
 
     skeleton: List[Tuple[Place, Tuple[int, int]]] = []
     demoted: List[Place] = []
@@ -588,7 +674,18 @@ def order_day_stops(
             flexible.append(p)
     anchors.sort(key=lambda pair: pair[1][0])
 
-    route, demoted_anchors = _build_anchor_skeleton(anchors, pace, must_go_ids)
+    # Second priority tier, right after must-go: a day's restaurants. A meal
+    # is the one stop a day can't be without, but restaurants don't count
+    # toward the pace cap, so on a full day (packed pace, 7-8 attractions)
+    # cheaper optional attractions used to claim the remaining daylight first
+    # and the day's only restaurant -- typically an evening-only one that has
+    # to be reached last -- was dropped as "doesn't fit". Giving restaurants
+    # first claim after must-go makes the attractions give way instead.
+    # Restaurants are capped at MAX_RESTAURANTS_PER_DAY upstream, so this
+    # can't crowd a day out with meals.
+    meal_ids = {p.id for p in day_places if p.category in _MEAL_CATEGORIES} - must_go_ids
+
+    route, demoted_anchors = _build_anchor_skeleton(anchors, pace, must_go_ids, meal_ids)
     flexible.extend(demoted_anchors)
 
     # Once the skeleton is built, nothing may be inserted ahead of its first
@@ -620,10 +717,15 @@ def order_day_stops(
     # day-assignment order instead of shuffling arbitrarily.
     orig_index = {p.id: i for i, p in enumerate(day_places)}
     priority = [p for p in flexible if p.id in must_go_ids]
-    rest = [p for p in flexible if p.id not in must_go_ids]
+    meals = [p for p in flexible if p.id in meal_ids]
+    rest = [p for p in flexible if p.id not in must_go_ids and p.id not in meal_ids]
     route = _cheapest_insert_remaining(
         route, priority, hotel, day_date, start_dt, end_dt_bound, pace, meal_roles,
         min_insert_pos, orig_index, label="MUST-GO ",
+    )
+    route = _cheapest_insert_remaining(
+        route, meals, hotel, day_date, start_dt, end_dt_bound, pace, meal_roles,
+        min_insert_pos, orig_index, label="MEAL ",
     )
     route = _cheapest_insert_remaining(
         route, rest, hotel, day_date, start_dt, end_dt_bound, pace, meal_roles,
@@ -1132,6 +1234,15 @@ def materialize_day_schedule(
 
         start_activity_dt = arrival_at_door + timedelta(minutes=wait_min)
         visit_min = get_visit_duration(place, pace)
+        if hotel and place is route[-1]:
+            # Same end-of-day rule as _simulate_day_walk's trim loop. Only
+            # ever shortens (a stop that doesn't fit even shortened keeps its
+            # normal duration, as before this rule existed).
+            fitted = _fit_last_stop_visit(
+                place, pace, start_activity_dt, travel_minutes(calculate_distance(place, hotel)), end_dt_bound,
+            )
+            if fitted is not None:
+                visit_min = fitted
         departure_dt = start_activity_dt + timedelta(minutes=visit_min)
 
         schedule.append(TimeSlot(

@@ -457,6 +457,184 @@ class TestOrderDayStops:
         )
         assert [p.id for p in route] == ["optional"]
 
+    # --- restaurants are the second priority tier (after must-go) ---------
+
+    def test_restaurant_gets_priority_over_cheaper_optional_place(self):
+        # 90-minute window: room for ONE of the two (60-min attraction right
+        # next to the hotel, or the 60-min restaurant a few km out), not both.
+        # The attraction is a "สถานที่ท่องเที่ยว" on purpose: its preferred
+        # window (08:00-15:00) covers the 09:00 arrival, so it carries no
+        # time-of-day penalty and wins plain cheapest-insertion on distance
+        # alone -- a cafe here would be penalized (13:00-17:00 window) and
+        # lose for an unrelated reason, making the test prove nothing.
+        # Without a priority tier the day's only meal is dropped -- confirmed
+        # on real c04 (packed pace) runs, where an evening-only restaurant
+        # lost to attractions in 35% of days.
+        near = make_place(id="near", name="NearSight", category="สถานที่ท่องเที่ยว", lat=16.4401, lng=102.8401, hours_periods=None)
+        restaurant = make_place(id="meal", name="Restaurant", category="ร้านอาหาร", lat=16.46, lng=102.86, hours_periods=None)
+        route = rs.order_day_stops([near, restaurant], HOTEL, self.DAY, time(9, 0), time(10, 30), "standard")
+        assert [p.id for p in route] == ["meal"]
+
+    def test_same_fixture_with_a_non_restaurant_far_place_still_loses_to_the_cheaper_one(self):
+        # Control for the test above: swap the far place's category to an
+        # attraction and the cheaper stop wins again -- so the flip is the
+        # meal tier, not the coordinates or the window.
+        near = make_place(id="near", name="NearSight", category="สถานที่ท่องเที่ยว", lat=16.4401, lng=102.8401, hours_periods=None)
+        far = make_place(id="far", name="FarSight", category="สถานที่ท่องเที่ยว", lat=16.46, lng=102.86, hours_periods=None)
+        route = rs.order_day_stops([near, far], HOTEL, self.DAY, time(9, 0), time(10, 30), "standard")
+        assert [p.id for p in route] == ["near"]
+
+    def test_must_go_still_beats_a_restaurant_when_only_one_fits(self):
+        must_go = make_place(id="mustgo", name="MustGo", category="คาเฟ่", lat=16.46, lng=102.86, hours_periods=None)
+        restaurant = make_place(id="meal", name="Restaurant", category="ร้านอาหาร", lat=16.47, lng=102.87, hours_periods=None)
+        route = rs.order_day_stops(
+            [restaurant, must_go], HOTEL, self.DAY, time(9, 0), time(10, 30), "standard",
+            must_go_ids={"mustgo"},
+        )
+        assert [p.id for p in route] == ["mustgo"]
+
+    def test_restaurant_anchor_survives_a_conflicting_optional_anchor(self):
+        # Same geometry as the must-go anchor conflict above: the near market
+        # (06:00-07:00, 120-min visit) and the far place (06:15-06:45) can't
+        # both be scheduled. A restaurant in the far slot must win the
+        # conflict even though it opens later.
+        market = make_place(
+            id="market", name="NearMarket", category="ตลาด", lat=16.441, lng=102.841,
+            hours_periods=[{"open": {"day": 1, "hour": 6, "minute": 0}, "close": {"day": 1, "hour": 7, "minute": 0}}],
+        )
+        restaurant = make_place(
+            id="meal", name="EarlyRestaurant", category="ร้านอาหาร", lat=16.50, lng=102.90,
+            hours_periods=[{"open": {"day": 1, "hour": 6, "minute": 15}, "close": {"day": 1, "hour": 6, "minute": 45}}],
+        )
+        route = rs.order_day_stops([market, restaurant], HOTEL, self.DAY, time(6, 0), time(20, 0), "standard")
+        assert [p.id for p in route] == ["meal"]
+
+
+class TestEndOfDayVisitTruncation:
+    """The day's last stop may be visited for less than its normal duration
+    when the full visit + the trip back to the hotel overruns the day's end by
+    a little -- instead of being dropped. Real case: an evening market (open
+    16:00-21:00, 120-min visit) in a 09:00-18:00 day needs 18:05 to be back
+    at the hotel, so it was dropped on every run, must-go or not."""
+    DAY = date(2026, 7, 27)  # Monday (Google day 1)
+
+    @staticmethod
+    def evening_market(open_hour=16, open_minute=0, **overrides):
+        return make_place(
+            id="market", name="EveningMarket", category="ตลาด", lat=16.441, lng=102.841,
+            hours_periods=[{"open": {"day": 1, "hour": open_hour, "minute": open_minute},
+                            "close": {"day": 1, "hour": 21, "minute": 0}}],
+            **overrides,
+        )
+
+    def test_fit_helper_keeps_normal_duration_when_it_fits(self):
+        start = datetime(2026, 7, 27, 14, 0)
+        assert rs._fit_last_stop_visit(self.evening_market(), "standard", start, 5, datetime(2026, 7, 27, 18, 0)) == 120
+
+    def test_fit_helper_shortens_a_small_overrun(self):
+        start = datetime(2026, 7, 27, 16, 0)  # 120 min -> 18:00, + 5 min back = 18:05
+        assert rs._fit_last_stop_visit(self.evening_market(), "standard", start, 5, datetime(2026, 7, 27, 18, 0)) == 115
+
+    def test_fit_helper_refuses_a_cut_below_the_floor(self):
+        # 85 min available < 75% of 120 (= 90): not worth a token visit.
+        start = datetime(2026, 7, 27, 16, 30)
+        assert rs._fit_last_stop_visit(self.evening_market(), "standard", start, 5, datetime(2026, 7, 27, 18, 0)) is None
+
+    def test_fit_helper_never_goes_below_30_minutes(self):
+        # nominal 45 -> 75% = 34 min, floor stays at max(30, 34); 20 min available -> None
+        cafe = make_place(id="c", name="Cafe", category="คาเฟ่", hours_periods=None)
+        start = datetime(2026, 7, 27, 17, 30)
+        assert rs._fit_last_stop_visit(cafe, "standard", start, 10, datetime(2026, 7, 27, 18, 0)) is None
+
+    def test_barely_overrunning_last_stop_is_kept_by_the_ordering(self):
+        route = rs.order_day_stops([self.evening_market()], HOTEL, self.DAY, time(9, 0), time(18, 0), "standard")
+        assert [p.id for p in route] == ["market"]
+
+    def test_stop_needing_too_big_a_cut_is_still_dropped(self):
+        route = rs.order_day_stops([self.evening_market(16, 30)], HOTEL, self.DAY, time(9, 0), time(18, 0), "standard")
+        assert route == []
+
+    def test_materialized_schedule_ends_by_the_day_end_and_shows_the_shorter_visit(self):
+        market = self.evening_market()
+        route = rs.order_day_stops([market], HOTEL, self.DAY, time(9, 0), time(18, 0), "standard")
+        schedule, _, _ = rs.materialize_day_schedule(
+            route, set(), {}, HOTEL, self.DAY, time(9, 0), time(18, 0), "standard",
+        )
+        stop = next(s for s in schedule if s.place.id == "market")
+        assert stop.arrival_time == "16:00"
+        assert stop.departure_time == "17:55"      # 115 min, not 120
+        assert schedule[-1].arrival_time <= "18:00"  # back at the hotel by the day's end
+
+    def test_a_stop_that_is_not_last_keeps_its_normal_duration(self):
+        first = make_place(id="a", name="A", category="สถานที่ท่องเที่ยว", lat=16.441, lng=102.841, hours_periods=None)
+        second = make_place(id="b", name="B", category="สถานที่ท่องเที่ยว", lat=16.442, lng=102.842, hours_periods=None)
+        schedule, _, _ = rs.materialize_day_schedule(
+            [first, second], set(), {}, HOTEL, self.DAY, time(9, 0), time(18, 0), "standard",
+        )
+        durations = {
+            s.place.id: (datetime.strptime(s.departure_time, "%H:%M") - datetime.strptime(s.arrival_time, "%H:%M")).seconds // 60
+            for s in schedule if s.place.id in ("a", "b")
+        }
+        assert durations == {"a": 60, "b": 60}
+
+
+class TestMealAvailability:
+    """meal_probe_minutes/open_for_meal: can a restaurant actually be eaten at
+    inside the trip's daily window? Real case: a 09:00-18:00 trip whose
+    reserved restaurants all opened at 17:00 or later."""
+    DAY = date(2026, 7, 27)  # Monday
+    START, END = 9 * 60, 18 * 60
+
+    @staticmethod
+    def restaurant(open_h, close_h=23, **overrides):
+        periods = [
+            {"open": {"day": d, "hour": open_h, "minute": 0}, "close": {"day": d, "hour": close_h, "minute": 59}}
+            for d in range(7)
+        ]
+        return make_place(id="r", name="R", category="ร้านอาหาร", hours_periods=periods, **overrides)
+
+    def test_probe_minutes_stop_early_enough_for_a_meal_and_the_drive_back(self):
+        probes = rs.meal_probe_minutes(self.START, self.END)
+        assert probes[0] == self.START
+        # last arrival leaves MEAL_MIN_OPEN_MINUTES + MEAL_RETURN_BUFFER_MINUTES before the end
+        assert probes[-1] <= self.END - rs.MEAL_MIN_OPEN_MINUTES - rs.MEAL_RETURN_BUFFER_MINUTES
+
+    def test_probe_minutes_narrowed_to_the_lunch_window(self):
+        probes = rs.meal_probe_minutes(self.START, self.END, rs.MEAL_LUNCH_WINDOW)
+        assert min(probes) >= rs.MEAL_LUNCH_WINDOW[0] and max(probes) <= rs.MEAL_LUNCH_WINDOW[1]
+
+    def test_probe_minutes_empty_when_the_trip_window_misses_the_window(self):
+        assert rs.meal_probe_minutes(15 * 60, 20 * 60, rs.MEAL_LUNCH_WINDOW) == []
+
+    def test_restaurant_open_at_lunch_is_usable(self):
+        assert rs.open_for_meal(self.restaurant(11), [self.DAY], self.START, self.END)
+
+    def test_restaurant_opening_after_the_day_ends_is_not_usable(self):
+        assert not rs.open_for_meal(self.restaurant(18), [self.DAY], self.START, self.END)
+
+    def test_evening_restaurant_is_not_lunch_capable_but_is_usable_if_it_opens_in_time(self):
+        evening = self.restaurant(17)  # 09:00-18:00 day: a 17:00 arrival still fits
+        assert rs.open_for_meal(evening, [self.DAY], self.START, self.END)
+        assert not rs.open_for_meal(evening, [self.DAY], self.START, self.END, rs.MEAL_LUNCH_WINDOW)
+
+    def test_lunch_capable_restaurant(self):
+        assert rs.open_for_meal(self.restaurant(11), [self.DAY], self.START, self.END, rs.MEAL_LUNCH_WINDOW)
+
+    def test_no_hours_data_counts_as_open(self):
+        assert rs.open_for_meal(make_place(id="r", category="ร้านอาหาร", hours_periods=None), [self.DAY], self.START, self.END)
+
+    def test_closed_all_of_the_trips_days_is_not_usable(self):
+        # open only on Tuesday (Google day 2); the trip is a single Monday
+        tuesday_only = make_place(
+            id="r", category="ร้านอาหาร",
+            hours_periods=[{"open": {"day": 2, "hour": 9, "minute": 0}, "close": {"day": 2, "hour": 22, "minute": 0}}],
+        )
+        assert not rs.open_for_meal(tuesday_only, [self.DAY], self.START, self.END)
+        assert rs.open_for_meal(tuesday_only, [self.DAY, self.DAY + timedelta(days=1)], self.START, self.END)
+
+    def test_permanently_closed_business_is_not_usable(self):
+        assert not rs.open_for_meal(self.restaurant(11, business_status="CLOSED_PERMANENTLY"), [self.DAY], self.START, self.END)
+
 
 class TestMaterializeDaySchedule:
     DAY = date(2026, 7, 27)

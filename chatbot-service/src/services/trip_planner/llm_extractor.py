@@ -453,6 +453,51 @@ class LLMTripPlanner:
             logger.warning("trip planner: still dropping places after %d attempt(s), returning last itinerary anyway:\n%s", MAX_JUDGE_ATTEMPTS, drop_feedback)
         return final_itinerary, verdict.rationale
 
+    def _pick_fallback_restaurant(
+        self, day_places: List[Place], day_date, start_time_of_day, end_time_of_day, used_ids: Set[str],
+    ) -> Optional[Place]:
+        """Restaurant to top up a day that has none. Used to be "the first
+        unused restaurant in candidate order", which ignored when it opens
+        and where it is: confirmed on real data, a 09:00-18:00 day got an
+        evening-only restaurant (so lunch still never happened) and a
+        Phu Wiang day got an in-town one the scheduler then had to drop.
+        Order of preference: open at a meal time inside the day's window,
+        then at least visitable at some point in it, then closest to the day's other places (or the hotel when the day
+        has none), then best rated. Ties keep candidate order."""
+        pool = [loc for loc in self.candidates if loc.id not in used_ids and loc.category == "ร้านอาหาร"]
+        if not pool:
+            return None
+
+        start_min = start_time_of_day.hour * 60 + start_time_of_day.minute
+        end_min = end_time_of_day.hour * 60 + end_time_of_day.minute
+        if start_min <= 12 * 60 + 30 and end_min >= 13 * 60 + 30:
+            meal_min = 12 * 60 + 30
+        elif start_min <= 18 * 60 + 30 and end_min >= 19 * 60 + 30:
+            meal_min = 18 * 60 + 30
+        else:
+            meal_min = (start_min + end_min) // 2
+        meal_dt = datetime(day_date.year, day_date.month, day_date.day, meal_min // 60, meal_min % 60)
+
+        located = [p for p in day_places if p.lat is not None and p.lng is not None]
+        if located:
+            anchor = Place(
+                id="day_centroid", name="day_centroid",
+                lat=sum(p.lat for p in located) / len(located), lng=sum(p.lng for p in located) / len(located),
+            )
+        else:
+            anchor = self.start_point
+
+        def key(loc: Place):
+            is_open = route_scheduler.check_is_open(loc, meal_dt)["is_open"]
+            # Not open at the ideal meal time, but still visitable somewhere in
+            # the window, beats a place that can never be visited today (e.g.
+            # opens after the day ends) -- scheduling that one just drops it.
+            visitable = is_open or route_scheduler.open_for_meal(loc, [day_date], start_min, end_min)
+            dist = route_scheduler.calculate_distance(anchor, loc) if anchor and loc.lat is not None and loc.lng is not None else 0.0
+            return (not is_open, not visitable, dist, -(loc.rating or 0.0))
+
+        return min(pool, key=key)
+
     def _build_itinerary_from_llm_days(self, data: dict, user_input: TripInput) -> Tuple[List[DailyItinerary], str]:
         """Turns the LLM's day-assignment output into a real itinerary:
         real ordering, real arrival/departure times, real opening-hours
@@ -572,9 +617,9 @@ class LLMTripPlanner:
             day_places = day_assignments.setdefault(day_num, [])
             if any(p.category == "ร้านอาหาร" for p in day_places):
                 continue
-            restaurant = next(
-                (loc for loc in self.candidates if loc.id not in used_ids and loc.category == "ร้านอาหาร"),
-                None,
+            restaurant = self._pick_fallback_restaurant(
+                day_places, trip_start_date + timedelta(days=day_num - 1),
+                start_time_of_day, end_time_of_day, used_ids,
             )
             if restaurant:
                 day_places.append(restaurant)
