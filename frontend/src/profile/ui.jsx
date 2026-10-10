@@ -24,7 +24,7 @@ export function Card({ title, subtitle, danger, action, children }) {
           {action}
         </div>
       )}
-      {subtitle && <p style={{ margin: '4px 0 0', fontSize: 13, color: '#6d7a72', lineHeight: 1.6, maxWidth: 620 }}>{subtitle}</p>}
+      {subtitle && <p style={{ margin: '4px 0 0', fontSize: 13, color: '#5f6a63', lineHeight: 1.6, maxWidth: 620 }}>{subtitle}</p>}
       <div style={{ marginTop: title ? 14 : 0 }}>{children}</div>
     </section>
   )

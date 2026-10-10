@@ -1,7 +1,9 @@
+import { Check, Circle, X } from 'lucide-react'
 import { useRef } from 'react'
 import { useApp } from '../context/AppContext.jsx'
 import { PinIcon, UserIcon, GenderIcon, CalendarIcon, BriefcaseIcon, MailIcon, PhoneIcon, LockIcon, CameraIcon, ZoomIcon } from '../components/Icons.jsx'
 import Modal from '../components/Modal.jsx'
+import { useThaiAddress } from '../lib/thaiAddress.js'
 
 const labelStyle = { fontSize: 13, fontWeight: 700, color: '#1B5E20', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }
 const inputStyle = { width: '100%', border: '1px solid #DCD8C6', borderRadius: 8, padding: 10, fontSize: 14, marginBottom: 16 }
@@ -71,7 +73,7 @@ function PersonaCard({ state, actions, derived }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
           <p data-font="culture" style={{ margin: 0, color: '#1B5E20', fontSize: 15, fontWeight: 800 }}>บัตรสมาชิก Dino</p>
-          <p style={{ margin: '3px 0 0', color: '#8a938c', fontSize: 12 }}>ตัวตนนักเที่ยวของคุณ</p>
+          <p style={{ margin: '3px 0 0', color: '#626863', fontSize: 12 }}>ตัวตนนักเที่ยวของคุณ</p>
         </div>
         <div style={{ transform: 'rotate(9deg)', textAlign: 'center', flexShrink: 0, animation: 'dc-pop 0.4s cubic-bezier(.34,1.56,.64,1) 0.3s both' }}>
           <div style={{ width: 42, height: 42, borderRadius: '50%', border: '2px solid #FBC02D', padding: 3, background: '#fff', animation: 'dc-pulse 2.4s ease-in-out infinite' }}>
@@ -102,21 +104,21 @@ function PersonaCard({ state, actions, derived }) {
             </button>
           ))}
           <label title="อัปโหลดรูปของคุณ" className="dc-avatar-swatch" style={{
-            width: 26, height: 26, borderRadius: '50%', border: '1px dashed #8a938c', color: '#6d7a72',
+            width: 26, height: 26, borderRadius: '50%', border: '1px dashed #626863', color: '#5f6a63',
             display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
           }}>
-            <CameraIcon size={13} color="#6d7a72" box={false} />
+            <CameraIcon size={13} color="#5f6a63" box={false} />
             <input type="file" accept="image/*" onChange={actions.onAuthAvatarFileChange} style={{ display: 'none' }} />
           </label>
         </div>
-        {state.avatarUploading && <p style={{ margin: '0 0 4px', fontSize: 11, color: '#8a938c' }}>กำลังอัปโหลด...</p>}
+        {state.avatarUploading && <p style={{ margin: '0 0 4px', fontSize: 11, color: '#626863' }}>กำลังอัปโหลด...</p>}
         {state.avatarError && <p style={{ margin: '0 0 4px', fontSize: 11, color: '#a33232' }}>{state.avatarError}</p>}
         {avatar.isPhoto && (
           <div style={{ display: 'flex', gap: 10, marginBottom: 8 }}>
             <button type="button" onClick={actions.openAvatarReposition} style={{ background: 'none', border: 'none', color: '#2E7D32', fontSize: 11, fontWeight: 700, textDecoration: 'underline', cursor: 'pointer', padding: 0 }}>
               ปรับตำแหน่งรูป
             </button>
-            <button type="button" onClick={actions.clearPersonaAvatar} style={{ background: 'none', border: 'none', color: '#8a938c', fontSize: 11, textDecoration: 'underline', cursor: 'pointer', padding: 0 }}>
+            <button type="button" onClick={actions.clearPersonaAvatar} style={{ background: 'none', border: 'none', color: '#626863', fontSize: 11, textDecoration: 'underline', cursor: 'pointer', padding: 0 }}>
               ใช้รูปเริ่มต้น
             </button>
           </div>
@@ -165,7 +167,7 @@ function AvatarCropModal({ state, actions }) {
 
   return (
     <Modal open={state.avatarCropOpen} onClose={actions.cancelAvatarCrop} title="ปรับตำแหน่งรูปโปรไฟล์" maxWidth={360}>
-      <p style={{ margin: '0 0 16px', fontSize: 13, color: '#6d7a72', textAlign: 'center' }}>ลากรูปเพื่อเลือกส่วนที่จะแสดงในวงกลมโปรไฟล์</p>
+      <p style={{ margin: '0 0 16px', fontSize: 13, color: '#5f6a63', textAlign: 'center' }}>ลากรูปเพื่อเลือกส่วนที่จะแสดงในวงกลมโปรไฟล์</p>
       <div
         onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
         style={{ position: 'relative', width: 280, height: 280, margin: '0 auto', borderRadius: 12, overflow: 'hidden', background: '#111', cursor: 'grab', touchAction: 'none' }}
@@ -177,7 +179,7 @@ function AvatarCropModal({ state, actions }) {
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 16 }}>
-        <ZoomIcon size={17} color="#8a938c" box={false} />
+        <ZoomIcon size={17} color="#626863" box={false} />
         <input
           type="range" min="1" max="3" step="0.05" value={scale}
           onChange={(e) => actions.setAvatarCropScale(Number(e.target.value))}
@@ -200,9 +202,10 @@ function AvatarCropModal({ state, actions }) {
 
 export default function SignupPage() {
   const { state, actions, derived } = useApp()
+  useThaiAddress() // starts loading the address table; derived.*Options fill in when it arrives
   const isPending = state.authPendingConfirmation
   return (
-    <main style={{ maxWidth: isPending ? 420 : 980, margin: '0 auto', padding: '70px 32px' }}>
+    <main style={{ maxWidth: isPending ? 420 : 980, margin: '0 auto', padding: 'var(--page-pv-center) var(--page-gutter)' }}>
       <h1 data-font="culture" style={{ fontSize: 22, fontWeight: 800, color: '#1B5E20', margin: '0 0 22px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, animation: 'dc-fade-up 0.4s ease both' }}>
         <img src="/assets/dino-logo-mark.png" alt="" style={{ width: 26, height: 26 }} />
         สมัครสมาชิก Dino
@@ -212,7 +215,7 @@ export default function SignupPage() {
           <div style={{ background: '#E8F5E9', color: '#1B5E20', fontSize: 13.5, padding: '14px 16px', borderRadius: 10, marginBottom: 14, lineHeight: 1.6 }}>
             เราส่งอีเมลยืนยันไปที่ <strong>{state.authForm.email}</strong> แล้ว กรุณาตรวจสอบกล่องจดหมาย (รวมถึงโฟลเดอร์สแปม) และคลิกลิงก์เพื่อยืนยันบัญชีก่อนเข้าสู่ระบบ
           </div>
-          <div style={{ textAlign: 'center', fontSize: 13.5, color: '#6d7a72' }}>
+          <div style={{ textAlign: 'center', fontSize: 13.5, color: '#5f6a63' }}>
             กรอกอีเมลผิด? <a href="#" onClick={(e) => { e.preventDefault(); actions.goSignup() }} style={{ fontWeight: 700 }}>แก้ไขข้อมูล</a>
           </div>
         </div>
@@ -264,7 +267,7 @@ export default function SignupPage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 16 }}>
               {derived.passwordRules.map((r) => (
                 <span key={`${r.key}-${r.met}`} style={{ fontSize: 12, fontWeight: 600, color: r.met ? '#2E7D32' : '#a9b3ac', display: 'flex', alignItems: 'center', gap: 6, animation: 'dc-pop 0.25s ease both' }}>
-                  <span style={{ fontWeight: 800 }}>{r.met ? '✓' : '○'}</span>{r.label}
+                  <span style={{ fontWeight: 800 }}>{r.met ? <Check size={13} strokeWidth={3} style={{ verticalAlign: '-2px' }} /> : <Circle size={13} strokeWidth={2.4} style={{ verticalAlign: '-2px' }} />}</span>{r.label}
                 </span>
               ))}
             </div>
@@ -272,7 +275,7 @@ export default function SignupPage() {
             <input className="dc-signup-input" type="password" value={state.authForm.confirmPassword} onChange={actions.onAuthConfirmPasswordChange} placeholder="••••••••" style={{ ...inputStyle, marginBottom: state.authForm.confirmPassword ? 6 : 16 }} />
             {state.authForm.confirmPassword && (
               <p key={derived.passwordsMatch} style={{ margin: '0 0 16px', fontSize: 12, fontWeight: 600, color: derived.passwordsMatch ? '#2E7D32' : '#a33232', animation: 'dc-pop 0.25s ease both' }}>
-                {derived.passwordsMatch ? '✓ รหัสผ่านตรงกัน' : '✗ รหัสผ่านไม่ตรงกัน'}
+                {derived.passwordsMatch ? <><Check size={13} strokeWidth={3} style={{ verticalAlign: '-2px' }} /> รหัสผ่านตรงกัน</> : <><X size={13} strokeWidth={3} style={{ verticalAlign: '-2px' }} /> รหัสผ่านไม่ตรงกัน</>}
               </p>
             )}
 
@@ -297,7 +300,7 @@ export default function SignupPage() {
             </label>
             {state.authError && <div style={{ background: '#fdecec', color: '#a33232', fontSize: 13, padding: '8px 12px', borderRadius: 8, marginBottom: 14, animation: 'dc-pop 0.25s ease both' }}>{state.authError}</div>}
             <button onClick={actions.submitSignup} disabled={state.authSubmitting} className="dc-signup-cta" style={{ width: '100%', background: 'linear-gradient(135deg,#66BB6A,#388E3C)', color: '#fff', border: 'none', padding: 12, borderRadius: 20, fontWeight: 800, fontSize: 14.5, cursor: state.authSubmitting ? 'default' : 'pointer', opacity: state.authSubmitting ? 0.7 : 1 }}>{state.authSubmitting ? 'กำลังสมัครสมาชิก...' : 'สมัครสมาชิก'}</button>
-            <div style={{ textAlign: 'center', marginTop: 16, fontSize: 13.5, color: '#6d7a72' }}>มีบัญชีอยู่แล้ว? <a href="#" onClick={(e) => { e.preventDefault(); actions.goLogin() }} style={{ fontWeight: 700 }}>เข้าสู่ระบบ</a></div>
+            <div style={{ textAlign: 'center', marginTop: 16, fontSize: 13.5, color: '#5f6a63' }}>มีบัญชีอยู่แล้ว? <a href="#" onClick={(e) => { e.preventDefault(); actions.goLogin() }} style={{ fontWeight: 700 }}>เข้าสู่ระบบ</a></div>
           </div>
         </div>
       )}

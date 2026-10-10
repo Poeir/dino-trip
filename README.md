@@ -16,10 +16,12 @@ main repo/
 | ส่วน | เทคโนโลยี | หน้าที่ |
 |---|---|---|
 | `frontend/` | React 18 + Vite + react-router-dom | UI ทั้งหมด: หน้าแรก, รายละเอียดสถานที่, แชท, ฟอร์มวางแผนทริป, หน้า admin |
-| `backend/` | Node.js + Express + Supabase CLI | REST API (`/api/places`, `/api/events`, `/api/knowledge-base`, `/api/qrs`, `/api/rewards`) ที่ frontend เรียกใช้, schema/migrations ของฐานข้อมูล (Postgres + pgvector), สคริปต์ดึง/นำเข้าข้อมูลสถานที่จาก Google Places |
-| `chatbot-service/` | Python + FastAPI | เสิร์ฟ endpoint `/chat/` (ตอบกลับแบบ stream ทีละ token) และ `/trip/llm` แยกเป็นเซอร์วิสของตัวเอง รันบนเครื่อง local |
+| `backend/` | Node.js + Express + knex/pg | REST API ภายใต้ `/api/*` (places, events, knowledge-base, qrs, rewards, points, trips, profile, auth, รายงานข้อมูล, ซิงก์สถานที่ ฯลฯ), ระบบสมาชิก/session แบบ cookie, schema/migrations ของฐานข้อมูล (Postgres + pgvector), ซิงก์ข้อมูลสถานที่จาก Google Places, หน้า SEO สำหรับ crawler |
+| `chatbot-service/` | Python + FastAPI | เสิร์ฟ endpoint `/chat/` (ตอบกลับแบบ stream ทีละ token), `/trip/llm`, การสกัดข้อมูลกิจกรรม และ admin reindex แยกเป็นเซอร์วิสของตัวเอง |
 
-**ฐานข้อมูล**: Supabase (Postgres) โปรเจคเดียว ที่ทั้ง `backend/` และ `chatbot-service/` เชื่อมต่อเข้าไปด้วยกัน — frontend ไม่เชื่อมต่อ Supabase ตรงอีกต่อไป (ไม่มี anon key ฝั่ง client) แต่เรียกผ่าน `backend/` API แทน
+**ฐานข้อมูล**: Supabase (Postgres) โปรเจคเดียว ที่ทั้ง `backend/` (ผ่าน `DATABASE_URL`) และ `chatbot-service/` เชื่อมต่อเข้าไปด้วยกัน — frontend ไม่เชื่อมต่อ Supabase ตรง (ไม่มี anon key ฝั่ง client) แต่เรียกผ่าน `backend/` API แทน
+
+**Production**: รันทั้งหมดบน VPS เครื่องเดียว (OVHcloud) ด้วย Docker Compose ใน `deploy/` — Caddy ให้บริการ HTTPS, เสิร์ฟ frontend, ส่ง `/api` ไป backend และ `/chat`, `/trip/llm` ไป chatbot-service (single origin ที่ `dinokhonkaen.app`) ดูหัวข้อ "Deploy" ด้านล่าง
 
 ## การรันโปรเจค (local)
 
@@ -30,8 +32,9 @@ main repo/
 ```bash
 cd backend
 npm install
-cp .env.example .env   # แล้วกรอก SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY / GOOGLE_PLACES_API_KEY
+cp .env.example .env   # แล้วกรอก DATABASE_URL / FRONTEND_ORIGIN / CHATBOT_SERVICE_URL / Cloudinary / Gmail / GOOGLE_PLACES_API_KEY
 npm run dev             # http://localhost:4000
+npm test                # node --test
 ```
 
 ### 2. Frontend
@@ -39,7 +42,7 @@ npm run dev             # http://localhost:4000
 ```bash
 cd frontend
 npm install
-cp .env.example .env   # แล้วกรอกค่า VITE_API_URL / VITE_CHATBOT_SERVICE_URL
+cp .env.example .env   # แล้วกรอกค่า VITE_API_URL / VITE_CHATBOT_SERVICE_URL / VITE_GOOGLE_MAPS_API_KEY
 npm run dev            # http://localhost:5173
 ```
 
@@ -52,6 +55,7 @@ venv\Scripts\activate        # Windows
 cp .env.example .env         # แล้วกรอก KKU_API_KEY / SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY
 pip install -r requirements.txt
 uvicorn src.main:app --reload --port 8000   # http://localhost:8000
+pytest                                       # ไม่รวมเทสต์ที่เรียก LLM/DB จริง (pytest -m live จะเสียเงิน)
 ```
 
 API docs (Swagger) ดูได้ที่ `http://localhost:8000/docs`
@@ -60,11 +64,13 @@ API docs (Swagger) ดูได้ที่ `http://localhost:8000/docs`
 
 ```bash
 cd backend
-npx supabase db push --yes       # apply migrations ทั้งหมดใน supabase/migrations/
+npx supabase db push --yes       # apply migrations ใน supabase/migrations/ (ใช้กับ DB ใหม่เท่านั้น ดูหมายเหตุด้านล่าง)
 npm run fetch:places               # ดึงข้อมูลสดจาก Google Places API (New) -> backend/data/places.json
 npm run import:places              # import จาก backend/data/places.json เข้า Supabase
 npm run seed:events-knowledge      # seed ข้อมูลกิจกรรม/knowledge base เริ่มต้น (ถ้ามี)
 ```
+
+> **ระวัง:** DB ที่ใช้งานจริงไม่มีประวัติ `supabase_migrations` ถ้ารัน `db push` จะ replay migration เก่าทั้งหมด — กับ DB เดิมให้ apply เฉพาะไฟล์ใหม่ทีละไฟล์ (หรือซ่อม history ก่อน) แล้วตรวจ RLS/grants หลังรัน
 
 หลัง import ข้อมูลใหม่ ต้องรัน embedding ใหม่ด้วย (ที่ `chatbot-service/`):
 
@@ -79,11 +85,20 @@ python scripts/embed_content.py
 |---|---|---|
 | `frontend/.env` | `VITE_API_URL` | URL ของ backend Express API (default `http://localhost:4000`) |
 | | `VITE_CHATBOT_SERVICE_URL` | URL ของ chatbot-service (default `http://localhost:8000`) |
-| `backend/.env` | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | ใช้โดย `src/server.js` (API) และสคริปต์ migration/import (service role key, ห้ามหลุดไปฝั่ง frontend) |
-| | `GOOGLE_PLACES_API_KEY` | ใช้เฉพาะ `scripts/fetch-places.js` (ต้องเปิด Places API (New) + ผูก billing) |
+| | `VITE_GOOGLE_MAPS_API_KEY` | Google Maps JS key (แผนที่ทริป, ตัวเลือกพิกัดของ admin) — ใช้ key แยกจาก backend และจำกัดด้วย HTTP referrer |
+| | `VITE_SITE_URL` | URL สาธารณะของเว็บ ใส่ใน canonical/Open Graph ตอน build (production ตั้งจาก `CHAT_DOMAIN`) |
+| `backend/.env` | `DATABASE_URL` | connection string ของ Postgres (knex) — ถ้า host ตรงเป็น IPv6 ให้ใช้ session pooler พอร์ต 5432 |
+| | `FRONTEND_ORIGIN` | origin ของ frontend (ต้องตรงเป๊ะ ไม่มี `/` ท้าย) สำหรับ CORS + session cookie |
+| | `CHATBOT_SERVICE_URL` | ให้ backend proxy คำสั่ง admin (reindex, สกัดกิจกรรม) ไปที่ chatbot-service |
+| | `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | เก็บรูปสถานที่/กิจกรรม/รางวัล |
+| | `GMAIL_USER`, `GMAIL_APP_PASSWORD` | ส่งอีเมลยืนยัน/รีเซ็ตรหัสผ่าน (ต้องเป็น App Password) |
+| | `GOOGLE_PLACES_API_KEY` | ใช้ซิงก์/นำเข้าสถานที่ (ต้องเปิด Places API (New) + ผูก billing; คิดเงินต่อสถานที่) |
 | | `PORT` | พอร์ตของ backend API (default `4000`) |
-| `chatbot-service/.env` | `KKU_API_KEY` | KKU LLM gateway (OpenAI-compatible, model `gemini-2.5-flash`) |
+| `chatbot-service/.env` | `KKU_API_KEY` | KKU LLM gateway (OpenAI-compatible) |
 | | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | query ข้อมูลสถานที่ + pgvector search |
+| | `MODEL_NAME`, `TRIP_PLANNER_MODEL_NAME` | โมเดลของแชท/trip planner — บน production ต้องตั้ง ไม่งั้น gateway ตอบ 401 "Invalid model" |
+| | `CORS_ORIGINS` | origin ที่เรียก service ได้ (คั่นด้วย `,` ไม่มี `/` ท้าย) |
+| | `LLM_BASE_URL`, `DESCRIPTION_MODEL_NAME`, `EMBEDDING_MODEL_NAME`, `SERPER_API_KEY` | ไม่บังคับ (ดู `.env.example`; เปลี่ยน embedding model ต้อง re-embed) |
 
 ## Chatbot / Trip Planner (RAG)
 
@@ -94,7 +109,15 @@ python scripts/embed_content.py
 - ถ้า LLM ตอบ JSON ผิดรูปแบบหรือ trip planning ล้มเหลว จะคืน HTTP 502 ให้ frontend แสดง error ตรงๆ (ไม่มี fallback เดามั่ว)
 - `knowledge_base`/`events` seed เริ่มต้นได้ผ่าน `npm run seed:events-knowledge` (ที่ `backend/`) — เพิ่มข้อมูลอื่นเพิ่มเติมได้ผ่านหน้า admin แล้วรัน `embed_content.py` ใหม่
 
+## Deploy
+
+- Production รันบน VPS ด้วย `deploy/docker-compose.yml` (caddy + frontend, backend, chatbot) ตั้งค่าผ่าน `deploy/.env` (`CHAT_DOMAIN`, `OLD_DOMAIN`), `deploy/backend.env`, `deploy/chatbot.env` (ดูไฟล์ `*.example`; ห้าม commit ไฟล์จริง)
+- push เข้า `main` ที่แตะ `frontend/`, `backend/`, `chatbot-service/` หรือ `deploy/` จะ trigger GitHub Action `deploy-chatbot.yml` ที่ SSH เข้า VPS แล้วรัน `deploy/deploy.sh` (merge แบบ ff-only, build ทีละ service, รีโหลด Caddy, รอ `/health`)
+- CI: `ci-frontend.yml` (`npm run build`) และ `ci-chatbot.yml` (`pytest`); backend ยังไม่มี CI
+- เวอร์ชันระบบอยู่ที่ไฟล์ `VERSION` ที่ root (ตอนนี้ `0.1.0`, preview) และต้องตรงกับ `package.json` ของ frontend/backend; หน้า admin แสดงเวอร์ชัน/commit ของแต่ละ service
+
 ## หมายเหตุ
 
-- `frontend/` เดิมเป็น prototype ที่ mock ข้อมูลทั้งหมดในตัวเอง ตอนนี้เชื่อมกับฐานข้อมูลจริงผ่าน backend API (`backend/src/`) แล้ว แต่ระบบ auth ยังเป็น mock (ยังไม่ผูกกับ Google login จริง)
-- Google Places sync ยังไม่เป็นแบบ live — ข้อมูลนำเข้าเป็น one-time fetch/import ผ่านสคริปต์ใน `backend/scripts/` (`fetch:places` แล้วค่อย `import:places`), admin เพิ่มสถานที่ตรงผ่านหน้า admin ได้เลย
+- ระบบสมาชิกเป็นของตัวเอง (สมัคร/ล็อกอินด้วยอีเมล, session cookie แบบ httpOnly, ยืนยันอีเมล, รีเซ็ตรหัสผ่าน) ไม่ได้ผูกกับ Google login; มี QR สะสมแต้ม, แลกรางวัล, ประวัติทริป และหน้า admin จัดการผู้ใช้/เนื้อหา
+- Google Places sync ทำผ่านหน้า admin (backend เป็นเจ้าของ ไม่มี CLI สำหรับ resync): admin ล็อกฟิลด์ที่แก้เองได้ ค่าใหม่จาก Google ของฟิลด์ที่ล็อกจะถูกพักไว้ให้รีวิว และผู้ใช้แจ้งข้อมูลผิดของสถานที่/กิจกรรมได้ สคริปต์ `fetch:places` / `import:places` ใช้เป็น seed ครั้งแรกเท่านั้น
+- ค่า rate limit, RLS และ cookie สำหรับ production ดูสถานะล่าสุดใน `CLAUDE.md` (ยังไม่มี CSP)

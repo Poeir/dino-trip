@@ -50,7 +50,7 @@ export default function RadiusMap({ center, radiusM, height = 220 }) {
   }, [center.lat, center.lng, radius])
 
   if (loadError) {
-    return <div style={{ fontSize: 12, color: '#8a938c' }}>โหลดแผนที่ไม่สำเร็จ หรือยังไม่ได้ตั้งค่า VITE_GOOGLE_MAPS_API_KEY</div>
+    return <div style={{ fontSize: 12, color: '#626863' }}>โหลดแผนที่ไม่สำเร็จ หรือยังไม่ได้ตั้งค่า VITE_GOOGLE_MAPS_API_KEY</div>
   }
   return <div ref={containerRef} style={{ width: '100%', height, borderRadius: 12, background: '#F0EDE0' }} />
 }

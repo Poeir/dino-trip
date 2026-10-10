@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   categories, categoryIcons, interestList, budgetList, budgetMeta, areaScopeList, areaScopeMeta
 } from '../data/seed.js'
-import thaiAddress from '../data/thaiAddress.json'
+import { useThaiAddress } from '../lib/thaiAddress.js'
 import {
   fetchPlaces, createPlace, updatePlace, deletePlace,
   fetchEvents, createEvent, updateEvent, deleteEvent,
@@ -17,7 +17,8 @@ import {
   createTrip, fetchTrip, setTripItemLike,
 } from '../lib/apiClient.js'
 import { sendChatMessage, requestTripPlan } from '../lib/chatbotService.js'
-import { getCurrentPosition, LOCATION_ERROR_MESSAGE } from '../lib/geolocation.js'
+import { getCurrentPosition, LOCATION_ERROR_MESSAGE, GENERIC_LOCATION_ERROR } from '../lib/geolocation.js'
+import { isWelcomeSnoozed, snoozeWelcome } from '../lib/welcomeSnooze.js'
 
 const AppContext = createContext(null)
 
@@ -158,8 +159,9 @@ const initialState = {
   formData: {},
   editingId: null,
   mobileMenuOpen: false,
-  welcomeModalOpen: true,
+  welcomeModalOpen: !isWelcomeSnoozed(),
   toastMsg: '',
+  toastTone: 'success',
 }
 
 function timeToMinutes(t) {
@@ -190,6 +192,8 @@ export function AppProvider({ children }) {
   const toastTimer = useRef(null)
   const stateRef = useRef(state)
   stateRef.current = state
+  // Only read here (derived sign-up options below); SignupPage triggers the load.
+  const thaiAddress = useThaiAddress({ load: false })
 
   // Mirrors React class setState: accepts a partial object or an updater fn(prevState) => partial
   const setState = (updater) => {
@@ -200,8 +204,9 @@ export function AppProvider({ children }) {
   }
 
   // Error messages are longer than confirmations, so callers pass a longer `ms`.
-  const showToast = (msg, ms = 2400) => {
-    setState({ toastMsg: msg })
+  // `tone` is 'success' (default, green check) or 'error' (red alert).
+  const showToast = (msg, ms = 2400, tone = 'success') => {
+    setState({ toastMsg: msg, toastTone: tone })
     clearTimeout(toastTimer.current)
     toastTimer.current = setTimeout(() => setState({ toastMsg: '' }), ms)
   }
@@ -213,7 +218,7 @@ export function AppProvider({ children }) {
   const reportError = (prefix, err) => {
     if (handleSessionExpired(err)) return true
     const reason = err?.status === undefined ? 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาตรวจสอบอินเทอร์เน็ต' : err.message
-    showToast(prefix + reason, ERROR_TOAST_MS)
+    showToast(prefix + reason, ERROR_TOAST_MS, 'error')
     return false
   }
 
@@ -247,16 +252,35 @@ export function AppProvider({ children }) {
   useEffect(() => {
     loadData()
 
-    // Best-effort: ranking falls back to rating-only if the user denies/ignores
-    // the permission prompt or the browser has no geolocation support.
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => setState({ userLocation: { lat: pos.coords.latitude, lng: pos.coords.longitude } }),
-        () => {},
-        { timeout: 8000, maximumAge: 300000 }
-      )
+    // Don't pop the location permission prompt on page load -- browsers flag it
+    // and visitors distrust a site that asks before they know why. If this site
+    // was already allowed, pick the location up silently (no prompt can appear
+    // when the state is 'granted'); otherwise it's requested when the visitor
+    // uses a feature that needs it (requestUserLocation below). Ranking falls
+    // back to rating-only until then.
+    if (navigator.permissions?.query) {
+      navigator.permissions.query({ name: 'geolocation' })
+        .then((status) => { if (status.state === 'granted') return requestUserLocation() })
+        .catch(() => {})
     }
   }, [])
+
+  // Asks the browser for the visitor's position (this is what shows the
+  // permission prompt) and stores it. Rejects with an Error carrying `.reason`
+  // ('denied' | 'timeout' | 'unavailable' | 'unsupported').
+  const requestUserLocation = async () => {
+    const loc = await getCurrentPosition({ timeoutMs: 8000 })
+    setState({ userLocation: loc })
+    return loc
+  }
+  // Home page's "ดูที่ใกล้ฉัน" button.
+  const enableNearbyPlaces = async () => {
+    try {
+      await requestUserLocation()
+    } catch (err) {
+      showToast(GENERIC_LOCATION_ERROR[err.reason] ?? GENERIC_LOCATION_ERROR.unavailable, 4500)
+    }
+  }
 
   // TripFormPage's "ต้องไปให้ได้" (mustGo) autocomplete -- used to be a
   // client-side filter over the bulk-loaded `places` array, which no longer
@@ -292,6 +316,8 @@ export function AppProvider({ children }) {
   const toggleMobileMenu = () => setState((s) => ({ mobileMenuOpen: !s.mobileMenuOpen }))
   const closeMobileMenu = () => setState({ mobileMenuOpen: false })
   const closeWelcomeModal = () => setState({ welcomeModalOpen: false })
+  // "Don't show again for 7 days": close it and remember that in this browser.
+  const snoozeWelcomeModal = () => { snoozeWelcome(); setState({ welcomeModalOpen: false }) }
   const welcomeGoTrip = () => { setState({ welcomeModalOpen: false, tripStep: 0 }); navigate('/trip') }
   const welcomeGoPoints = () => { setState({ welcomeModalOpen: false }); navigate('/points') }
 
@@ -330,7 +356,7 @@ export function AppProvider({ children }) {
     try {
       await updatePlace(place.id, { ...place, isActive: place.isActive === false ? true : false })
     } catch (err) {
-      showToast('อัปเดตสถานะไม่สำเร็จ: ' + err.message)
+      showToast('อัปเดตสถานะไม่สำเร็จ: ' + err.message, ERROR_TOAST_MS, 'error')
     }
   }
 
@@ -578,13 +604,19 @@ export function AppProvider({ children }) {
   // replaces the whole accommodation, since a new search result has its own
   // name/address too.
   const onAccommodationSelect = (place) => updateTripField('accommodation', { name: place.name, address: place.address, lat: place.lat, lng: place.lng })
-  // Reuses the geolocation coordinate already sitting in state.userLocation
-  // (see the navigator.geolocation call in the app-mount effect below) --
-  // best-effort no-op if it's still null (denied/unsupported/not resolved
-  // yet), same as every other consumer of userLocation in this file.
-  const useCurrentLocationForAccommodation = () => {
-    const loc = stateRef.current.userLocation
-    if (!loc) return
+  // Uses the coordinate already in state.userLocation, or asks the browser for
+  // it now (this is the click that shows the permission prompt) and tells the
+  // visitor what to do if that fails.
+  const useCurrentLocationForAccommodation = async () => {
+    let loc = stateRef.current.userLocation
+    if (!loc) {
+      try {
+        loc = await requestUserLocation()
+      } catch (err) {
+        showToast(GENERIC_LOCATION_ERROR[err.reason] ?? GENERIC_LOCATION_ERROR.unavailable, 4500)
+        return
+      }
+    }
     updateTripField('accommodation', { name: 'ตำแหน่งปัจจุบันของฉัน', address: '', lat: loc.lat, lng: loc.lng })
   }
   const setTripDatePreset = (preset) => {
@@ -971,7 +1003,7 @@ export function AppProvider({ children }) {
         setState({ authSubmitting: false, authError: 'บัญชีนี้ไม่มีสิทธิ์ผู้ดูแลระบบ' })
         return
       }
-      setState({ authSubmitting: false, adminLoggedIn: true })
+      setState({ authSubmitting: false, adminLoggedIn: true, currentUser: user })
       navigate('/admin')
     } catch (err) {
       setState({ authSubmitting: false, authError: err.message })
@@ -1028,10 +1060,12 @@ export function AppProvider({ children }) {
     } catch (err) {
       if (handleSessionExpired(err)) return
       const reason = err.status === undefined ? 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาตรวจสอบอินเทอร์เน็ต' : err.message
-      showToast(errorLabels[formType] + reason, ERROR_TOAST_MS)
+      showToast(errorLabels[formType] + reason, ERROR_TOAST_MS, 'error')
       return
     }
-    setState((s) => ({ [listKey]: editingId ? s[listKey].map((x) => x.id === editingId ? item : x) : [...s[listKey], item] }))
+    setState((s) => (s[listKey]
+      ? { [listKey]: editingId ? s[listKey].map((x) => x.id === editingId ? item : x) : [...s[listKey], item] }
+      : {}))
 
     const labels = { place: 'บันทึกสถานที่แล้ว', event: 'บันทึกอีเวนท์แล้ว', kb: 'บันทึกฐานความรู้แล้ว', qr: 'บันทึก QR แล้ว', reward: 'บันทึกของรางวัลแล้ว' }
     cancelForm()
@@ -1050,20 +1084,18 @@ export function AppProvider({ children }) {
     rewards: s.rewards.some((r) => r.id === item.id) ? s.rewards.map((r) => r.id === item.id ? item : r) : [...s.rewards, item],
   }))
 
+  // Callers must confirm first (admin ConfirmDialog via useConfirm); this deletes immediately.
   const deleteItem = async (type, id) => {
-    const confirmMessage = type === 'qr'
-      ? 'ลบ QR นี้ใช่หรือไม่?\n\nป้าย QR ที่พิมพ์ไปแล้วจะสแกนไม่ได้ และประวัติการสแกนของ QR นี้จะถูกลบด้วย (ถ้าแค่ต้องการหยุดชั่วคราว ให้ใช้ "ปิดใช้งาน" แทน)'
-      : 'ยืนยันการลบข้อมูลนี้หรือไม่?'
-    if (!window.confirm(confirmMessage)) return
     const { remove, listKey } = resourceApi[type]
     try {
       await remove(id)
     } catch (err) {
       if (handleSessionExpired(err)) return
-      showToast('ลบไม่สำเร็จ: ' + (err.status === undefined ? 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาตรวจสอบอินเทอร์เน็ต' : err.message), ERROR_TOAST_MS)
+      showToast('ลบไม่สำเร็จ: ' + (err.status === undefined ? 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาตรวจสอบอินเทอร์เน็ต' : err.message), ERROR_TOAST_MS, 'error')
       return
     }
-    setState((s) => ({ [listKey]: s[listKey].filter((x) => x.id !== id) }))
+    // places has no bulk array in state anymore (paged tabs refetch instead) -- nothing to merge.
+    setState((s) => (s[listKey] ? { [listKey]: s[listKey].filter((x) => x.id !== id) } : {}))
   }
 
   const onNewPlace = () => openCreateForm('place')
@@ -1081,7 +1113,7 @@ export function AppProvider({ children }) {
   })
 
   const actions = {
-    showToast, toggleMobileMenu, closeMobileMenu, closeWelcomeModal, welcomeGoTrip, welcomeGoPoints,
+    showToast, toggleMobileMenu, closeMobileMenu, closeWelcomeModal, snoozeWelcomeModal, enableNearbyPlaces, welcomeGoTrip, welcomeGoPoints,
     goHome, goPlaces, goEvents, goPublic, goAdminLogin, goTripForm, nextStep, prevStep, goToStep,
     goPoints, goLogin, goSignup, goForgotPassword, openPlace, openEvent, setSearchQuery, onSearchChange, setCategory,
     setEventSearchQuery, onEventSearchChange, toggleFavorite, togglePlaceActive,
@@ -1185,7 +1217,7 @@ export function AppProvider({ children }) {
     const active = b === s.tripForm.budget
     return {
       label: b, onClick: () => setBudget(b), desc: budgetMeta[b],
-      bg: active ? '#E8F5E9' : '#fff', color: active ? '#1B5E20' : '#3c463f', descColor: active ? '#2E7D32' : '#8a938c', borderColor: active ? '#2E7D32' : '#E7E3D2',
+      bg: active ? '#E8F5E9' : '#fff', color: active ? '#1B5E20' : '#3c463f', descColor: active ? '#2E7D32' : '#626863', borderColor: active ? '#2E7D32' : '#E7E3D2',
       dotBg: active ? 'linear-gradient(135deg,#66BB6A,#388E3C)' : '#fff'
     }
   })
@@ -1193,7 +1225,7 @@ export function AppProvider({ children }) {
     const active = a === s.tripForm.areaScope
     return {
       label: a, onClick: () => setAreaScope(a), desc: areaScopeMeta[a],
-      bg: active ? '#E8F5E9' : '#fff', color: active ? '#1B5E20' : '#3c463f', descColor: active ? '#2E7D32' : '#8a938c', borderColor: active ? '#2E7D32' : '#E7E3D2',
+      bg: active ? '#E8F5E9' : '#fff', color: active ? '#1B5E20' : '#3c463f', descColor: active ? '#2E7D32' : '#626863', borderColor: active ? '#2E7D32' : '#E7E3D2',
       dotBg: active ? 'linear-gradient(135deg,#66BB6A,#388E3C)' : '#fff'
     }
   })
@@ -1206,7 +1238,7 @@ export function AppProvider({ children }) {
     const active = p.key === s.tripForm.pace
     return {
       label: p.label, desc: p.desc, onClick: () => setPace(p.key),
-      bg: active ? '#E8F5E9' : '#fff', color: active ? '#1B5E20' : '#3c463f', descColor: active ? '#2E7D32' : '#8a938c', borderColor: active ? '#2E7D32' : '#E7E3D2',
+      bg: active ? '#E8F5E9' : '#fff', color: active ? '#1B5E20' : '#3c463f', descColor: active ? '#2E7D32' : '#626863', borderColor: active ? '#2E7D32' : '#E7E3D2',
       dotBg: active ? 'linear-gradient(135deg,#66BB6A,#388E3C)' : '#fff'
     }
   })
@@ -1243,8 +1275,8 @@ export function AppProvider({ children }) {
           durationLabel: isHotelReturn ? 'ถึงที่พัก' : (formatDurationMinutes(durationMin) ? `อยู่ประมาณ ${formatDurationMinutes(durationMin)}` : null),
           onLike: () => setItemLike(d.dayNum, it.placeId, true),
           onDislike: () => setItemLike(d.dayNum, it.placeId, false),
-          likeBg: it.liked === true ? '#E8F5E9' : '#fff', likeColor: it.liked === true ? '#2E7D32' : '#6d7a72', likeBorder: it.liked === true ? '#2E7D32' : '#DCD8C6',
-          dislikeBg: it.liked === false ? '#fdecec' : '#fff', dislikeColor: it.liked === false ? '#a33232' : '#6d7a72', dislikeBorder: it.liked === false ? '#a33232' : '#DCD8C6'
+          likeBg: it.liked === true ? '#E8F5E9' : '#fff', likeColor: it.liked === true ? '#2E7D32' : '#5f6a63', likeBorder: it.liked === true ? '#2E7D32' : '#DCD8C6',
+          dislikeBg: it.liked === false ? '#fdecec' : '#fff', dislikeColor: it.liked === false ? '#a33232' : '#5f6a63', dislikeBorder: it.liked === false ? '#a33232' : '#DCD8C6'
         }
       })
     }))
@@ -1264,7 +1296,7 @@ export function AppProvider({ children }) {
   // against server-side. `placeName` isn't joined here anymore (no bulk
   // `s.places` to join against) -- QrTab.jsx joins it itself against a
   // fetchPlaceNames() id->name map instead.
-  const qrsView = s.qrs.map((q) => ({ ...q, onEdit: () => openEditForm('qr', q), onDelete: () => deleteItem('qr', q.id) }))
+  const qrsView = s.qrs.map((q) => ({ ...q, onEdit: () => openEditForm('qr', q) }))
 
   const stepMeta = [0, 1, 2, 3].map((i) => {
     const done = i < s.tripStep

@@ -1,4 +1,4 @@
-// Shared by the admin event form (admin/EventsTab.jsx) and the user-side event
+// Shared by the admin event form (admin/events/EventFormModal.jsx) and the user-side event
 // request form (profile/EventRequestsTab.jsx) so both offer the same inputs.
 
 // Not tied to any backend taxonomy (events.category has no CHECK constraint,

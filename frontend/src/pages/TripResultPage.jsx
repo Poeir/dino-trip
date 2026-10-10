@@ -1,3 +1,4 @@
+import { StarGlyph } from '../components/Icons.jsx'
 import { useEffect, useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
 import { useApp } from '../context/AppContext.jsx'
@@ -8,7 +9,8 @@ import DayRouteMap from '../components/DayRouteMap.jsx'
 import Modal from '../components/Modal.jsx'
 import PlaceDetailView from '../components/PlaceDetailView.jsx'
 import { CalendarIcon, RouteIcon, GiftIcon, PencilIcon, PinIcon } from '../components/Icons.jsx'
-import { fetchPlace } from '../lib/apiClient.js'
+import { fetchPlace, fetchPlaces } from '../lib/apiClient.js'
+import { dayDirectionsUrls } from '../utils/mapsLink.js'
 
 const sparkles = [
   { left: '6%', top: '20%', size: 7, duration: '3.2s', delay: '0s' },
@@ -21,7 +23,7 @@ const sparkles = [
 function SummaryRow({ label, value }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-      <span style={{ color: '#8a938c', flexShrink: 0 }}>{label}</span>
+      <span style={{ color: '#626863', flexShrink: 0 }}>{label}</span>
       <span style={{ color: '#3c463f', fontWeight: 700, textAlign: 'right' }}>{value}</span>
     </div>
   )
@@ -62,10 +64,28 @@ export default function TripResultPage() {
     return () => { cancelled = true }
   }, [selectedPlaceId])
 
+  // The plan's places carry no Google place id, but the "open in Google Maps"
+  // links need it to land on the real Maps listing -- one batched lookup per plan.
+  const [googleIds, setGoogleIds] = useState({})
+  const planPlaceIds = [...new Set((state.tripPlan?.days || []).flatMap((d) => d.items.map((i) => i.place?.id)).filter((v) => v && !/^(hotel_dummy|free_time_dummy|removed_)/.test(v)))]
+  const planPlaceIdsKey = planPlaceIds.join(',')
+  useEffect(() => {
+    if (!planPlaceIdsKey) return undefined
+    let cancelled = false
+    fetchPlaces({ ids: planPlaceIdsKey })
+      .then((r) => {
+        if (cancelled) return
+        const rows = Array.isArray(r) ? r : r.data || []
+        setGoogleIds(Object.fromEntries(rows.filter((p) => p.googlePlaceId).map((p) => [p.id, p.googlePlaceId])))
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [planPlaceIdsKey])
+
   if (id && state.tripId !== id) {
     if (state.tripLoadError) {
       return (
-        <main style={{ maxWidth: 520, margin: '0 auto', padding: '80px 24px', textAlign: 'center' }}>
+        <main style={{ maxWidth: 520, margin: '0 auto', padding: 'var(--page-pv-center) var(--page-gutter)', textAlign: 'center' }}>
           <p style={{ fontSize: 15, color: '#3c463f', marginBottom: 18 }}>{state.tripLoadError}</p>
           <Link to="/trip" style={{ fontWeight: 800, color: '#2E7D32' }}>สร้างแผนใหม่</Link>
         </main>
@@ -79,7 +99,7 @@ export default function TripResultPage() {
     ? { ...selectedPlace, isFavorite: state.favoriteIds.includes(selectedPlace.id), onToggleFavorite: () => actions.toggleFavorite(selectedPlace.id) }
     : null
   return (
-    <main style={{ maxWidth: 1200, margin: '0 auto', padding: '28px 24px 70px' }}>
+    <main style={{ maxWidth: 1200, margin: '0 auto', padding: 'var(--page-pt) var(--page-gutter) var(--page-pb)' }}>
       <div data-role="trip-result-grid" style={{ display: 'grid', gridTemplateColumns: '340px 1fr', gap: 28, alignItems: 'start' }}>
 
         <div data-role="trip-result-summary" style={{ position: 'sticky', top: 88, display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -95,7 +115,7 @@ export default function TripResultPage() {
               <span key={i} style={{ position: 'absolute', left: s.left, top: s.top, width: s.size, height: s.size, borderRadius: '50%', background: '#FBC02D', animation: `dc-particle-float ${s.duration} ease-in-out infinite`, animationDelay: s.delay, pointerEvents: 'none' }}></span>
             ))}
             <div style={{ position: 'relative' }}>
-              <img src={MASCOT.celebrate} alt="" style={{ width: 96, height: 'auto', animation: 'dc-float 3.4s ease-in-out infinite', filter: 'drop-shadow(0 8px 14px rgba(0,0,0,0.2))', marginBottom: 10 }} />
+              <img src={MASCOT.celebrate} alt="" width={96} height={96} style={{ width: 96, height: 'auto', animation: 'dc-float 3.4s ease-in-out infinite', filter: 'drop-shadow(0 8px 14px rgba(0,0,0,0.2))', marginBottom: 10 }} />
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(251,192,45,0.22)', border: '1px solid rgba(251,192,45,0.5)', color: '#FFF3C4', fontSize: 11, fontWeight: 800, padding: '4px 11px', borderRadius: 20, marginBottom: 10 }}>✦ AI จัดให้แบบเอ็กซ์คลูซีฟ</div>
               <h1 data-font="culture" style={{ color: '#fff', fontSize: 22, fontWeight: 900, margin: '0 0 6px' }}>ทริปของคุณพร้อมแล้ว!</h1>
               <p style={{ color: '#E8F5E9', fontSize: 13, margin: '0 0 20px' }}>น้องไดโนจัดเส้นทางตามความสนใจของคุณเรียบร้อย พร้อมออกเดินทางได้เลย</p>
@@ -110,7 +130,7 @@ export default function TripResultPage() {
           <div style={{ background: '#fff', border: '1px solid #E7E3D2', borderRadius: 16, animation: 'dc-fade-up 0.45s ease 0.05s both' }}>
             <div onClick={() => setSummaryOpen((v) => !v)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '13px 16px', cursor: 'pointer' }}>
               <span style={{ fontWeight: 800, fontSize: 13, color: '#1B5E20' }}>เงื่อนไขที่เลือกไว้</span>
-              <span style={{ fontSize: 11, color: '#8a938c', fontWeight: 700 }}>{summaryOpen ? 'ซ่อน ▾' : 'ดู ▸'}</span>
+              <span style={{ fontSize: 11, color: '#626863', fontWeight: 700 }}>{summaryOpen ? 'ซ่อน ▾' : 'ดู ▸'}</span>
             </div>
             {summaryOpen && (
               <div style={{ padding: '0 16px 16px', display: 'grid', gap: 8, fontSize: 12.5 }}>
@@ -145,8 +165,7 @@ export default function TripResultPage() {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <a href="#" style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, fontWeight: 700, color: '#6d7a72' }}><PinIcon box={false} color="#6d7a72" />เปิดใน Google Maps</a>
-            <a href="#" onClick={(e) => { e.preventDefault(); actions.goTripForm() }} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, fontWeight: 700, color: '#6d7a72' }}><RouteIcon size={15} color="#6d7a72" box={false} />สร้างแผนใหม่</a>
+            <a href="#" onClick={(e) => { e.preventDefault(); actions.goTripForm() }} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, fontWeight: 700, color: '#5f6a63' }}><RouteIcon size={15} color="#5f6a63" box={false} />สร้างแผนใหม่</a>
           </div>
         </div>
 
@@ -158,9 +177,16 @@ export default function TripResultPage() {
                   <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 0.5 }}>DAY</span>
                   <span style={{ fontSize: 17, fontWeight: 800 }}>{day.dayNum}</span>
                 </div>
-                <div>
+                <div style={{ minWidth: 0, flex: 1 }}>
                   <div style={{ fontSize: 15, fontWeight: 800, color: '#1B5E20' }}>วันที่ {day.dayNum}</div>
-                  <div style={{ fontSize: 12.5, color: '#8a938c' }}>{day.date}</div>
+                  <div style={{ fontSize: 12.5, color: '#626863' }}>{day.date}</div>
+                </div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                  {dayDirectionsUrls(day.items, googleIds).map((url, i, all) => (
+                    <a key={url} href={url} target="_blank" rel="noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, fontWeight: 700, color: '#2E7D32', background: '#E8F5E9', border: '1px solid #C8E6C9', borderRadius: 14, padding: '6px 12px', whiteSpace: 'nowrap' }}>
+                      <PinIcon box={false} color="#2E7D32" />เปิดใน Google Maps{all.length > 1 ? ` (${i + 1}/${all.length})` : ''}
+                    </a>
+                  ))}
                 </div>
               </div>
 
@@ -171,8 +197,8 @@ export default function TripResultPage() {
                 {day.items.map((item) => (
                   <div key={item.placeId + item.time} style={{ position: 'relative', marginBottom: 14, animation: 'dc-slide-in 0.45s ease both' }}>
                     {item.distanceFromPrev != null && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#8a938c', marginLeft: 26, marginBottom: 8 }}>
-                        <RouteIcon size={12} color="#8a938c" box={false} />เดินทางต่อ {item.distanceFromPrev} กม.
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#626863', marginLeft: 26, marginBottom: 8 }}>
+                        <RouteIcon size={12} color="#626863" box={false} />เดินทางต่อ {item.distanceFromPrev} กม.
                       </div>
                     )}
                     <div onClick={() => setSelectedPlaceId(item.placeId)} style={{ display: 'flex', gap: 16, alignItems: 'center', border: '1px solid #EFEBDB', borderRadius: 16, padding: 12, transition: 'transform 0.2s ease, box-shadow 0.2s ease', cursor: 'pointer' }}>
@@ -180,14 +206,14 @@ export default function TripResultPage() {
                       <div style={{ width: 68, flexShrink: 0, textAlign: 'center' }}>
                         <div style={{ fontWeight: 800, fontSize: 13, color: '#2E7D32', lineHeight: 1.3 }}>{item.timeRangeLabel}</div>
                         {item.durationLabel && (
-                          <div style={{ fontSize: 10, color: '#8a938c', marginTop: 3 }}>{item.durationLabel}</div>
+                          <div style={{ fontSize: 10, color: '#626863', marginTop: 3 }}>{item.durationLabel}</div>
                         )}
                       </div>
                       <ImageSlot src={item.place.img} shape="rounded" radius={12} style={{ width: 84, height: 84, flexShrink: 0 }} placeholder="ภาพ" icon={placeCategoryIcon(item.place.category)} />
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <span style={{ fontSize: 10.5, fontWeight: 700, color: '#2E7D32', background: '#E8F5E9', padding: '2px 9px', borderRadius: 10 }}>{item.place.category}</span>
                         <div style={{ fontWeight: 700, fontSize: 15.5, color: '#1f2a24', margin: '5px 0 3px' }}>{item.place.name}</div>
-                        <div style={{ fontSize: 12.5, color: '#6d7a72', marginBottom: 9, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>★ {item.place.rating} · {item.place.address}</div>
+                        <div style={{ fontSize: 12.5, color: '#5f6a63', marginBottom: 9, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}><StarGlyph /> {item.place.rating} · {item.place.address}</div>
                         <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', gap: 8 }}>
                           <button onClick={item.onLike} style={{ display: 'flex', alignItems: 'center', gap: 5, border: `1px solid ${item.likeBorder}`, background: item.likeBg, color: item.likeColor, borderRadius: 12, padding: '4px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
                             <span style={{ width: 0, height: 0, borderLeft: '5px solid transparent', borderRight: '5px solid transparent', borderBottom: `7px solid ${item.likeColor}` }}></span>ถูกใจ

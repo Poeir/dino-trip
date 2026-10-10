@@ -1,3 +1,4 @@
+import { Check, Circle, X } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import { useApp } from '../context/AppContext.jsx'
 
@@ -33,7 +34,7 @@ export default function ResetPasswordPage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 16 }}>
               {derived.resetPasswordRules.map((r) => (
                 <span key={r.key} style={{ fontSize: 12, fontWeight: 600, color: r.met ? '#2E7D32' : '#a9b3ac', display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ fontWeight: 800 }}>{r.met ? '✓' : '○'}</span>{r.label}
+                  <span style={{ fontWeight: 800 }}>{r.met ? <Check size={13} strokeWidth={3} style={{ verticalAlign: '-2px' }} /> : <Circle size={13} strokeWidth={2.4} style={{ verticalAlign: '-2px' }} />}</span>{r.label}
                 </span>
               ))}
             </div>
@@ -41,7 +42,7 @@ export default function ResetPasswordPage() {
             <input type="password" value={state.resetForm.confirmPassword} onChange={actions.onResetConfirmPasswordChange} placeholder="••••••••" style={{ ...inputStyle, marginBottom: state.resetForm.confirmPassword ? 6 : 16 }} />
             {state.resetForm.confirmPassword && (
               <p style={{ margin: '0 0 16px', fontSize: 12, fontWeight: 600, color: derived.resetPasswordsMatch ? '#2E7D32' : '#a33232' }}>
-                {derived.resetPasswordsMatch ? '✓ รหัสผ่านตรงกัน' : '✗ รหัสผ่านไม่ตรงกัน'}
+                {derived.resetPasswordsMatch ? <><Check size={13} strokeWidth={3} style={{ verticalAlign: '-2px' }} /> รหัสผ่านตรงกัน</> : <><X size={13} strokeWidth={3} style={{ verticalAlign: '-2px' }} /> รหัสผ่านไม่ตรงกัน</>}
               </p>
             )}
             {state.authError && <div style={{ background: '#fdecec', color: '#a33232', fontSize: 13, padding: '8px 12px', borderRadius: 8, marginBottom: 14 }}>{state.authError}</div>}

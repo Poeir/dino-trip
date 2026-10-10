@@ -1,28 +1,24 @@
 import { useState } from 'react'
 import { useApp } from '../context/AppContext.jsx'
-import PageControls from '../components/PageControls.jsx'
-import LoadingSpinner from '../components/LoadingSpinner.jsx'
-import LoadError from '../components/LoadError.jsx'
-import EmptyState from '../components/EmptyState.jsx'
 import { fetchAdminEventRequests, approveEventRequest, rejectEventRequest } from '../lib/apiClient.js'
 import { usePagedList } from '../lib/usePagedList.js'
+import { fmtDateTime } from '../lib/format.js'
 import { EVENT_REQUEST_STATUS } from '../data/eventRequests.js'
+import Badge from './ui/Badge.jsx'
+import Button from './ui/Button.jsx'
+import { useConfirm } from './ui/ConfirmDialog.jsx'
+import ReportQueueCard, { ReportQueue } from './ReportQueueCard.jsx'
 
 const STATUS_FILTERS = [
   { key: 'pending', label: 'รออนุมัติ' },
   { key: 'approved', label: 'อนุมัติแล้ว' },
   { key: 'rejected', label: 'ไม่อนุมัติ' },
 ]
-const fmtDateTime = (iso) => (iso ? new Date(iso).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }) : '-')
-const chipStyle = (active) => ({
-  padding: '7px 16px', borderRadius: 20, fontSize: 13, fontWeight: 700, cursor: 'pointer',
-  border: `1px solid ${active ? '#2E7D32' : '#DCD8C6'}`, background: active ? '#E8F5E9' : '#fff', color: active ? '#1B5E20' : '#3c463f',
-})
-const btn = (bg, color, border = 'none') => ({ background: bg, color, border, padding: '8px 14px', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer' })
+const STATUS_TONE = { pending: 'warning', approved: 'success', rejected: 'danger' }
 
 function Detail({ label, children }) {
   if (!children) return null
-  return <div style={{ fontSize: 13, color: '#3c463f' }}><span style={{ color: '#8a938c' }}>{label}: </span>{children}</div>
+  return <div className="ad-fs-sm"><span className="ad-text-muted">{label}: </span>{children}</div>
 }
 
 // Admin queue of event requests from users. Approving copies the request into
@@ -32,16 +28,13 @@ export default function EventRequestsTab() {
   const [status, setStatus] = useState('pending')
   const paged = usePagedList(fetchAdminEventRequests, { pageSize: 10, extraParams: { status } })
   const [busyId, setBusyId] = useState('')
-  const [rejectingId, setRejectingId] = useState('')
-  const [reason, setReason] = useState('')
+  const { confirm, confirmDialog } = useConfirm()
 
   const run = async (id, fn, msg) => {
     setBusyId(id)
     try {
       await fn()
       actions.showToast(msg)
-      setRejectingId('')
-      setReason('')
       paged.refetch()
     } catch (err) {
       actions.reportError('ดำเนินการไม่สำเร็จ: ', err)
@@ -51,72 +44,68 @@ export default function EventRequestsTab() {
     }
   }
 
+  const reject = async (r) => {
+    const res = await confirm({
+      title: 'ไม่อนุมัติคำขอนี้?',
+      message: `“${r.name}” จะถูกปฏิเสธ และผู้ขอจะเห็นเหตุผลที่ระบุไว้ด้านล่าง`,
+      confirmLabel: 'ยืนยันไม่อนุมัติ',
+      danger: true,
+      reason: 'required',
+      reasonLabel: 'เหตุผลที่ไม่อนุมัติ (ผู้ขอจะเห็นข้อความนี้)',
+    })
+    if (res) run(r.id, () => rejectEventRequest(r.id, res.reason), 'ปฏิเสธคำขอแล้ว')
+  }
+
   return (
     <>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 800, color: '#1B5E20', margin: 0 }}>คำขอแสดงกิจกรรม</h1>
-        <span style={{ fontSize: 13, color: '#6d7a72' }}>{paged.loading ? 'กำลังโหลด...' : `${paged.total} รายการ`}</span>
-      </div>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
-        {STATUS_FILTERS.map((f) => <button key={f.key} onClick={() => setStatus(f.key)} style={chipStyle(status === f.key)}>{f.label}</button>)}
-      </div>
+      <ReportQueue
+        title="คำขอแสดงกิจกรรม"
+        countText={`${paged.total} รายการ`}
+        filters={STATUS_FILTERS}
+        status={status}
+        onStatus={setStatus}
+        paged={paged}
+        errorText="โหลดคำขอไม่สำเร็จ"
+        emptyText="ไม่มีคำขอในสถานะนี้"
+      >
+        {paged.rows.map((r) => {
+          const st = EVENT_REQUEST_STATUS[r.status]
+          const busy = busyId === r.id
+          return (
+            <ReportQueueCard
+              key={r.id}
+              title={r.name}
+              badges={<Badge tone={STATUS_TONE[r.status]}>{st.label}</Badge>}
+              meta={<span className="ad-card__meta ad-card__push">{r.requester}{r.requesterEmail ? ` (${r.requesterEmail})` : ''} · {fmtDateTime(r.createdAt)}</span>}
+            >
+              <div className="ad-card__body">
+                <Detail label="หมวดหมู่">{r.category}</Detail>
+                <Detail label="วันที่จัดงาน">{r.dateRange}</Detail>
+                <Detail label="สถานที่">{r.venueName}</Detail>
+                <Detail label="ค่าเข้าชม">{r.admission}</Detail>
+                <Detail label="ผู้จัดงาน">{r.organizer}</Detail>
+                <Detail label="เหมาะสำหรับ">{r.suitableFor.join(', ')}</Detail>
+                {r.images.length > 0 && (
+                  <div className="ad-thumbs">
+                    {r.images.map((src) => <a key={src} href={src} target="_blank" rel="noreferrer"><img src={src} alt="รูปประกอบคำขอ" /></a>)}
+                  </div>
+                )}
+                {r.desc && <div className="ad-fs-sm ad-pre">{r.desc}</div>}
+                {r.status === 'rejected' && <div className="ad-fs-sm ad-text-danger">เหตุผลที่ไม่อนุมัติ: {r.rejectReason}</div>}
+                {r.status === 'approved' && <div className="ad-fs-xs ad-text-muted">อนุมัติเมื่อ {fmtDateTime(r.reviewedAt)} — แก้ไขเพิ่มเติม/เพิ่มรูปได้ที่แท็บ “กิจกรรม”</div>}
 
-      {paged.error ? (
-        <LoadError message="โหลดคำขอไม่สำเร็จ" onRetry={paged.refetch} />
-      ) : paged.rows.length === 0 ? (
-        paged.loading ? <LoadingSpinner size={32} label="กำลังโหลดคำขอ..." /> : <EmptyState title="ไม่มีคำขอในสถานะนี้" />
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14, opacity: paged.loading ? 0.5 : 1, transition: 'opacity 0.15s ease' }}>
-          {paged.rows.map((r) => {
-            const st = EVENT_REQUEST_STATUS[r.status]
-            const busy = busyId === r.id
-            return (
-              <div key={r.id} style={{ background: '#fff', border: '1px solid #E7E3D2', borderRadius: 14, overflow: 'hidden' }}>
-                <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', padding: '12px 16px', background: '#FBF8EE' }}>
-                  <div style={{ fontWeight: 800, color: '#1B5E20', fontSize: 15 }}>{r.name}</div>
-                  <span style={{ fontSize: 11.5, fontWeight: 700, background: st.bg, color: st.color, padding: '3px 10px', borderRadius: 20 }}>{st.label}</span>
-                  <span style={{ fontSize: 12.5, color: '#6d7a72', marginLeft: 'auto' }}>
-                    {r.requester}{r.requesterEmail ? ` (${r.requesterEmail})` : ''} · {fmtDateTime(r.createdAt)}
-                  </span>
-                </div>
-                <div style={{ padding: '12px 16px', display: 'grid', gap: 4 }}>
-                  <Detail label="หมวดหมู่">{r.category}</Detail>
-                  <Detail label="วันที่จัดงาน">{r.dateRange}</Detail>
-                  <Detail label="สถานที่">{r.venueName}</Detail>
-                  <Detail label="ค่าเข้าชม">{r.admission}</Detail>
-                  <Detail label="ผู้จัดงาน">{r.organizer}</Detail>
-                  <Detail label="เหมาะสำหรับ">{r.suitableFor.join(', ')}</Detail>
-                  {r.images.length > 0 && (
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '4px 0' }}>
-                      {r.images.map((src) => <a key={src} href={src} target="_blank" rel="noreferrer"><img src={src} alt="" style={{ width: 84, height: 84, objectFit: 'cover', borderRadius: 8, border: '1px solid #E7E3D2' }} /></a>)}
-                    </div>
-                  )}
-                  {r.desc && <div style={{ fontSize: 13, color: '#3c463f', whiteSpace: 'pre-wrap', marginTop: 4 }}>{r.desc}</div>}
-                  {r.status === 'rejected' && <div style={{ fontSize: 13, color: '#a33232', marginTop: 4 }}>เหตุผลที่ไม่อนุมัติ: {r.rejectReason}</div>}
-                  {r.status === 'approved' && <div style={{ fontSize: 12.5, color: '#6d7a72', marginTop: 4 }}>อนุมัติเมื่อ {fmtDateTime(r.reviewedAt)} — แก้ไขเพิ่มเติม/เพิ่มรูปได้ที่แท็บ “กิจกรรม”</div>}
-
-                  {r.status === 'pending' && (rejectingId === r.id ? (
-                    <div style={{ display: 'grid', gap: 8, marginTop: 8 }}>
-                      <textarea value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} rows={3} placeholder="เหตุผลที่ไม่อนุมัติ (ผู้ขอจะเห็นข้อความนี้)"
-                        style={{ width: '100%', border: '1px solid #DCD8C6', borderRadius: 8, padding: 9, fontSize: 14, boxSizing: 'border-box' }} />
-                      <div style={{ display: 'flex', gap: 8 }}>
-                        <button disabled={busy || !reason.trim()} onClick={() => run(r.id, () => rejectEventRequest(r.id, reason.trim()), 'ปฏิเสธคำขอแล้ว')} style={{ ...btn('#a33232', '#fff'), opacity: busy || !reason.trim() ? 0.55 : 1 }}>{busy ? 'กำลังบันทึก...' : 'ยืนยันไม่อนุมัติ'}</button>
-                        <button disabled={busy} onClick={() => { setRejectingId(''); setReason('') }} style={btn('#fff', '#3c463f', '1px solid #DCD8C6')}>ยกเลิก</button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                      <button disabled={!!busyId} onClick={() => run(r.id, () => approveEventRequest(r.id), 'อนุมัติแล้ว กิจกรรมแสดงบนหน้าเว็บแล้ว')} style={btn('#2E7D32', '#fff')}>{busy ? 'กำลังบันทึก...' : 'อนุมัติ'}</button>
-                      <button disabled={!!busyId} onClick={() => { setRejectingId(r.id); setReason('') }} style={btn('#fdecec', '#a33232')}>ไม่อนุมัติ</button>
-                    </div>
-                  ))}
-                </div>
+                {r.status === 'pending' && (
+                  <div className="ad-actions ad-actions--top">
+                    <Button disabled={!!busyId} loading={busy} onClick={() => run(r.id, () => approveEventRequest(r.id), 'อนุมัติแล้ว กิจกรรมแสดงบนหน้าเว็บแล้ว')}>{busy ? 'กำลังบันทึก...' : 'อนุมัติ'}</Button>
+                    <Button variant="dangersoft" disabled={!!busyId} onClick={() => reject(r)}>ไม่อนุมัติ</Button>
+                  </div>
+                )}
               </div>
-            )
-          })}
-        </div>
-      )}
-      <PageControls page={paged.page} totalPages={paged.totalPages} total={paged.total} onChange={paged.setPage} />
+            </ReportQueueCard>
+          )
+        })}
+      </ReportQueue>
+      {confirmDialog}
     </>
   )
 }

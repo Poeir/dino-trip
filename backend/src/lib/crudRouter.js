@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { asyncHandler } from '../middleware/asyncHandler.js'
 import { httpError } from '../middleware/errorHandler.js'
+import { requireAdmin } from '../middleware/requireAdmin.js'
 import { db } from './db.js'
 
 // Caches each table's mapped GET / response for a short window -- list
@@ -12,6 +13,7 @@ import { db } from './db.js'
 // outside this router entirely -- e.g. the Python chatbot-service writing
 // `embedding` directly during reindex (see reindex.routes.js).
 const LIST_CACHE_TTL_MS = 25_000
+const LIST_CACHE_MAX_ENTRIES = 100
 const listCache = new Map() // table -> { data, expiresAt }
 // Tracks an in-flight query per table so concurrent GET / calls that land
 // while the cache is cold/expired share one DB round trip instead of each
@@ -43,6 +45,15 @@ export function getCached(key) {
   return cached && cached.expiresAt > Date.now() ? cached.data : undefined
 }
 export function setCached(key, data) {
+  // The key includes every query-string param, so without a cap anyone could
+  // grow this Map (and force a fresh DB round trip) with `?x=<random>` -- and
+  // an unpaginated entry is a whole table. Expired entries are dropped first,
+  // then the oldest. Small on purpose: entries only live 25s anyway.
+  if (listCache.size >= LIST_CACHE_MAX_ENTRIES && !listCache.has(key)) {
+    const now = Date.now()
+    for (const [k, v] of listCache) if (v.expiresAt <= now) listCache.delete(k)
+    while (listCache.size >= LIST_CACHE_MAX_ENTRIES) listCache.delete(listCache.keys().next().value)
+  }
   listCache.set(key, { data, expiresAt: Date.now() + LIST_CACHE_TTL_MS })
 }
 
@@ -56,7 +67,10 @@ function cacheKeyFor(table, query) {
   return `${table}?${keys.map((k) => `${k}=${query[k]}`).join('&')}`
 }
 
-export function crudRouter({ table, select, order, sortRows, toRow, toResponse, mutateAuth = [], invalidateColumns = [], enrichRows, searchColumns, filters, sortable, uniqueViolationMessage, beforeDelete, beforeUpdate }) {
+// mutateAuth guards POST/PUT/DELETE. It defaults to admin-only so a resource
+// that forgets to pass one is locked down rather than writable by anyone;
+// pass `[]` explicitly to open writes on purpose.
+export function crudRouter({ table, select, order, sortRows, toRow, toResponse, mutateAuth = [requireAdmin], invalidateColumns = [], enrichRows, searchColumns, filters, sortable, uniqueViolationMessage, beforeDelete, beforeUpdate }) {
   const router = Router()
   // Turns a Postgres unique_violation (23505) on create/edit into a readable 409.
   const mapWriteError = (err) => (uniqueViolationMessage && err.code === '23505' ? httpError(409, uniqueViolationMessage) : err)
@@ -152,7 +166,7 @@ export function crudRouter({ table, select, order, sortRows, toRow, toResponse, 
           responseData = { data: (await enrich(rows)).map(mapRow), total: Number(total), page, pageSize, totalPages: Math.ceil(Number(total) / pageSize) }
         }
       }
-      listCache.set(cacheKey, { data: responseData, expiresAt: Date.now() + LIST_CACHE_TTL_MS })
+      setCached(cacheKey, responseData)
       return responseData
     })()
     inFlight.set(cacheKey, fetchPromise)
@@ -180,7 +194,7 @@ export function crudRouter({ table, select, order, sortRows, toRow, toResponse, 
       if (!row) return null
       const [enriched] = await enrich([row])
       const responseData = mapRow(enriched)
-      listCache.set(cacheKey, { data: responseData, expiresAt: Date.now() + LIST_CACHE_TTL_MS })
+      setCached(cacheKey, responseData)
       return responseData
     })()
     inFlight.set(cacheKey, fetchPromise)

@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs'
 import { asyncHandler } from '../middleware/asyncHandler.js'
 import { httpError } from '../middleware/errorHandler.js'
 import { db } from '../lib/db.js'
+import { rateLimit } from '../lib/rateLimit.js'
 import { createImageUploadMiddleware } from '../lib/imageUpload.js'
 import { setSessionCookie, clearSessionCookie } from '../lib/authCookies.js'
 import { createSession, resolveSessionUser, destroySession } from '../lib/session.js'
@@ -16,6 +17,27 @@ export const authRouter = Router()
 
 const avatarUpload = createImageUploadMiddleware('avatarFile', 2 * 1024 * 1024)
 
+// None of these endpoints need a session, so without limits they're open to
+// password guessing (login), bcrypt-CPU abuse, and using us to mail strangers
+// (signup / forgot-password send an email). Counts are per process -- fine for
+// one API instance. IPs are real client IPs because app.js sets `trust proxy`.
+const MINUTE = 60 * 1000
+const HOUR = 60 * MINUTE
+const emailOf = (req) => String(req.body?.email ?? '').trim().toLowerCase().slice(0, 254)
+// Per-IP caps are loose on purpose: a campus/office NAT puts many real users
+// behind one address. The per-account caps are what stop targeted guessing.
+const loginIpLimit = rateLimit({ windowMs: 15 * MINUTE, max: 100, keyFn: (req) => req.ip })
+const loginAccountLimit = rateLimit({ windowMs: 15 * MINUTE, max: 10, keyFn: (req) => `${req.ip}|${emailOf(req)}` })
+const signupLimit = rateLimit({ windowMs: HOUR, max: 20, keyFn: (req) => req.ip })
+const forgotIpLimit = rateLimit({ windowMs: HOUR, max: 10, keyFn: (req) => req.ip })
+const forgotEmailLimit = rateLimit({ windowMs: HOUR, max: 3, keyFn: emailOf })
+const tokenLimit = rateLimit({ windowMs: 15 * MINUTE, max: 30, keyFn: (req) => req.ip })
+
+// bcrypt-compared against when the email isn't registered, so login takes
+// about as long either way and response time doesn't reveal which addresses
+// have accounts.
+const DUMMY_HASH = bcrypt.hashSync('not-a-real-password', 10)
+
 const SUSPENDED_MESSAGE = 'บัญชีนี้ถูกระงับการใช้งาน กรุณาติดต่อผู้ดูแลระบบ'
 const isDeleted = (row) => !!row.deleted_at
 
@@ -28,7 +50,7 @@ const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || 'http://localhost:5173'
 // request as the rest of the form -- there's no account row to attach an
 // uploaded image to until this request creates one, so (unlike the old
 // Supabase-Storage version) there's no separate pre-signup upload step.
-authRouter.post('/signup', avatarUpload, asyncHandler(async (req, res) => {
+authRouter.post('/signup', signupLimit, avatarUpload, asyncHandler(async (req, res) => {
   const email = normalizeEmail(req.body.email)
   const password = req.body.password
   if (!email || !password) throw httpError(400, 'กรุณากรอกข้อมูลให้ครบถ้วน')
@@ -68,7 +90,7 @@ authRouter.post('/signup', avatarUpload, asyncHandler(async (req, res) => {
 
 // Landing point for our own confirmation email link (see sendVerificationEmail
 // above) -- ConfirmEmailPage.jsx reads ?token= from the URL and posts it here.
-authRouter.post('/confirm', asyncHandler(async (req, res) => {
+authRouter.post('/confirm', tokenLimit, asyncHandler(async (req, res) => {
   const { token } = req.body
   if (!token) throw httpError(400, 'ลิงก์ยืนยันไม่ถูกต้อง')
   const record = await findVerificationToken(token)
@@ -85,12 +107,12 @@ authRouter.post('/confirm', asyncHandler(async (req, res) => {
   res.json({ user: toUserResponse(row) })
 }))
 
-authRouter.post('/login', asyncHandler(async (req, res) => {
+authRouter.post('/login', loginIpLimit, loginAccountLimit, asyncHandler(async (req, res) => {
   const { email, password } = req.body
-  if (!email || !password) throw httpError(400, 'กรุณากรอกอีเมลและรหัสผ่าน')
+  if (!email || !password || typeof password !== 'string') throw httpError(400, 'กรุณากรอกอีเมลและรหัสผ่าน')
 
   const row = await db('users').where('email', normalizeEmail(email)).first()
-  const passwordOk = row && await bcrypt.compare(password, row.password_hash)
+  const passwordOk = (await bcrypt.compare(password, row?.password_hash ?? DUMMY_HASH)) && !!row
   // A soft-deleted account answers exactly like a wrong password, so login
   // can't be used to learn that an address once had an account.
   if (!passwordOk || isDeleted(row)) throw httpError(401, 'อีเมลหรือรหัสผ่านไม่ถูกต้อง')
@@ -107,7 +129,7 @@ authRouter.post('/login', asyncHandler(async (req, res) => {
   res.json({ user: toUserResponse(row) })
 }))
 
-authRouter.post('/forgot-password', asyncHandler(async (req, res) => {
+authRouter.post('/forgot-password', forgotIpLimit, forgotEmailLimit, asyncHandler(async (req, res) => {
   const { email } = req.body
   if (!email) throw httpError(400, 'กรุณากรอกอีเมล')
 
@@ -122,7 +144,7 @@ authRouter.post('/forgot-password', asyncHandler(async (req, res) => {
   res.json({ message: 'หากอีเมลนี้มีอยู่ในระบบ เราได้ส่งลิงก์รีเซ็ตรหัสผ่านไปให้แล้ว' })
 }))
 
-authRouter.post('/reset-password', asyncHandler(async (req, res) => {
+authRouter.post('/reset-password', tokenLimit, asyncHandler(async (req, res) => {
   const { token, password } = req.body
   if (!token) throw httpError(400, 'ลิงก์รีเซ็ตรหัสผ่านไม่ถูกต้อง')
   assertPasswordStrong(password)

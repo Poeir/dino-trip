@@ -1,12 +1,22 @@
+import { CalendarDays, CheckCircle2, Flag, Inbox, MapPin, RefreshCw, ScanLine, TriangleAlert, UserPlus, Users, X } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { useEffect, useRef, useState } from 'react'
 import { useApp } from '../context/AppContext.jsx'
-import { triggerReindex, fetchReindexStatus, fetchReindexPending, fetchPlaces, fetchAdminStats } from '../lib/apiClient.js'
+import { triggerReindex, fetchReindexStatus, fetchReindexPending, fetchPlaces, fetchAdminStats, fetchAdminSystem } from '../lib/apiClient.js'
+import { fmtDateTime } from '../lib/format.js'
+import { useAdminPendingCounts } from '../lib/useAdminPendingCounts.js'
 import LoadError from '../components/LoadError.jsx'
 import EmptyState from '../components/EmptyState.jsx'
 import { REWARD_ICON } from '../data/categoryImages.js'
+import AdminPageHeader from './ui/AdminPageHeader.jsx'
+import Button from './ui/Button.jsx'
+import StatCard from './ui/StatCard.jsx'
+import Facts from './ui/Facts.jsx'
+import SegmentedTabs from './ui/SegmentedTabs.jsx'
 import TripStatsSection from './TripStatsSection.jsx'
 
 const POLL_MS = 2500
+const num = (v) => Number(v).toLocaleString('th-TH')
 
 // Polls chatbot-service (via the Node proxy) for the reindex job's state.
 // See backend/src/routes/reindex.routes.js and
@@ -71,25 +81,9 @@ const formatTime = (iso) => iso ? new Date(iso).toLocaleTimeString('th-TH', { ho
 
 const PENDING_SECTIONS = [
   { key: 'places', label: 'สถานที่' },
-  { key: 'events', label: 'อีเวนท์' },
-  { key: 'knowledgeBase', label: 'องค์ความรู้' },
+  { key: 'events', label: 'กิจกรรม' },
+  { key: 'knowledgeBase', label: 'ฐานความรู้' },
 ]
-
-// Plain inline SVG (no icon library in this project) instead of an emoji --
-// emoji render inconsistently across platforms/fonts and don't take a
-// currentColor/size prop the way the rest of this card's icons do.
-function RefreshIcon({ size = 14, spinning = false }) {
-  return (
-    <svg
-      width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
-      strokeLinecap="round" strokeLinejoin="round"
-      style={{ animation: spinning ? 'dc-spin 0.9s linear infinite' : 'none', flexShrink: 0 }}
-    >
-      <path d="M21 12a9 9 0 1 1-2.64-6.36" />
-      <path d="M21 3v6h-6" />
-    </svg>
-  )
-}
 
 // Fetched on demand when the admin expands the pending list, not polled --
 // unlike status (which useReindexStatus polls every POLL_MS while a run is
@@ -122,18 +116,18 @@ function usePendingItems(reloadKey, enabled) {
 }
 
 function PendingList({ items, error }) {
-  if (error) return <div style={{ color: '#a33232', fontSize: 12, marginTop: 10 }}>โหลดรายการไม่สำเร็จ: {error}</div>
-  if (items === null) return <div style={{ fontSize: 12.5, color: '#6d7a72', marginTop: 10 }}>กำลังโหลดรายการ...</div>
+  if (error) return <div className="ad-error-text ad-fs-xs ad-mt-sm">โหลดรายการไม่สำเร็จ: {error}</div>
+  if (items === null) return <div className="ad-fs-xs ad-text-muted ad-mt-sm">กำลังโหลดรายการ...</div>
 
   const sections = PENDING_SECTIONS.map((s) => ({ ...s, rows: items[s.key] || [] })).filter((s) => s.rows.length)
-  if (!sections.length) return <div style={{ fontSize: 12.5, color: '#6d7a72', marginTop: 10 }}>ไม่มีรายการค้างอัปเดตดัชนี</div>
+  if (!sections.length) return <div className="ad-fs-xs ad-text-muted ad-mt-sm">ไม่มีรายการค้างอัปเดตดัชนี</div>
 
   return (
-    <div style={{ marginTop: 12, display: 'grid', gap: 12 }}>
+    <div className="ad-pending-wrap">
       {sections.map((s) => (
         <div key={s.key}>
-          <div style={{ fontWeight: 700, fontSize: 12.5, color: '#1B5E20', marginBottom: 4 }}>{s.label} ({s.rows.length})</div>
-          <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12.5, color: '#333', display: 'grid', gap: 2 }}>
+          <div className="ad-pending-head">{s.label} ({s.rows.length})</div>
+          <ul className="ad-pending-list">
             {s.rows.map((row) => <li key={row.id}>{row.name}</li>)}
           </ul>
         </div>
@@ -147,7 +141,7 @@ function ReindexCard() {
   const [expanded, setExpanded] = useState(false)
   const onSettled = (s) => {
     if (s.state === 'done') actions.showToast(`อัปเดตดัชนีค้นหาแล้ว ${s.embeddedCount} รายการ`)
-    else if (s.state === 'error') actions.showToast('อัปเดตดัชนีค้นหาไม่สำเร็จ: ' + s.error)
+    else if (s.state === 'error') actions.showToast('อัปเดตดัชนีค้นหาไม่สำเร็จ: ' + s.error, 2400, 'error')
   }
   const { status, error, busy, run } = useReindexStatus(onSettled)
   const { items: pendingItems, error: pendingError, total: pendingTotal } = usePendingItems(status?.finishedAt, expanded)
@@ -162,97 +156,164 @@ function ReindexCard() {
   const retrying = status === null && error
 
   return (
-    <div style={{ background: '#fff', border: '1px solid #E7E3D2', borderRadius: 16, padding: 20, marginTop: 16, animation: 'dc-fade-up 0.35s ease 0.3s both' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+    <div className="ad-panel ad-panel--tall ad-fade-up">
+      <div className="ad-between">
         <div>
-          <div style={{ fontWeight: 800, fontSize: 15, color: '#1B5E20', marginBottom: 4 }}>ดัชนีค้นหาแชทบอท (Embedding)</div>
-          <div style={{ fontSize: 12.5, color: '#6d7a72' }}>
+          <div className="ad-panel__title ad-panel__title--tight">ดัชนีค้นหาแชทบอท (Embedding)</div>
+          <div className="ad-fs-xs ad-text-muted">
             {checking ? 'กำลังตรวจสอบสถานะ...' : status === null ? 'ตรวจสอบสถานะไม่สำเร็จ' : pendingCount > 0
               ? <>มี {pendingCount} รายการที่เพิ่ม/แก้ไขแล้วยังไม่อัปเดตดัชนี{' · '}
-                <span style={{ color: '#2E7D32', fontWeight: 700, cursor: 'pointer' }} onClick={() => setExpanded((v) => !v)}>
+                <button type="button" className="ad-link-inline" aria-expanded={expanded} onClick={() => setExpanded((v) => !v)}>
                   {expanded ? 'ซ่อนรายการ' : 'ดูรายการ'}
-                </span>
+                </button>
               </>
               : 'ดัชนีค้นหาเป็นปัจจุบันแล้ว'}
             {status?.finishedAt && status.state !== 'running' && ` · รันล่าสุด ${formatTime(status.finishedAt)}`}
           </div>
         </div>
-        <button
-          onClick={run}
-          disabled={busy || checking}
-          style={{ display: 'flex', alignItems: 'center', gap: 7, background: busy || checking ? '#A5D6A7' : 'linear-gradient(135deg,#66BB6A,#388E3C)', color: '#fff', border: 'none', padding: '10px 18px', borderRadius: 18, fontWeight: 700, fontSize: 13, cursor: busy || checking ? 'default' : 'pointer', whiteSpace: 'nowrap' }}
-        >
-          <RefreshIcon spinning={status?.state === 'running'} />
+        <Button onClick={run} disabled={busy || checking}>
+          <RefreshCw size={14} strokeWidth={2.5} aria-hidden="true" className={status?.state === 'running' ? 'ad-spin' : undefined} />
           {status?.state === 'running' ? 'กำลังอัปเดต...' : retrying ? 'ลองใหม่' : 'อัปเดตดัชนีค้นหา'}
-        </button>
+        </Button>
       </div>
-      {error && <div style={{ color: '#a33232', fontSize: 12, marginTop: 10 }}>เชื่อมต่อ chatbot-service ไม่สำเร็จ: {error}</div>}
-      {status?.state === 'error' && <div style={{ color: '#a33232', fontSize: 12, marginTop: 10 }}>เกิดข้อผิดพลาด: {status.error}</div>}
+      {error && <div className="ad-error-text ad-fs-xs ad-mt-sm">เชื่อมต่อ chatbot-service ไม่สำเร็จ: {error}</div>}
+      {status?.state === 'error' && <div className="ad-error-text ad-fs-xs ad-mt-sm">เกิดข้อผิดพลาด: {status.error}</div>}
       {expanded && <PendingList items={pendingItems} error={pendingError} />}
     </div>
   )
 }
 
-function StatCard({ value, label, tone = 'normal' }) {
-  const warn = tone === 'warn'
+
+const lsGet = (k) => { try { return localStorage.getItem(k) } catch { return null } }
+const lsSet = (k, v) => { try { localStorage.setItem(k, v) } catch { /* storage unavailable */ } }
+
+// Slim pending-work strip: loud only when something is waiting.
+function PendingStrip({ pending }) {
+  if (!pending.loaded) return <div className="ad-strip ad-strip--ok">กำลังตรวจสอบงานค้าง...</div>
+  if (pending.reports + pending.requests === 0) {
+    return (
+      <div className="ad-strip ad-strip--ok">
+        <CheckCircle2 size={16} aria-hidden="true" /> ไม่มีงานค้าง
+      </div>
+    )
+  }
   return (
-    <div style={{ background: '#fff', border: `1px solid ${warn ? '#f0c6c6' : '#E7E3D2'}`, borderRadius: 16, padding: '16px 18px' }}>
-      <div style={{ fontSize: 24, fontWeight: 800, color: warn ? '#a33232' : '#1B5E20' }}>{value}</div>
-      <div style={{ fontSize: 13, color: '#6d7a72' }}>{label}</div>
+    <div className="ad-strip ad-strip--warn" role="status">
+      <span className="ad-strip__label">งานค้าง</span>
+      {pending.reports > 0 && (
+        <Link to="/admin/reports" className="ad-strip__link"><Flag size={14} aria-hidden="true" /> รายงานข้อมูลรอตรวจสอบ <b>{pending.reports}</b></Link>
+      )}
+      {pending.requests > 0 && (
+        <Link to="/admin/event-requests" className="ad-strip__link"><Inbox size={14} aria-hidden="true" /> คำขอกิจกรรมรออนุมัติ <b>{pending.requests}</b></Link>
+      )}
     </div>
   )
 }
 
-const fmtDateTime = (iso) => new Date(iso).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })
+const NOTICE_KEY = 'admin.dashboard.adminNoticeDismissed'
 
-// Users, points and counter redemptions -- numbers that come from the API's
-// own aggregate query rather than the bulk-loaded lists the cards above use.
-function UsageSection({ stats, error, onRetry }) {
-  if (error) return <div style={{ marginTop: 22 }}><LoadError message="โหลดสถิติผู้ใช้ไม่สำเร็จ" onRetry={onRetry} /></div>
-  const n = (v) => (stats ? v : '–')
+function AdminCountNotice({ count }) {
+  const [dismissed, setDismissed] = useState(() => lsGet(NOTICE_KEY) === '1')
+  if (dismissed) return null
   return (
-    <div style={{ marginTop: 22 }}>
-      {stats && stats.activeAdmins < 2 && (
-        <div style={{ background: '#FFF8E1', border: '1px solid #FFE082', borderRadius: 14, padding: '12px 16px', marginBottom: 16, fontSize: 13.5, color: '#7A5205', lineHeight: 1.6 }}>
-          ตอนนี้มี admin ที่ใช้งานได้ <b>{stats.activeAdmins} คน</b> ถ้าบัญชีนี้ใช้ไม่ได้จะไม่มีใครเข้าหน้า admin ได้ ควรเพิ่ม admin สำรองไว้ด้วยคำสั่ง <code>node scripts/create-admin.js อีเมล รหัสผ่าน</code> ในโฟลเดอร์ backend
+    <div className="ad-notice" role="status">
+      <TriangleAlert size={16} aria-hidden="true" style={{ flex: '0 0 auto', marginTop: 3 }} />
+      <div className="ad-notice__text">
+        มี admin ใช้งานได้ {count} คน ควรเพิ่มบัญชีสำรองด้วย <code>node scripts/create-admin.js อีเมล รหัสผ่าน</code> (ในโฟลเดอร์ backend)
+      </div>
+      <button type="button" className="ad-notice__close" aria-label="ปิดการแจ้งเตือน" onClick={() => { lsSet(NOTICE_KEY, '1'); setDismissed(true) }}>
+        <X size={16} aria-hidden="true" />
+      </button>
+    </div>
+  )
+}
+
+function RecentRedemptions({ stats }) {
+  return (
+    <div className="ad-panel ad-panel--tight">
+      <h3 className="ad-panel__title">การแลกของรางวัลล่าสุด</h3>
+      {!stats ? (
+        <div className="ad-fs-sm ad-text-muted">กำลังโหลด...</div>
+      ) : stats.recentRedemptions.length === 0 ? (
+        <EmptyState compact icon={REWARD_ICON} title="ยังไม่มีการแลกของรางวัล" />
+      ) : (
+        <div className="ad-redemption-compact">
+          {stats.recentRedemptions.map((r) => (
+            <div key={r.id} className={`ad-redemption${r.status === 'cancelled' ? ' is-cancelled' : ''}`}>
+              <span><b>{r.userName}</b> แลก {r.rewardName} ({r.cost} พอยท์){r.status === 'cancelled' && <span className="ad-text-danger"> · ยกเลิกแล้ว</span>}</span>
+              <span className="ad-text-muted">{fmtDateTime(r.at)}</span>
+            </div>
+          ))}
         </div>
       )}
-      <h2 style={{ fontSize: 16, fontWeight: 800, color: '#1B5E20', margin: '0 0 12px' }}>ผู้ใช้และการแลกของรางวัล</h2>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(180px,1fr))', gap: 14, marginBottom: 16 }}>
-        <StatCard value={n(stats?.users.total)} label="ผู้ใช้ทั้งหมด" />
-        <StatCard value={n(stats?.users.newLast7Days)} label="สมัครใหม่ใน 7 วัน" />
-        <StatCard value={n(stats?.users.suspended)} label="ถูกระงับ" tone={stats?.users.suspended ? 'warn' : 'normal'} />
-        <StatCard value={n(stats?.users.unverified)} label="ยังไม่ยืนยันอีเมล" />
-        <StatCard value={n(stats?.scansLast7Days)} label="สแกน QR ใน 7 วัน" />
-        <StatCard value={n(stats?.points.outstanding)} label="พอยท์คงค้างในบัญชีผู้ใช้" />
-        <StatCard value={n(stats?.redemptionsLast30Days)} label="แลกของรางวัลใน 30 วัน" />
-      </div>
-      <div style={{ background: '#fff', border: '1px solid #E7E3D2', borderRadius: 16, padding: 18 }}>
-        <div style={{ fontWeight: 800, fontSize: 14.5, color: '#1B5E20', marginBottom: 10 }}>การแลกของรางวัลล่าสุด</div>
-        {!stats ? (
-          <div style={{ fontSize: 13, color: '#8a938c' }}>กำลังโหลด...</div>
-        ) : stats.recentRedemptions.length === 0 ? (
-          <EmptyState compact icon={REWARD_ICON} title="ยังไม่มีการแลกของรางวัล" />
-        ) : (
-          <div style={{ display: 'grid', gap: 8 }}>
-            {stats.recentRedemptions.map((r) => (
-              <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', fontSize: 13.5, opacity: r.status === 'cancelled' ? 0.6 : 1 }}>
-                <span><b>{r.userName}</b> แลก {r.rewardName} ({r.cost} พอยท์){r.status === 'cancelled' && <span style={{ color: '#a33232' }}> · ยกเลิกแล้ว</span>}</span>
-                <span style={{ color: '#6d7a72' }}>{fmtDateTime(r.at)}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
     </div>
   )
 }
+
+// Which build each service is running. The frontend's own build is known
+// client-side; backend and chatbot are asked via the admin API. Differing
+// commit SHAs mean a deploy only partly landed.
+function SystemVersionCard() {
+  const [system, setSystem] = useState(null)
+  const [error, setError] = useState(false)
+
+  useEffect(() => {
+    fetchAdminSystem().then(setSystem).catch(() => setError(true))
+  }, [])
+
+  const frontend = { version: __APP_VERSION__, sha: __GIT_SHA__ || null }
+  const rows = [
+    { label: 'Frontend', info: frontend },
+    { label: 'Backend', info: system?.backend },
+    { label: 'Chatbot', info: system?.chatbot },
+  ]
+  const shas = rows.map((r) => r.info?.sha).filter(Boolean)
+  const drifted = system && new Set(shas).size > 1
+  const chatbotDown = system && !system.chatbot
+
+  return (
+    <div className="ad-panel ad-panel--tall ad-fade-up">
+      <h3 className="ad-panel__title">เวอร์ชันระบบ</h3>
+      <div className="ad-meta-rows">
+        {rows.map(({ label, info }) => (
+          <div key={label}>
+            <span className="ad-meta-label">{label}</span>
+            {info
+              ? <span className="ad-count-chip">v{info.version}{info.sha && <span className="ad-mono"> ({info.sha})</span>}</span>
+              : <span className="ad-text-danger">{error || system ? 'ติดต่อไม่ได้' : 'กำลังตรวจสอบ...'}</span>}
+          </div>
+        ))}
+      </div>
+      {(drifted || chatbotDown || error) && (
+        <div className="ad-error-text ad-fs-xs ad-mt-sm">
+          {error ? 'โหลดข้อมูลเวอร์ชันไม่สำเร็จ' : drifted ? 'แต่ละส่วนรันคนละ commit — การ deploy อาจยังไม่ครบ' : 'ติดต่อ chatbot-service ไม่ได้'}
+        </div>
+      )}
+    </div>
+  )
+}
+
+
+const TABS = [
+  { id: 'overview', label: 'ภาพรวม' },
+  { id: 'users', label: 'ผู้ใช้และรางวัล' },
+  { id: 'trips', label: 'แผนทริป' },
+]
+const TAB_KEY = 'admin.dashboard.tab'
 
 export default function DashboardTab() {
   const { state, actions } = useApp()
   const [placesCount, setPlacesCount] = useState(null)
   const [stats, setStats] = useState(null)
   const [statsError, setStatsError] = useState(false)
+  const [tab, setTab] = useState(() => {
+    const saved = lsGet(TAB_KEY)
+    return TABS.some((t) => t.id === saved) ? saved : 'overview'
+  })
+  // Same counts the sidebar badges show (one shared request).
+  const pending = useAdminPendingCounts()
+
+  const changeTab = (id) => { setTab(id); lsSet(TAB_KEY, id) }
 
   const loadStats = () => {
     setStatsError(false)
@@ -276,67 +337,62 @@ export default function DashboardTab() {
 
   // A dash instead of a misleading "0" while the fetch these counts come
   // from is still in flight (state.dataLoading, see AppContext.jsx).
-  const stat = (n) => state.dataLoading ? '–' : n
+  const stat = (v) => state.dataLoading ? '–' : v
+  const n = (v) => (stats ? v : '–')
+  const statsFailed = statsError && <LoadError message="โหลดสถิติผู้ใช้ไม่สำเร็จ" onRetry={loadStats} />
+
   return (
     <>
-      <h1 style={{ fontSize: 22, fontWeight: 800, color: '#1B5E20', margin: '0 0 20px' }}>แดชบอร์ด</h1>
-      <div data-role="admin-stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(200px,1fr))', gap: 16 }}>
-        <div style={{ background: '#fff', border: '1px solid #E7E3D2', borderRadius: 16, padding: 20, animation: 'dc-fade-up 0.35s ease both' }}>
-          <div style={{ width: 34, height: 34, borderRadius: 10, background: '#E8F5E9', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
-            <span style={{ width: 11, height: 11, borderRadius: '50% 50% 50% 0', background: '#2E7D32', transform: 'rotate(-45deg)' }}></span>
-          </div>
-          <div style={{ fontSize: 26, fontWeight: 800, color: '#1B5E20' }}>{placesCount == null ? '–' : placesCount}</div>
-          <div style={{ fontSize: 13, color: '#6d7a72' }}>สถานที่ทั้งหมด</div>
-        </div>
-        <div style={{ background: '#fff', border: '1px solid #E7E3D2', borderRadius: 16, padding: 20, animation: 'dc-fade-up 0.35s ease 0.05s both' }}>
-          <div style={{ width: 34, height: 34, borderRadius: 10, background: '#FDEEE3', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
-            <span style={{ width: 14, height: 12, border: '2px solid #E07B39', borderRadius: 2, position: 'relative' }}>
-              <span style={{ position: 'absolute', top: -4, left: 2, width: 2, height: 5, background: '#E07B39' }}></span>
-              <span style={{ position: 'absolute', top: -4, right: 2, width: 2, height: 5, background: '#E07B39' }}></span>
-            </span>
-          </div>
-          <div style={{ fontSize: 26, fontWeight: 800, color: '#1B5E20' }}>{stat(state.events.length)}</div>
-          <div style={{ fontSize: 13, color: '#6d7a72' }}>อีเวนท์ทั้งหมด</div>
-        </div>
-        <div style={{ background: '#fff', border: '1px solid #E7E3D2', borderRadius: 16, padding: 20, animation: 'dc-fade-up 0.35s ease 0.1s both' }}>
-          <div style={{ width: 34, height: 34, borderRadius: 10, background: '#E8F5E9', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
-            <span style={{ width: 15, height: 11, background: '#2E7D32', borderRadius: '4px 4px 4px 0' }}></span>
-          </div>
-          <div style={{ fontSize: 26, fontWeight: 800, color: '#1B5E20' }}>{stat(state.knowledgeBase.length)}</div>
-          <div style={{ fontSize: 13, color: '#6d7a72' }}>องค์ความรู้แชทบอท</div>
-        </div>
-        <div style={{ background: '#fff', border: '1px solid #FFE082', borderRadius: 16, padding: 20, animation: 'dc-fade-up 0.35s ease 0.15s both' }}>
-          <div style={{ width: 34, height: 34, borderRadius: 10, background: '#FFF8E1', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
-            <span style={{ width: 14, height: 11, border: '2px solid #7A5205', borderRadius: 2, position: 'relative', display: 'inline-block' }}>
-              <span style={{ position: 'absolute', top: 1, left: 2.5, width: 5, height: 5, borderRadius: '50%', border: '1.5px solid #7A5205' }}></span>
-            </span>
-          </div>
-          <div style={{ fontSize: 26, fontWeight: 800, color: '#7A5205' }}>{stats ? stats.points.distributed : '–'}</div>
-          <div style={{ fontSize: 13, color: '#7A5205' }}>พอยท์ที่แจกไปแล้ว</div>
-        </div>
-        <div style={{ background: '#fff', border: '1px solid #E7E3D2', borderRadius: 16, padding: 20, animation: 'dc-fade-up 0.35s ease 0.2s both' }}>
-          <div style={{ width: 34, height: 34, borderRadius: 10, background: '#FFF8E1', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
-            <span style={{ width: 17, height: 13, border: '2px solid #7A5205', borderRadius: 3, position: 'relative', display: 'inline-block' }}>
-              <span style={{ position: 'absolute', top: 1.5, left: 3, width: 6, height: 6, borderRadius: '50%', border: '2px solid #7A5205' }}></span>
-            </span>
-          </div>
-          <div style={{ fontSize: 26, fontWeight: 800, color: '#1B5E20' }}>{stat(state.qrs.length)}</div>
-          <div style={{ fontSize: 13, color: '#6d7a72' }}>จำนวน QR ทั้งหมด</div>
-        </div>
-        <div style={{ background: '#fff', border: '1px solid #E7E3D2', borderRadius: 16, padding: 20, animation: 'dc-fade-up 0.35s ease 0.25s both' }}>
-          <div style={{ width: 34, height: 34, borderRadius: 10, background: '#FFF8E1', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
-            <span style={{ width: 18, height: 14, border: '2px solid #7A5205', borderRadius: 2, position: 'relative' }}>
-              <span style={{ position: 'absolute', top: -6, left: 6.5, width: 2, height: 20, background: '#7A5205' }}></span>
-              <span style={{ position: 'absolute', top: 2, left: -1, width: 20, height: 2, background: '#7A5205' }}></span>
-            </span>
-          </div>
-          <div style={{ fontSize: 26, fontWeight: 800, color: '#1B5E20' }}>{stat(state.rewards.length)}</div>
-          <div style={{ fontSize: 13, color: '#6d7a72' }}>จำนวนของรางวัล</div>
-        </div>
+      <AdminPageHeader title="แดชบอร์ด" />
+      <PendingStrip pending={pending} />
+      <SegmentedTabs tabs={TABS} value={tab} onChange={changeTab} label="หมวดสถิติแดชบอร์ด" idPrefix="dash" />
+
+      <div key={tab} className="ad-tabpanel" role="tabpanel" id={`dash-panel-${tab}`} aria-labelledby={`dash-tab-${tab}`} tabIndex={0}>
+        {tab === 'overview' && (
+          <>
+            {stats && stats.activeAdmins < 2 && <AdminCountNotice count={stats.activeAdmins} />}
+            {statsFailed}
+            <div className="ad-kpi-row">
+              <StatCard icon={<MapPin size={18} />} value={placesCount == null ? '–' : placesCount} label="สถานที่" tone="success" />
+              <StatCard icon={<CalendarDays size={18} />} value={stat(state.events.length)} label="กิจกรรม" tone="warning" />
+              <StatCard icon={<Users size={18} />} value={n(stats?.users.total)} label="ผู้ใช้ทั้งหมด" tone="success" />
+              <StatCard icon={<UserPlus size={18} />} value={n(stats?.users.newLast7Days)} label="สมัครใหม่ 7 วัน" tone="success" />
+              <StatCard icon={<ScanLine size={18} />} value={n(stats?.scansLast7Days)} label="สแกน QR 7 วัน" tone="info" />
+            </div>
+            <Facts
+              title="ตัวเลขอื่นๆ"
+              items={[
+                { label: 'ฐานความรู้แชทบอท', value: stat(state.knowledgeBase.length) },
+                { label: 'QR ทั้งหมด', value: stat(state.qrs.length) },
+                { label: 'ของรางวัล', value: stat(state.rewards.length) },
+                { label: 'พอยท์ที่แจกไปแล้ว', value: stats ? num(stats.points.distributed) : '–' },
+              ]}
+            />
+            <div className="ad-two-col">
+              <ReindexCard />
+              <SystemVersionCard />
+            </div>
+          </>
+        )}
+
+        {tab === 'users' && (
+          <>
+            {statsFailed}
+            <Facts
+              title="ผู้ใช้และพอยท์"
+              items={[
+                { label: 'ถูกระงับ', value: n(stats?.users.suspended), tone: stats?.users.suspended ? 'danger' : undefined },
+                { label: 'ยังไม่ยืนยันอีเมล', value: n(stats?.users.unverified) },
+                { label: 'พอยท์คงค้างในบัญชีผู้ใช้', value: stats ? num(stats.points.outstanding) : '–' },
+                { label: 'แลกของรางวัล 30 วัน', value: n(stats?.redemptionsLast30Days) },
+              ]}
+            />
+            <RecentRedemptions stats={stats} />
+          </>
+        )}
+
+        {tab === 'trips' && <TripStatsSection />}
       </div>
-      <UsageSection stats={stats} error={statsError} onRetry={loadStats} />
-      <TripStatsSection />
-      <ReindexCard />
     </>
   )
 }

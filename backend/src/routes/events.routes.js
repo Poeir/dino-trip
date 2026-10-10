@@ -26,7 +26,7 @@ const MAX_PHOTOS_PER_EVENT = 5
 // Batches in one extra query instead of N+1: attaches each event's uploaded
 // photo URLs (if any) as `uploadedPhotoUrls`, which rowToEvent() then prefers
 // over the legacy `img` column (see mappers.js).
-async function attachEventPhotos(rows) {
+export async function attachEventPhotos(rows) {
   if (!rows.length) return rows
   const photos = await db('event_photos').select('id', 'event_id', 'url').whereIn('event_id', rows.map((r) => r.id)).orderBy(['event_id', 'position'])
   const byEvent = {}

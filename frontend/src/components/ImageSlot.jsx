@@ -1,6 +1,7 @@
 import { useState } from 'react'
+import { cld } from '../lib/cloudinary.js'
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000'
+const API_BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:4000'
 
 // Almost every `src` (Cloudinary, a pasted URL) is already absolute. A few
 // backend-served images (e.g. GET /api/users/:id/avatar) come back as a
@@ -11,8 +12,18 @@ const resolveSrc = (src) => (src?.startsWith('/api/') ? `${API_BASE_URL}${src}` 
 
 // `icon` (optional) is an illustration shown in the empty/broken state; see
 // data/categoryImages.js. Omit it and the placeholder is text-only as before.
-export default function ImageSlot({ src: rawSrc, shape = 'rounded', radius = 12, style = {}, placeholder = '', icon = '', iconSize = 84, loading = false }) {
-  const src = resolveSrc(rawSrc)
+//
+// `imgWidth` (optional): how wide the photo is shown, in CSS px, so Cloudinary
+// photos are delivered at about that size instead of the multi-hundred-KB
+// original. Defaults to the slot's numeric `style.width`, else 400 (a card).
+// `priority`: the image is above the fold / the LCP, so don't lazy-load it.
+export default function ImageSlot({ src: rawSrc, shape = 'rounded', radius = 12, style = {}, placeholder = '', icon = '', iconSize = 84, loading = false, imgWidth, priority = false }) {
+  const resolved = resolveSrc(rawSrc)
+  // If the optimized URL ever fails to load, fall back to the original once
+  // before showing the placeholder.
+  const [useOriginal, setUseOriginal] = useState(false)
+  const optimized = cld(resolved, imgWidth ?? (typeof style.width === 'number' ? style.width : 400))
+  const src = useOriginal ? resolved : optimized
   // Tracks *which* src failed, not just a bare boolean -- otherwise once one
   // image 404s, a later src change on the same mounted instance (e.g. the
   // preview right after an upload replaces an empty/broken one) would stay
@@ -49,6 +60,10 @@ export default function ImageSlot({ src: rawSrc, shape = 'rounded', radius = 12,
           <img
             src={icon}
             alt={placeholder}
+            width={iconSize}
+            height={iconSize}
+            loading="lazy"
+            decoding="async"
             style={{ maxWidth: '55%', maxHeight: '65%', width: iconSize, height: 'auto', objectFit: 'contain', opacity: 0.95 }}
           />
         ) : (
@@ -66,7 +81,10 @@ export default function ImageSlot({ src: rawSrc, shape = 'rounded', radius = 12,
       <img
         src={src}
         alt={placeholder}
-        onError={() => setFailedSrc(src)}
+        loading={priority ? 'eager' : 'lazy'}
+        decoding="async"
+        fetchpriority={priority ? 'high' : undefined}
+        onError={() => (src !== resolved ? setUseOriginal(true) : setFailedSrc(src))}
         style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
       />
       {spinnerOverlay}

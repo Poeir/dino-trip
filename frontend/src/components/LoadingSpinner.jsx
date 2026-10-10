@@ -9,7 +9,7 @@ export default function LoadingSpinner({ size = 40, label, style }) {
         border: `${Math.max(3, Math.round(size / 11))}px solid #C8E6C9`, borderTopColor: '#2E7D32',
         margin: label ? '0 auto 14px' : '0 auto', animation: 'dc-spin 0.8s linear infinite',
       }} />
-      {label && <div style={{ color: '#6d7a72', fontSize: 14 }}>{label}</div>}
+      {label && <div style={{ color: '#5f6a63', fontSize: 14 }}>{label}</div>}
     </div>
   )
 }

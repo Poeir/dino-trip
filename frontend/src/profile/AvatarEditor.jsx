@@ -67,7 +67,7 @@ export default function AvatarEditor({ open, onClose, profile, onSaved }) {
     <Modal open={open} onClose={busy ? () => {} : onClose} title="เปลี่ยนรูปโปรไฟล์" maxWidth={400}>
       {file ? (
         <>
-          <p style={{ margin: '0 0 12px', fontSize: 13, color: '#6d7a72', textAlign: 'center' }}>ลากรูปเพื่อเลือกส่วนที่จะแสดงในวงกลมโปรไฟล์</p>
+          <p style={{ margin: '0 0 12px', fontSize: 13, color: '#5f6a63', textAlign: 'center' }}>ลากรูปเพื่อเลือกส่วนที่จะแสดงในวงกลมโปรไฟล์</p>
           <div
             onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
             style={{ position: 'relative', width: CROP, height: CROP, maxWidth: '100%', margin: '0 auto', borderRadius: 12, overflow: 'hidden', background: '#111', cursor: 'grab', touchAction: 'none' }}
@@ -75,7 +75,7 @@ export default function AvatarEditor({ open, onClose, profile, onSaved }) {
             <img src={objectUrl} alt="" draggable={false} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: `${pos.x}% ${pos.y}%`, transform: `scale(${scale})`, transformOrigin: 'center', pointerEvents: 'none' }} />
             <div style={{ position: 'absolute', inset: '10.7%', borderRadius: '50%', boxShadow: '0 0 0 9999px rgba(15,25,18,0.6)', border: '2px solid #fff', pointerEvents: 'none' }} />
           </div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 14, fontSize: 12, color: '#6d7a72' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 14, fontSize: 12, color: '#5f6a63' }}>
             ซูม
             <input type="range" min="1" max="3" step="0.05" value={scale} onChange={(e) => setScale(Number(e.target.value))} style={{ flex: 1 }} />
           </label>
@@ -93,12 +93,12 @@ export default function AvatarEditor({ open, onClose, profile, onSaved }) {
             {a.emoji}
           </button>
         ))}
-        <label title="อัปโหลดรูปของคุณ" className="dc-avatar-swatch" style={{ width: 44, height: 44, borderRadius: '50%', border: file ? '2px solid #2E7D32' : '1px dashed #8a938c', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: 20, color: '#6d7a72' }}>
+        <label title="อัปโหลดรูปของคุณ" className="dc-avatar-swatch" style={{ width: 44, height: 44, borderRadius: '50%', border: file ? '2px solid #2E7D32' : '1px dashed #626863', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: 20, color: '#5f6a63' }}>
           +
           <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={onFile} style={{ display: 'none' }} />
         </label>
       </div>
-      <p style={{ margin: '4px 0 0', fontSize: 11.5, color: '#8a938c', textAlign: 'center' }}>อัปโหลดรูปได้ไม่เกิน 2MB (jpg, png, webp, gif)</p>
+      <p style={{ margin: '4px 0 0', fontSize: 11.5, color: '#626863', textAlign: 'center' }}>อัปโหลดรูปได้ไม่เกิน 2MB (jpg, png, webp, gif)</p>
 
       <Notice>{error}</Notice>
       <div style={{ display: 'flex', gap: 10, marginTop: 18, flexWrap: 'wrap' }}>

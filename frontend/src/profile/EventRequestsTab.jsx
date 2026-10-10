@@ -1,3 +1,4 @@
+import { ArrowRight } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { usePagedList } from '../lib/usePagedList.js'
@@ -22,7 +23,7 @@ import { EVENT_REQUEST_STATUS } from '../data/eventRequests.js'
 import { EVENT_CATEGORY_OPTIONS, SUITABLE_FOR_OPTIONS, formatDateRange, inferDateMode } from '../data/eventForm.js'
 import { Card, Notice, primaryBtn } from './ui.jsx'
 
-// Same fields (and look) as the admin form in admin/EventsTab.jsx -- minus the
+// Same fields (and look) as the admin form in admin/events/EventFormModal.jsx -- minus the
 // Facebook paste/extract box and the cancelled status, which are admin-only.
 const inputStyle = { width: '100%', border: '1px solid #DCD8C6', borderRadius: 8, padding: 9, fontSize: 14 }
 const EMPTY = { name: '', category: '', dateRange: '', eventStartDate: '', eventEndDate: '', placeId: '', venueName: '', admission: '', organizer: '', suitableFor: '', desc: '' }
@@ -205,7 +206,7 @@ function RequestModal({ open, request, onClose, onSaved }) {
             }}
           />
         </div>
-        <div style={{ fontSize: 11, color: '#8a938c', marginBottom: 14 }}>เลือกถ้างานนี้จัดที่สถานที่ที่มีอยู่แล้วในระบบ -- เติมชื่อสถานที่ด้านล่างให้อัตโนมัติ (แก้ไขเพิ่มเองได้)</div>
+        <div style={{ fontSize: 11, color: '#626863', marginBottom: 14 }}>เลือกถ้างานนี้จัดที่สถานที่ที่มีอยู่แล้วในระบบ -- เติมชื่อสถานที่ด้านล่างให้อัตโนมัติ (แก้ไขเพิ่มเองได้)</div>
       </Field>
       <Field label="สถานที่จัดงาน">
         <input list="event-request-venue-options" value={f.venueName || ''} onChange={set('venueName')} placeholder="ชื่อสถานที่/สนาม" style={{ ...inputStyle, marginBottom: 14 }} maxLength={200} />
@@ -215,7 +216,7 @@ function RequestModal({ open, request, onClose, onSaved }) {
       </datalist>
 
       <SectionHeading>รูปภาพ</SectionHeading>
-      <div style={{ fontSize: 11.5, color: '#6d7a72', marginBottom: 8 }}>อัปโหลดได้สูงสุด <strong>{MAX_PHOTOS} รูปต่ออีเวนท์</strong> รูปแรกจะใช้เป็นภาพปก</div>
+      <div style={{ fontSize: 11.5, color: '#5f6a63', marginBottom: 8 }}>อัปโหลดได้สูงสุด <strong>{MAX_PHOTOS} รูปต่ออีเวนท์</strong> รูปแรกจะใช้เป็นภาพปก</div>
       <div style={{ marginBottom: 14 }}>
         <PlacePhotoGallery
           existingPhotos={existingPhotos}
@@ -268,9 +269,9 @@ function RequestRow({ item, onEdit, onCancel, busy }) {
           <div style={{ fontSize: 14.5, fontWeight: 700, color: '#1f2a24', wordBreak: 'break-word' }}>{item.name}</div>
           <span style={{ fontSize: 11.5, fontWeight: 700, background: st.bg, color: st.color, padding: '3px 10px', borderRadius: 20 }}>{st.label}</span>
         </div>
-        <div style={{ fontSize: 12, color: '#8a938c' }}>{item.dateRange}{item.venueName ? ` · ${item.venueName}` : ''} · ส่งเมื่อ {fmt(item.createdAt)}</div>
+        <div style={{ fontSize: 12, color: '#626863' }}>{item.dateRange}{item.venueName ? ` · ${item.venueName}` : ''} · ส่งเมื่อ {fmt(item.createdAt)}</div>
         {item.status === 'rejected' && <div style={{ fontSize: 13, color: '#a33232', marginTop: 4 }}>เหตุผลที่ไม่อนุมัติ: {item.rejectReason}</div>}
-        {item.status === 'approved' && item.eventId && <div style={{ fontSize: 13, marginTop: 4 }}><Link to={`/events/${item.eventId}`} style={{ color: '#2E7D32', fontWeight: 700 }}>ดูกิจกรรมบนเว็บไซต์ →</Link></div>}
+        {item.status === 'approved' && item.eventId && <div style={{ fontSize: 13, marginTop: 4 }}><Link to={`/events/${item.eventId}`} style={{ color: '#2E7D32', fontWeight: 700 }}>ดูกิจกรรมบนเว็บไซต์ <ArrowRight size={14} strokeWidth={2.4} style={{ verticalAlign: '-2px' }} /></Link></div>}
         {item.status === 'pending' && (
           <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
             <button type="button" disabled={busy} onClick={() => onEdit(item)} style={smallBtn}>แก้ไข</button>

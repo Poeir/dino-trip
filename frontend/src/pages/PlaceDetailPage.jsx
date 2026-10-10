@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext.jsx'
 import PlaceDetailView from '../components/PlaceDetailView.jsx'
 import LoadingSpinner from '../components/LoadingSpinner.jsx'
 import { fetchPlace } from '../lib/apiClient.js'
+import { useSeo } from '../lib/useSeo.js'
 
 export default function PlaceDetailPage() {
   const { state, actions } = useApp()
@@ -21,21 +22,28 @@ export default function PlaceDetailPage() {
     return () => { cancelled = true }
   }, [id])
 
+  useSeo(found ? {
+    title: found.name,
+    description: found.desc || [found.category, found.district || 'ขอนแก่น', found.address].filter(Boolean).join(' · '),
+    image: found.img,
+    path: `/places/${found.id}`,
+  } : {})
+
   // Distinguish "still loading" from "no such place" so a direct link/
   // refresh shows a spinner instead of a broken-looking blank detail view.
   if (!found && loading) {
-    return <main style={{ maxWidth: 1360, margin: '0 auto', padding: '90px 32px' }}><LoadingSpinner size={40} label="กำลังโหลดข้อมูลสถานที่..." /></main>
+    return <main style={{ maxWidth: 1360, margin: '0 auto', padding: 'var(--page-pv-center) var(--page-gutter)' }}><LoadingSpinner size={40} label="กำลังโหลดข้อมูลสถานที่..." /></main>
   }
 
   const p = found
     ? { ...found, isFavorite: state.favoriteIds.includes(found.id), onToggleFavorite: () => actions.toggleFavorite(found.id) }
     : { amenities: [] }
   return (
-    <main style={{ maxWidth: 1360, margin: '0 auto', padding: '28px 32px 60px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5, color: '#8a938c', flexWrap: 'wrap' }}>
-        <a href="#" onClick={(e) => { e.preventDefault(); actions.goHome() }} style={{ color: '#8a938c', fontWeight: 600 }}>หน้าแรก</a>
+    <main style={{ maxWidth: 1360, margin: '0 auto', padding: 'var(--page-pt) var(--page-gutter) var(--page-pb)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5, color: '#626863', flexWrap: 'wrap' }}>
+        <a href="#" onClick={(e) => { e.preventDefault(); actions.goHome() }} style={{ color: '#626863', fontWeight: 600 }}>หน้าแรก</a>
         <span>/</span>
-        <a href="#" onClick={(e) => { e.preventDefault(); actions.goPlaces() }} style={{ color: '#8a938c', fontWeight: 600 }}>สถานที่ท่องเที่ยว</a>
+        <a href="#" onClick={(e) => { e.preventDefault(); actions.goPlaces() }} style={{ color: '#626863', fontWeight: 600 }}>สถานที่ท่องเที่ยว</a>
         <span>/</span>
         <span style={{ color: '#1B5E20', fontWeight: 700 }}>{p.name}</span>
       </div>

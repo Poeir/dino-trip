@@ -10,7 +10,7 @@ export default function Header() {
   return (
     <header style={{ position: 'sticky', top: 0, zIndex: 40, background: '#ffffff', borderBottom: '1px solid #E7E3D2', display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', padding: '0 32px', height: 68 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', justifySelf: 'start' }} onClick={actions.goHome}>
-        <img src="/assets/dino-logo-full.png" alt="Dino" style={{ height: 34, width: 'auto', flexShrink: 0 }} />
+        <img src="/assets/dino-logo-full.webp" alt="Dino" width={67} height={34} style={{ height: 34, width: 'auto', flexShrink: 0 }} />
       </div>
       <nav data-role="desktop-nav" style={{ display: 'flex', alignItems: 'center', gap: 30, justifySelf: 'center' }}>
         <NavLink to="/" end style={navLinkStyle}>

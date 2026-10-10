@@ -2,10 +2,23 @@ import { Router } from 'express'
 import { asyncHandler } from '../middleware/asyncHandler.js'
 import { requireAdmin } from '../middleware/requireAdmin.js'
 import { db } from '../lib/db.js'
+import { APP_VERSION, GIT_SHA } from '../lib/version.js'
+import { forwardToChatbotService } from '../lib/chatbotProxy.js'
 
 // Numbers for the admin dashboard's user / points / redemption cards.
 export const adminStatsRouter = Router()
 adminStatsRouter.use(requireAdmin)
+
+// Which build each service is running, so an admin can spot a deploy where
+// the services drifted apart. Kept admin-only on purpose: the public /health
+// stays a bare "ok". A chatbot that is down must not fail the whole call.
+adminStatsRouter.get('/system', asyncHandler(async (req, res) => {
+  const chatbot = await forwardToChatbotService('/version').catch(() => null)
+  res.json({
+    backend: { version: APP_VERSION, sha: GIT_SHA },
+    chatbot: chatbot && { version: chatbot.version, sha: chatbot.sha },
+  })
+}))
 
 // Trip-planning statistics over the last ?days (7 / 30 / 90 / 365, default 30).
 // Counts every recorded plan, including the ones recorded for visitors who

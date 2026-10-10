@@ -1,7 +1,8 @@
 // Talks directly to the local chatbot-service (FastAPI, see ../../../chatbot-service/)
 // over plain HTTP -- this is a local dev process, not something deployed
 // alongside Supabase, so no supabase-js/functions.invoke involved here.
-const BASE_URL = import.meta.env.VITE_CHATBOT_SERVICE_URL || 'http://localhost:8000'
+// `??` not `||`: empty means "same origin" (/chat/ and /trip/ are proxied by Caddy).
+const BASE_URL = import.meta.env.VITE_CHATBOT_SERVICE_URL ?? 'http://localhost:8000'
 
 // The service streams Server-Sent Events: `token` chunks as the reply is
 // generated, then one `done` event with the full reply + source places/events.

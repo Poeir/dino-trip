@@ -109,7 +109,7 @@ export default function LocationPicker({ value, onChange, onSelectPlace, height 
         />
       )}
       {loadError ? (
-        <div style={{ fontSize: 12, color: '#8a938c', marginBottom: 8 }}>โหลดแผนที่ไม่สำเร็จ -- กรอกพิกัดด้วยตัวเองด้านล่าง</div>
+        <div style={{ fontSize: 12, color: '#626863', marginBottom: 8 }}>โหลดแผนที่ไม่สำเร็จ -- กรอกพิกัดด้วยตัวเองด้านล่าง</div>
       ) : (
         <div ref={mapContainerRef} style={{ width: '100%', height, borderRadius: 12, marginBottom: 8, background: '#F0EDE0' }} />
       )}

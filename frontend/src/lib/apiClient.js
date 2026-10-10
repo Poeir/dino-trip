@@ -1,7 +1,9 @@
 // Talks to the backend API (backend/src/) for all Places/Events/KnowledgeBase/
 // QRs/Rewards data -- replaces the old direct-to-Supabase calls that used to
 // live in AppContext.jsx via supabaseClient.js.
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000'
+// `??` not `||`: an empty VITE_API_URL means "same origin" (production build
+// served behind the same Caddy as the API), only an unset one falls back to dev.
+const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:4000'
 
 async function request(path, options) {
   const res = await fetch(`${BASE_URL}${path}`, {
@@ -100,6 +102,8 @@ export const deleteQr = (id) => apiDelete(`/api/qrs/${id}`)
 // Admin user management (backend/src/routes/adminUsers.routes.js). Every
 // change returns the updated list row.
 export const fetchAdminStats = () => apiGet('/api/admin/stats')
+// Which build backend / chatbot-service are running ({ backend, chatbot }, chatbot null if unreachable).
+export const fetchAdminSystem = () => apiGet('/api/admin/stats/system')
 // Trip-planning statistics for the last `days` (7 / 30 / 90 / 365).
 export const fetchAdminTripStats = (days) => apiGet('/api/admin/stats/trips', { days })
 // Every recorded trip plan (owned by a user, or `owner: null` = recorded for

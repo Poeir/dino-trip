@@ -1,3 +1,4 @@
+import { X } from 'lucide-react'
 import { useState } from 'react'
 
 const parseList = (v) => (v || '').split(',').map((s) => s.trim()).filter(Boolean)
@@ -38,7 +39,7 @@ export default function ChipMultiSelect({ value, onChange, options, addPlacehold
           {selected.map((tag) => (
             <span key={tag} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: '#2E7D32', color: '#fff', borderRadius: 14, padding: '4px 6px 4px 12px', fontSize: 12.5, fontWeight: 600 }}>
               {tag}
-              <button type="button" onClick={() => remove(tag)} aria-label={`ลบ ${tag}`} style={{ background: 'rgba(255,255,255,0.3)', border: 'none', borderRadius: '50%', width: 16, height: 16, cursor: 'pointer', color: '#fff', fontSize: 11, lineHeight: '16px', padding: 0 }}>×</button>
+              <button type="button" onClick={() => remove(tag)} aria-label={`ลบ ${tag}`} style={{ background: 'rgba(255,255,255,0.3)', border: 'none', borderRadius: '50%', width: 16, height: 16, cursor: 'pointer', color: '#fff', fontSize: 11, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={11} strokeWidth={3} /></button>
             </span>
           ))}
         </div>
@@ -53,7 +54,7 @@ export default function ChipMultiSelect({ value, onChange, options, addPlacehold
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, maxHeight: 130, overflowY: 'auto', padding: 2, marginBottom: 10 }}>
         {availableOptions.length === 0
-          ? <span style={{ fontSize: 12, color: '#8a938c', padding: '4px 2px' }}>{q ? `ไม่พบรายการที่ตรงกับ "${search}"` : 'เลือกครบทุกรายการแล้ว'}</span>
+          ? <span style={{ fontSize: 12, color: '#626863', padding: '4px 2px' }}>{q ? `ไม่พบรายการที่ตรงกับ "${search}"` : 'เลือกครบทุกรายการแล้ว'}</span>
           : availableOptions.map((opt) => (
             <button key={opt} type="button" onClick={() => add(opt)} style={{ border: '1px solid #DCD8C6', background: '#fff', color: '#3c463f', borderRadius: 14, padding: '5px 12px', fontSize: 12.5, cursor: 'pointer' }}>
               + {opt}

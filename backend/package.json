@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
+    "test": "node --test",
     "fetch:places": "node scripts/fetch-places.js",
     "import:places": "node scripts/import-places.js",
     "seed:events-knowledge": "node scripts/seed-events-knowledge.mjs"

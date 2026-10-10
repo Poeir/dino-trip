@@ -1,6 +1,0 @@
-{$CHAT_DOMAIN} {
-	reverse_proxy chatbot:8000 {
-		# Don't buffer: /chat/ streams its answer over SSE.
-		flush_interval -1
-	}
-}

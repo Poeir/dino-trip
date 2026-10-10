@@ -142,7 +142,7 @@ export default function HoursComposer({ value, onCompose }) {
       {mode === 'same' && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <input type="time" value={sameHours.start} onChange={(e) => updateSame({ start: e.target.value })} style={timeStyle} />
-          <span style={{ color: '#8a938c' }}>ถึง</span>
+          <span style={{ color: '#626863' }}>ถึง</span>
           <input type="time" value={sameHours.end} onChange={(e) => updateSame({ end: e.target.value })} style={timeStyle} />
         </div>
       )}
@@ -161,7 +161,7 @@ export default function HoursComposer({ value, onCompose }) {
                     {perDay[di].ranges.map((r, ri) => (
                       <div key={ri} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <input type="time" value={r.start} onChange={(e) => updateDayRange(di, ri, { start: e.target.value })} style={timeStyle} />
-                        <span style={{ color: '#8a938c' }}>ถึง</span>
+                        <span style={{ color: '#626863' }}>ถึง</span>
                         <input type="time" value={r.end} onChange={(e) => updateDayRange(di, ri, { end: e.target.value })} style={timeStyle} />
                         {perDay[di].ranges.length > 1 && (
                           <button type="button" onClick={() => removeDayRange(di, ri)} style={{ background: 'none', border: 'none', color: '#a33232', fontSize: 12, cursor: 'pointer', padding: '2px 4px' }}>

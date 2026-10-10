@@ -17,8 +17,22 @@ main() {
   git fetch origin main
   git merge --ff-only origin/main
 
+  # Build identity for every service (compose reads these from the environment).
+  export APP_VERSION="$(cat VERSION)" GIT_SHA="$(git rev-parse --short HEAD)"
+
   cd deploy
-  docker compose up -d --build
+  # One build at a time: torch (chatbot) and vite (frontend) are both heavy,
+  # and building them in parallel can run a 4GB box out of memory.
+  for service in chatbot backend caddy; do
+    docker compose build "$service"
+  done
+  docker compose up -d --remove-orphans
+
+  # Caddy only reads its config when it starts, and a deploy that changes just
+  # caddy/Caddyfile leaves the image unchanged, so `up -d` keeps the old
+  # container running. Reload explicitly; an invalid Caddyfile also fails the
+  # deploy here (set -e) instead of being silently ignored.
+  docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile
 
   # CHAT_DOMAIN is where Caddy serves the chatbot; poll it until it answers
   # (a fresh container loads the embedding model first, which takes a while).

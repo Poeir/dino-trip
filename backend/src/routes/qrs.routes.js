@@ -3,6 +3,7 @@ import { rowToQr, qrPayload } from '../lib/mappers.js'
 import { db } from '../lib/db.js'
 import { asyncHandler } from '../middleware/asyncHandler.js'
 import { httpError } from '../middleware/errorHandler.js'
+import { rateLimit } from '../lib/rateLimit.js'
 import { requireAuth } from '../middleware/requireAuth.js'
 import { requireAdmin } from '../middleware/requireAdmin.js'
 import { rowToPlace } from '../lib/mappers.js'
@@ -74,7 +75,12 @@ function parseCoordinate(value, limit) {
   return n
 }
 
-qrsRouter.post('/:id/scan', requireAuth, asyncHandler(async (req, res) => {
+// A scan awards points, so cap how fast one account can hit this (keyed by
+// user id because it runs after requireAuth) -- stops scripted point farming
+// and probing the radius check with many guessed coordinates.
+const scanLimit = rateLimit({ windowMs: 60 * 1000, max: 20, message: 'สแกนบ่อยเกินไป กรุณารอสักครู่แล้วลองใหม่' })
+
+qrsRouter.post('/:id/scan', requireAuth, scanLimit, asyncHandler(async (req, res) => {
   const lat = parseCoordinate(req.body?.lat, 90)
   const lng = parseCoordinate(req.body?.lng, 180)
   let rows

@@ -44,7 +44,7 @@ export default function ProfilePage() {
   }
 
   return (
-    <main style={{ maxWidth: 860, margin: '0 auto', padding: '32px 20px 64px' }}>
+    <main style={{ maxWidth: 860, margin: '0 auto', padding: 'var(--page-pt) var(--page-gutter) var(--page-pb)' }}>
       {error ? (
         <LoadError message={error.message || 'โหลดข้อมูลโปรไฟล์ไม่สำเร็จ'} onRetry={load} />
       ) : !profile ? (

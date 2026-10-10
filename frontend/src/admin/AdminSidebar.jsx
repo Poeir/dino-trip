@@ -1,111 +1,149 @@
-import { useEffect, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { BookOpen, CalendarDays, Flag, Gift, Inbox, LayoutDashboard, LogOut, MapPin, QrCode, Route, Ticket, Users, X } from 'lucide-react'
+import { useEffect, useRef } from 'react'
+import { Link, useParams } from 'react-router-dom'
 import { useApp } from '../context/AppContext.jsx'
-import { fetchAdminPlaceReportCount, fetchAdminEventReportCount, fetchAdminEventRequestCount } from '../lib/apiClient.js'
+import { useAdminPendingCounts } from '../lib/useAdminPendingCounts.js'
 import { adminTabs } from '../data/seed.js'
 
-function NavIcon({ nav }) {
-  if (nav.isDashboard) return (
-    <span style={{ width: 12, height: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
-      <span style={{ background: nav.iconColor, borderRadius: 1 }}></span><span style={{ background: nav.iconColor, borderRadius: 1 }}></span>
-      <span style={{ background: nav.iconColor, borderRadius: 1 }}></span><span style={{ background: nav.iconColor, borderRadius: 1 }}></span>
-    </span>
-  )
-  if (nav.isPlaces) return <span style={{ width: 11, height: 11, borderRadius: '50% 50% 50% 0', background: nav.iconColor, transform: 'rotate(-45deg)' }}></span>
-  if (nav.isEvents) return (
-    <span style={{ width: 14, height: 12, border: `2px solid ${nav.iconColor}`, borderRadius: 2, position: 'relative' }}>
-      <span style={{ position: 'absolute', top: -4, left: 2, width: 2, height: 5, background: nav.iconColor }}></span>
-      <span style={{ position: 'absolute', top: -4, right: 2, width: 2, height: 5, background: nav.iconColor }}></span>
-    </span>
-  )
-  if (nav.isKnowledge) return <span style={{ width: 15, height: 11, background: nav.iconColor, borderRadius: '4px 4px 4px 0' }}></span>
-  if (nav.isQr) return (
-    <span style={{ width: 14, height: 11, border: `2px solid ${nav.iconColor}`, borderRadius: 2, position: 'relative', display: 'inline-block' }}>
-      <span style={{ position: 'absolute', top: 1, left: 2.5, width: 5, height: 5, borderRadius: '50%', border: `1.5px solid ${nav.iconColor}` }}></span>
-    </span>
-  )
-  if (nav.isRedeem) return (
-    <span style={{ width: 14, height: 11, border: `2px solid ${nav.iconColor}`, borderRadius: 2, position: 'relative', display: 'inline-block', marginTop: 2 }}>
-      <span style={{ position: 'absolute', top: -2, left: 4, width: 2, height: 11, background: nav.iconColor }}></span>
-      <span style={{ position: 'absolute', top: 2, left: -1, width: 12, height: 2, background: nav.iconColor }}></span>
-    </span>
-  )
-  if (nav.isUsers) return (
-    <span style={{ position: 'relative', width: 14, height: 14, display: 'inline-block' }}>
-      <span style={{ position: 'absolute', top: 0, left: 4, width: 6, height: 6, borderRadius: '50%', background: nav.iconColor }}></span>
-      <span style={{ position: 'absolute', bottom: 0, left: 1, width: 12, height: 6, borderRadius: '6px 6px 2px 2px', background: nav.iconColor }}></span>
-    </span>
-  )
-  if (nav.isReports) return (
-    <span style={{ position: 'relative', width: 12, height: 14, display: 'inline-block' }}>
-      <span style={{ position: 'absolute', top: 0, left: 1, width: 2, height: 14, background: nav.iconColor }}></span>
-      <span style={{ position: 'absolute', top: 1, left: 3, width: 9, height: 7, background: nav.iconColor, borderRadius: '0 2px 2px 0' }}></span>
-    </span>
-  )
-  if (nav.isTrips) return (
-    <span style={{ position: 'relative', width: 14, height: 14, display: 'inline-block' }}>
-      <span style={{ position: 'absolute', top: 0, left: 0, width: 5, height: 5, borderRadius: '50%', border: `2px solid ${nav.iconColor}`, boxSizing: 'border-box' }}></span>
-      <span style={{ position: 'absolute', bottom: 0, right: 0, width: 5, height: 5, borderRadius: '50%', background: nav.iconColor }}></span>
-      <span style={{ position: 'absolute', top: 4, left: 5, width: 2, height: 7, background: nav.iconColor, transform: 'rotate(-40deg)', transformOrigin: 'top' }}></span>
-    </span>
-  )
-  return null
+const ICONS = {
+  dashboard: LayoutDashboard,
+  places: MapPin,
+  events: CalendarDays,
+  knowledge: BookOpen,
+  reports: Flag,
+  'event-requests': Inbox,
+  qr: QrCode,
+  rewards: Gift,
+  redeem: Ticket,
+  users: Users,
+  trips: Route,
 }
 
-export default function AdminSidebar() {
+const FOCUSABLE = 'a[href],button:not([disabled]),[tabindex]:not([tabindex="-1"])'
+// Keep in step with the breakpoints in admin.css: <= 760px the sidebar is an off-canvas drawer.
+const DRAWER_MQ = '(max-width: 760px)'
+
+// `open` / `onClose` drive the mobile drawer; above 760px the sidebar is always visible
+// (full width, or an icon rail <= 1024px) and these are ignored.
+export default function AdminSidebar({ open = false, onClose }) {
   const { actions } = useApp()
   const { tab = 'dashboard' } = useParams()
-  const navigate = useNavigate()
+  const asideRef = useRef(null)
+  const closeRef = useRef(onClose)
+  closeRef.current = onClose
 
   // Pending-report badge; refreshed whenever the admin switches tab (e.g. after
   // clearing the queue) rather than polled.
-  const [pendingReports, setPendingReports] = useState(0)
-  const [pendingRequests, setPendingRequests] = useState(0)
-  useEffect(() => {
-    let cancelled = false
-    Promise.all([fetchAdminPlaceReportCount(), fetchAdminEventReportCount()])
-      .then(([p, e]) => { if (!cancelled) setPendingReports(p.pending + e.pending) })
-      .catch(() => {})
-    fetchAdminEventRequestCount()
-      .then((r) => { if (!cancelled) setPendingRequests(r.pending) })
-      .catch(() => {})
-    return () => { cancelled = true }
-  }, [tab])
+  const { reports: pendingReports, requests: pendingRequests } = useAdminPendingCounts(tab)
 
-  const adminNav = adminTabs.map((t) => {
-    const active = t.key === tab
-    return {
-      key: t.key, label: t.label, onClick: () => { actions.cancelForm(); navigate(`/admin/${t.key}`) },
-      bg: active ? '#E8F5E9' : 'transparent', color: active ? '#1B5E20' : '#6d7a72',
-      iconBg: active ? 'linear-gradient(135deg,#66BB6A,#2E7D32)' : '#F1F8E9',
-      iconColor: active ? '#fff' : '#7d8a80',
-      isDashboard: t.icon === 'dashboard', isPlaces: t.icon === 'places', isEvents: t.icon === 'events', isKnowledge: t.icon === 'knowledge', isQr: t.icon === 'qr', isRedeem: t.icon === 'redeem', isUsers: t.icon === 'users', isTrips: t.icon === 'trips', isReports: t.icon === 'reports',
-      badge: t.key === 'reports' ? pendingReports : t.key === 'event-requests' ? pendingRequests : 0
+  // Drawer: focus trap, Esc to close, restore focus, close if the viewport grows past the breakpoint.
+  useEffect(() => {
+    if (!open) return
+    const aside = asideRef.current
+    const previouslyFocused = document.activeElement
+    const first = aside?.querySelector(FOCUSABLE)
+    first?.focus({ preventScroll: true })
+
+    const onKey = (e) => {
+      if (e.key === 'Escape') { e.stopPropagation(); closeRef.current?.(); return }
+      if (e.key !== 'Tab' || !aside) return
+      const items = Array.from(aside.querySelectorAll(FOCUSABLE))
+      if (items.length === 0) return
+      const firstEl = items[0]
+      const lastEl = items[items.length - 1]
+      const active = document.activeElement
+      if (e.shiftKey && active === firstEl) { e.preventDefault(); lastEl.focus() }
+      else if (!e.shiftKey && active === lastEl) { e.preventDefault(); firstEl.focus() }
+      else if (!aside.contains(active)) { e.preventDefault(); firstEl.focus() }
     }
-  })
+    const mq = window.matchMedia(DRAWER_MQ)
+    const onMq = () => { if (!mq.matches) closeRef.current?.() }
+    window.addEventListener('keydown', onKey)
+    mq.addEventListener('change', onMq)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      mq.removeEventListener('change', onMq)
+      if (previouslyFocused && typeof previouslyFocused.focus === 'function' && document.contains(previouslyFocused)) {
+        previouslyFocused.focus({ preventScroll: true })
+      }
+    }
+  }, [open])
+
+  const badgeFor = (key) => (key === 'reports' ? pendingReports : key === 'event-requests' ? pendingRequests : 0)
+
+  // Consecutive tabs sharing a group render under one heading.
+  const groups = []
+  for (const t of adminTabs) {
+    const last = groups[groups.length - 1]
+    if (last && last.name === t.group) last.tabs.push(t)
+    else groups.push({ name: t.group, tabs: [t] })
+  }
+
+  const handleNavigate = () => {
+    actions.cancelForm()
+    onClose?.()
+  }
 
   return (
-    <aside style={{ width: 238, background: '#FFFFFF', borderRight: '1px solid #E7E3D2', padding: '20px 0', flexShrink: 0, display: 'flex', flexDirection: 'column', position: 'sticky', top: 0, height: '100vh', alignSelf: 'flex-start', overflowY: 'auto', boxSizing: 'border-box' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 20px 20px', borderBottom: '1px solid #F0EDE0', marginBottom: 14 }}>
-        <img src="/assets/dino-logo-mark.png" alt="" style={{ width: 34, height: 34, borderRadius: 10 }} />
-        <div>
-          <div style={{ color: '#1B5E20', fontWeight: 800, fontSize: 15, lineHeight: 1.2 }}>Dino Admin</div>
-          <div style={{ color: '#9aa39c', fontSize: 11 }}>ขอนแก่น</div>
+    <>
+      {/* Always mounted so it can fade out; hidden (display/visibility) unless the drawer is open. */}
+      <div className="ad-backdrop" data-open={open ? 'true' : 'false'} onClick={open ? onClose : undefined} aria-hidden="true" />
+      <aside
+        ref={asideRef}
+        className="ad-sidebar"
+        data-open={open ? 'true' : 'false'}
+        role={open ? 'dialog' : undefined}
+        aria-modal={open ? 'true' : undefined}
+        aria-label={open ? 'เมนูผู้ดูแลระบบ' : undefined}
+      >
+        <div className="ad-sidebar__brand">
+          <img src="/assets/dino-logo-mark.png" alt="" className="ad-sidebar__logo" />
+          <div className="ad-sidebar__brand-text">
+            <div className="ad-sidebar__title">Dino Admin</div>
+            <div className="ad-sidebar__sub">ขอนแก่น</div>
+          </div>
+          <button type="button" className="ad-sidebar__close" onClick={onClose} aria-label="ปิดเมนู"><X size={20} /></button>
         </div>
-      </div>
-      <div style={{ fontSize: 10.5, fontWeight: 700, color: '#a8b0a9', letterSpacing: 1, padding: '0 20px 8px' }}>เมนูหลัก</div>
-      {adminNav.map((nav) => (
-        <div key={nav.key} onClick={nav.onClick} style={{ display: 'flex', alignItems: 'center', gap: 11, margin: '0 12px 3px', padding: '10px 12px', borderRadius: 11, cursor: 'pointer', transition: 'all 0.18s ease', fontSize: 13.5, fontWeight: 600, color: nav.color, background: nav.bg }}>
-          <span style={{ width: 26, height: 26, borderRadius: 8, background: nav.iconBg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <NavIcon nav={nav} />
-          </span>
-          {nav.label}
-          {nav.badge > 0 && <span style={{ marginLeft: 'auto', background: '#c0392b', color: '#fff', fontSize: 11, fontWeight: 700, borderRadius: 10, padding: '1px 7px' }}>{nav.badge > 99 ? '99+' : nav.badge}</span>}
+
+        <nav className="ad-sidebar__nav" aria-label="เมนูผู้ดูแลระบบ">
+          {groups.map((g) => (
+            <div key={g.name} className="ad-nav__group" role="group" aria-label={g.name}>
+              <div className="ad-nav__heading" aria-hidden="true">{g.name}</div>
+              {g.tabs.map((t) => {
+                const Icon = ICONS[t.icon]
+                const badge = badgeFor(t.key)
+                return (
+                  // Link + manual active state rather than NavLink: `/admin` (no tab) is the dashboard too.
+                  <Link
+                    key={t.key}
+                    to={`/admin/${t.key}`}
+                    className={`ad-nav__link${t.key === tab ? ' is-active' : ''}`}
+                    aria-current={t.key === tab ? 'page' : undefined}
+                    title={t.label}
+                    onClick={handleNavigate}
+                  >
+                    {Icon && <Icon size={18} strokeWidth={2} className="ad-nav__icon" aria-hidden="true" />}
+                    <span className="ad-nav__label">{t.label}</span>
+                    {badge > 0 && (
+                      <span className="ad-nav__badge">
+                        {badge > 99 ? '99+' : badge}
+                        <span className="ad-sr"> รายการรอตรวจสอบ</span>
+                      </span>
+                    )}
+                  </Link>
+                )
+              })}
+            </div>
+          ))}
+        </nav>
+
+        <div className="ad-sidebar__footer">
+          <button type="button" className="ad-nav__logout" onClick={actions.adminLogout} title="ออกจากระบบ">
+            <LogOut size={18} strokeWidth={2} className="ad-nav__icon" aria-hidden="true" />
+            <span className="ad-nav__label">ออกจากระบบ</span>
+          </button>
         </div>
-      ))}
-      <div style={{ marginTop: 'auto', padding: '16px 20px 0', borderTop: '1px solid #F0EDE0' }}>
-        <div onClick={actions.adminLogout} style={{ cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#8a938c' }}>← ออกจากระบบ</div>
-      </div>
-    </aside>
+      </aside>
+    </>
   )
 }

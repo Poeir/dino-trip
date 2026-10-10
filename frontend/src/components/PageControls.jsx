@@ -1,3 +1,5 @@
+import { ChevronLeft, ChevronRight } from 'lucide-react'
+
 // Numbered pager -- shared by every server-paginated list (admin tables and
 // the public places/events pages, all driven by usePagedList.js). Jumps
 // straight to any page instead of forcing prev/next one click at a time,
@@ -5,11 +7,8 @@
 const PILL = 34
 
 function Chevron({ direction }) {
-  return (
-    <svg width={9} height={14} viewBox="0 0 9 14" fill="none" style={{ transform: direction === 'right' ? 'scaleX(-1)' : undefined }}>
-      <path d="M7.5 1 1.5 7l6 6" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  )
+  const Icon = direction === 'right' ? ChevronRight : ChevronLeft
+  return <Icon size={16} strokeWidth={2.4} aria-hidden="true" />
 }
 
 // e.g. page=6, totalPages=19 -> [1, '…', 5, 6, 7, '…', 19]
@@ -55,7 +54,7 @@ export default function PageControls({ page, totalPages, total, onChange }) {
           <Chevron direction="left" />
         </PagerButton>
         {pageList(page, totalPages).map((p, i) => p === '…' ? (
-          <span key={`dots-${i}`} style={{ width: PILL, textAlign: 'center', color: '#8a938c', fontSize: 13 }}>…</span>
+          <span key={`dots-${i}`} style={{ width: PILL, textAlign: 'center', color: '#626863', fontSize: 13 }}>…</span>
         ) : (
           <PagerButton key={p} active={p === page} onClick={() => onChange(p)} ariaLabel={`ไปหน้า ${p}`}>
             {p}
@@ -65,7 +64,7 @@ export default function PageControls({ page, totalPages, total, onChange }) {
           <Chevron direction="right" />
         </PagerButton>
       </div>
-      <div style={{ fontSize: 12, color: '#8a938c' }}>หน้า {page} จาก {totalPages} · ทั้งหมด {total} รายการ</div>
+      <div style={{ fontSize: 12, color: '#626863' }}>หน้า {page} จาก {totalPages} · ทั้งหมด {total} รายการ</div>
     </nav>
   )
 }

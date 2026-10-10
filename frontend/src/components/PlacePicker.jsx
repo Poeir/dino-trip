@@ -1,3 +1,4 @@
+import { StarGlyph } from './Icons.jsx'
 import { useEffect, useState } from 'react'
 import ImageSlot from './ImageSlot.jsx'
 import PlaceCard from './PlaceCard.jsx'
@@ -61,7 +62,7 @@ export default function PlacePicker({ value, onChange, allowClear, onAddFromGoog
         <ImageSlot src={selected.img} shape="rounded" radius={10} style={{ width: 44, height: 44 }} placeholder={selected.name.slice(0, 2)} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontWeight: 700, fontSize: 13.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{selected.name}</div>
-          <div style={{ fontSize: 12, color: '#8a938c' }}>{selected.category}{selected.rating ? ` · ★ ${selected.rating}` : ''}</div>
+          <div style={{ fontSize: 12, color: '#626863' }}>{selected.category}{selected.rating ? <> · <StarGlyph size={12} /> {selected.rating}</> : ''}</div>
         </div>
         <button type="button" onClick={() => { paged.setQuery(''); setBrowsing(true) }} style={{ background: '#F1F8E9', color: '#2E7D32', border: 'none', padding: '7px 12px', borderRadius: 10, fontSize: 12.5, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}>เปลี่ยน</button>
         {allowClear && (
@@ -90,14 +91,14 @@ export default function PlacePicker({ value, onChange, allowClear, onAddFromGoog
     <div>
       {onAddFromGoogle && (
         <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-          <button type="button" onClick={() => setMode('system')} style={{ flex: 1, background: mode === 'system' ? '#E8F5E9' : '#fff', color: mode === 'system' ? '#2E7D32' : '#6d7a72', border: '1px solid ' + (mode === 'system' ? '#C8E6C9' : '#DCD8C6'), padding: '7px 10px', borderRadius: 10, fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>ค้นหาในระบบ</button>
-          <button type="button" onClick={() => setMode('google')} style={{ flex: 1, background: mode === 'google' ? '#E8F5E9' : '#fff', color: mode === 'google' ? '#2E7D32' : '#6d7a72', border: '1px solid ' + (mode === 'google' ? '#C8E6C9' : '#DCD8C6'), padding: '7px 10px', borderRadius: 10, fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>ค้นหาใน Google Maps</button>
+          <button type="button" onClick={() => setMode('system')} style={{ flex: 1, background: mode === 'system' ? '#E8F5E9' : '#fff', color: mode === 'system' ? '#2E7D32' : '#5f6a63', border: '1px solid ' + (mode === 'system' ? '#C8E6C9' : '#DCD8C6'), padding: '7px 10px', borderRadius: 10, fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>ค้นหาในระบบ</button>
+          <button type="button" onClick={() => setMode('google')} style={{ flex: 1, background: mode === 'google' ? '#E8F5E9' : '#fff', color: mode === 'google' ? '#2E7D32' : '#5f6a63', border: '1px solid ' + (mode === 'google' ? '#C8E6C9' : '#DCD8C6'), padding: '7px 10px', borderRadius: 10, fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>ค้นหาใน Google Maps</button>
         </div>
       )}
 
       {mode === 'google' ? (
         <div>
-          <div style={{ fontSize: 11, color: '#8a938c', marginBottom: 8 }}>ใช้เมื่อสถานที่จัดงานยังไม่มีในระบบ -- ค้นหาบน Google Maps แล้วเพิ่มเป็นสถานที่ใหม่ (จะยังไม่แสดงในหน้ารายการสถานที่สาธารณะจนกว่าแอดมินจะเปิดเผยแพร่จาก "จัดการสถานที่")</div>
+          <div style={{ fontSize: 11, color: '#626863', marginBottom: 8 }}>ใช้เมื่อสถานที่จัดงานยังไม่มีในระบบ -- ค้นหาบน Google Maps แล้วเพิ่มเป็นสถานที่ใหม่ (จะยังไม่แสดงในหน้ารายการสถานที่สาธารณะจนกว่าแอดมินจะเปิดเผยแพร่จาก "จัดการสถานที่")</div>
           <LocationPicker
             value={googleLoc}
             onChange={setGoogleLoc}
@@ -141,7 +142,7 @@ export default function PlacePicker({ value, onChange, allowClear, onAddFromGoog
             {paged.error ? (
               <LoadError message="โหลดรายการสถานที่ไม่สำเร็จ" onRetry={paged.refetch} />
             ) : paged.rows.length === 0 ? (
-              <div style={{ padding: '16px 8px', textAlign: 'center', fontSize: 13, color: '#8a938c' }}>
+              <div style={{ padding: '16px 8px', textAlign: 'center', fontSize: 13, color: '#626863' }}>
                 {paged.loading ? 'กำลังค้นหา...' : `ไม่พบสถานที่ที่ตรงกับ "${paged.query}"`}
               </div>
             ) : (

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useApp } from '../context/AppContext.jsx'
 import { GiftIcon, PinIcon } from '../components/Icons.jsx'
 import QrScannerModal from '../components/QrScannerModal.jsx'
+import ScanResultModal from '../components/ScanResultModal.jsx'
 import LoadingSpinner from '../components/LoadingSpinner.jsx'
 import PlaceCard from '../components/PlaceCard.jsx'
 import ImageSlot from '../components/ImageSlot.jsx'
@@ -28,7 +29,7 @@ function PointsIntro({ places, placesLoading, rewards, onSignup, onLogin }) {
   const ghostBtn = { background: 'transparent', color: '#1B5E20', border: '2px solid #2E7D32', padding: '11px 24px', borderRadius: 22, fontWeight: 700, fontSize: 15, cursor: 'pointer' }
 
   return (
-    <main style={{ maxWidth: 960, margin: '0 auto', padding: '44px 24px 64px' }}>
+    <main style={{ maxWidth: 960, margin: '0 auto', padding: 'var(--page-pt) var(--page-gutter) var(--page-pb)' }}>
       <section style={{ display: 'flex', flexWrap: 'wrap', gap: 40, alignItems: 'center', marginBottom: 56 }}>
         <div style={{ flex: '1 1 340px', minWidth: 0 }}>
           <h1 data-font="culture" style={{ fontSize: 34, lineHeight: 1.25, fontWeight: 900, color: '#1B5E20', margin: '0 0 14px' }}>
@@ -41,7 +42,7 @@ function PointsIntro({ places, placesLoading, rewards, onSignup, onLogin }) {
             <button onClick={onSignup} style={primaryBtn}>สมัครสมาชิกฟรี</button>
             <button onClick={onLogin} style={ghostBtn}>เข้าสู่ระบบ</button>
           </div>
-          <div style={{ fontSize: 13, color: '#6d7a72' }}>QR แต่ละจุดรับพอยท์ได้ครั้งเดียวต่อบัญชี</div>
+          <div style={{ fontSize: 13, color: '#5f6a63' }}>QR แต่ละจุดรับพอยท์ได้ครั้งเดียวต่อบัญชี</div>
         </div>
 
         <div style={{ flex: '1 1 320px', minWidth: 0, position: 'relative', paddingTop: 72 }}>
@@ -49,12 +50,12 @@ function PointsIntro({ places, placesLoading, rewards, onSignup, onLogin }) {
           <div style={{ background: '#FFFCF0', border: '2px dashed #E0B94A', borderRadius: 18, padding: '20px 20px 22px', boxShadow: '0 10px 28px rgba(122,82,5,0.10)', minHeight: 310 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 16 }}>
               <span data-font="culture" style={{ fontSize: 18, fontWeight: 800, color: '#7A5205' }}>บัตรสะสมพอยท์</span>
-              <span style={{ fontSize: 12.5, color: '#8a938c' }}>{placesLoading ? '' : `${places.length} สถานที่ร่วมรายการ`}</span>
+              <span style={{ fontSize: 12.5, color: '#626863' }}>{placesLoading ? '' : `${places.length} สถานที่ร่วมรายการ`}</span>
             </div>
             {placesLoading ? (
               <LoadingSpinner size={28} label="กำลังโหลดสถานที่..." />
             ) : stamps.length === 0 ? (
-              <div style={{ textAlign: 'center', color: '#8a938c', fontSize: 13.5, padding: '24px 0' }}>เร็วๆ นี้จะมีสถานที่ให้สะสมพอยท์</div>
+              <div style={{ textAlign: 'center', color: '#626863', fontSize: 13.5, padding: '24px 0' }}>เร็วๆ นี้จะมีสถานที่ให้สะสมพอยท์</div>
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px 10px' }}>
                 {stamps.map((p, i) => (
@@ -86,7 +87,7 @@ function PointsIntro({ places, placesLoading, rewards, onSignup, onLogin }) {
               <span style={{ flexShrink: 0, width: 34, height: 34, borderRadius: '50%', background: '#2E7D32', color: '#fff', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{i + 1}</span>
               <div>
                 <div style={{ fontWeight: 800, fontSize: 15.5, color: '#1f2a24', marginBottom: 3 }}>{s.title}</div>
-                <div style={{ fontSize: 14, lineHeight: 1.55, color: '#6d7a72' }}>{s.desc}</div>
+                <div style={{ fontSize: 14, lineHeight: 1.55, color: '#5f6a63' }}>{s.desc}</div>
               </div>
             </li>
           ))}
@@ -154,7 +155,7 @@ export default function PointsPage() {
   }
 
   return (
-    <main style={{ maxWidth: 960, margin: '0 auto', padding: '36px 32px 60px' }}>
+    <main style={{ maxWidth: 960, margin: '0 auto', padding: 'var(--page-pt) var(--page-gutter) var(--page-pb)' }}>
       <h1 data-font="culture" style={{ fontSize: 24, fontWeight: 800, color: '#1B5E20', margin: '0 0 20px' }}>พอยท์สะสมของคุณ</h1>
 
       <div style={{ background: 'linear-gradient(135deg,#388E3C,#2E7D32)', borderRadius: 16, padding: 24, color: '#fff', marginBottom: 20 }}>
@@ -175,7 +176,7 @@ export default function PointsPage() {
             <span style={{ flexShrink: 0, width: 26, height: 26, borderRadius: '50%', background: '#2E7D32', color: '#fff', fontWeight: 800, fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{i + 1}</span>
             <div>
               <div style={{ fontWeight: 800, fontSize: 14, color: '#1f2a24' }}>{st.title}</div>
-              <div style={{ fontSize: 12.5, lineHeight: 1.5, color: '#6d7a72' }}>{st.desc}</div>
+              <div style={{ fontSize: 12.5, lineHeight: 1.5, color: '#5f6a63' }}>{st.desc}</div>
             </div>
           </li>
         ))}
@@ -183,37 +184,21 @@ export default function PointsPage() {
 
       <QrScannerModal open={derived.isScanning} onDetected={actions.handleQrDetected} onError={actions.handleScanCancelled} />
 
-      {derived.isScanProcessing && (
-        <div style={{ textAlign: 'center', padding: 28, border: '1px dashed #C8E6C9', borderRadius: 14, marginBottom: 28 }}>
-          <div style={{ width: 40, height: 40, borderRadius: '50%', border: '4px solid #C8E6C9', borderTopColor: '#2E7D32', margin: '0 auto 14px', animation: 'dc-spin 0.8s linear infinite' }}></div>
-          <div style={{ color: '#6d7a72', fontSize: 14 }}>กำลังตรวจสอบ QR Code...</div>
-        </div>
-      )}
-      {derived.isScanError && (
-        <div style={{ textAlign: 'center', padding: 24, background: '#fdecec', borderRadius: 14, marginBottom: 28 }}>
-          <div style={{ color: '#a33232', fontSize: 14, fontWeight: 700, marginBottom: 12 }}>{state.scanError || 'สแกนไม่สำเร็จ'}</div>
-          <button onClick={actions.resetScan} style={{ background: '#fff', border: '1px solid #a33232', color: '#a33232', padding: '8px 18px', borderRadius: 16, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>ปิด</button>
-        </div>
-      )}
-      {derived.isScanSuccess && (
-        <div style={{ textAlign: 'center', padding: 24, background: '#E8F5E9', borderRadius: 14, marginBottom: 28, animation: 'dc-pop 0.4s ease both' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontWeight: 800, fontSize: 16, color: '#1B5E20', marginBottom: 4 }}>
-            <span style={{ width: 20, height: 20, borderRadius: '50%', background: '#2E7D32', position: 'relative', flexShrink: 0 }}>
-              <span style={{ position: 'absolute', left: 5, top: 9, width: 6, height: 2.5, background: '#fff', transform: 'rotate(45deg)' }}></span>
-              <span style={{ position: 'absolute', left: 8, top: 6, width: 10, height: 2.5, background: '#fff', transform: 'rotate(-45deg)' }}></span>
-            </span>
-            สแกนสำเร็จที่ {state.scanResultPlace}!
-          </div>
-          <div style={{ color: '#2E7D32', fontSize: 14, marginBottom: 12 }}>คุณได้รับ +{state.scanResultPoints} พอยท์</div>
-          <button onClick={actions.resetScan} style={{ background: '#fff', border: '1px solid #2E7D32', color: '#2E7D32', padding: '8px 18px', borderRadius: 16, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>ปิด</button>
-        </div>
-      )}
+      <ScanResultModal
+        processing={derived.isScanProcessing}
+        success={derived.isScanSuccess}
+        error={derived.isScanError}
+        place={state.scanResultPlace}
+        points={state.scanResultPoints}
+        message={state.scanError}
+        onClose={actions.resetScan}
+      />
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
         <PinIcon />
         <h2 style={{ fontSize: 17, fontWeight: 800, color: '#1B5E20', margin: 0 }}>สถานที่ที่มี QR รับพอยท์</h2>
       </div>
-      <p style={{ fontSize: 13.5, color: '#6d7a72', margin: '0 0 14px' }}>ไปที่สถานที่เหล่านี้แล้วสแกน QR เพื่อรับพอยท์</p>
+      <p style={{ fontSize: 13.5, color: '#5f6a63', margin: '0 0 14px' }}>ไปที่สถานที่เหล่านี้แล้วสแกน QR เพื่อรับพอยท์</p>
       {qrPlacesLoading && <LoadingSpinner size={32} label="กำลังโหลดสถานที่..." />}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(200px,1fr))', gap: 16, marginBottom: 28 }}>
         {!qrPlacesLoading && qrPlaces.map((p) => (
@@ -225,7 +210,7 @@ export default function PointsPage() {
         <GiftIcon />
         <h2 style={{ fontSize: 17, fontWeight: 800, color: '#1B5E20', margin: 0 }}>ของรางวัล</h2>
       </div>
-      <p style={{ fontSize: 13.5, color: '#6d7a72', margin: '0 0 14px' }}>แลกของรางวัลได้ที่เคาน์เตอร์ แจ้งชื่อหรือเบอร์โทรที่ใช้สมัครกับเจ้าหน้าที่ แล้วเจ้าหน้าที่จะหักพอยท์และมอบของให้</p>
+      <p style={{ fontSize: 13.5, color: '#5f6a63', margin: '0 0 14px' }}>แลกของรางวัลได้ที่เคาน์เตอร์ แจ้งชื่อหรือเบอร์โทรที่ใช้สมัครกับเจ้าหน้าที่ แล้วเจ้าหน้าที่จะหักพอยท์และมอบของให้</p>
       {state.dataLoading && <LoadingSpinner size={32} label="กำลังโหลดของรางวัล..." />}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(200px,1fr))', gap: 16, marginBottom: 28 }}>
         {!state.dataLoading && derived.rewardsView.map((r) => (
@@ -238,7 +223,7 @@ export default function PointsPage() {
             <div style={{
               textAlign: 'center', padding: '7px 10px', borderRadius: 16, fontSize: 12.5, fontWeight: 700,
               background: r.status === 'ready' ? '#E8F5E9' : r.status === 'soldOut' ? '#fdecec' : '#F3F1E7',
-              color: r.status === 'ready' ? '#2E7D32' : r.status === 'soldOut' ? '#a33232' : '#6d7a72',
+              color: r.status === 'ready' ? '#2E7D32' : r.status === 'soldOut' ? '#a33232' : '#5f6a63',
             }}>
               {r.status === 'ready' ? 'แลกได้ที่เคาน์เตอร์' : r.status === 'soldOut' ? 'ของหมด' : `อีก ${r.shortBy} พอยท์`}
             </div>

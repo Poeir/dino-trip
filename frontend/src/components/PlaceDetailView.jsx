@@ -1,3 +1,4 @@
+import { StarGlyph } from './Icons.jsx'
 import { useState } from 'react'
 import { useApp } from '../context/AppContext.jsx'
 import ImageSlot from './ImageSlot.jsx'
@@ -9,23 +10,18 @@ import { ChecklistIcon, StarIcon, PinIcon, ClockIcon, PhoneIcon, RouteIcon, Penc
 export default function PlaceDetailView({ place: p, imageHeight = 460 }) {
   const { state, actions } = useApp()
   const [reportOpen, setReportOpen] = useState(false)
-  const [reviewFormOpen, setReviewFormOpen] = useState(false)
-  const [newStars, setNewStars] = useState(0)
-  const [newText, setNewText] = useState('')
-  const [sessionReviews, setSessionReviews] = useState([])
   if (!p || !p.id) return null
-  const reviewsToShow = [...sessionReviews, ...(p.reviewsList || [])]
+  const reviewsToShow = p.reviewsList || []
   const mapQuery = p.location ? `${p.location.lat},${p.location.lng}` : p.address
   const mapEmbedSrc = mapQuery ? `https://maps.google.com/maps?q=${encodeURIComponent(mapQuery)}&z=15&output=embed` : null
 
-  const submitReview = () => {
-    if (!newStars || !newText.trim()) return
-    setSessionReviews((prev) => [{ stars: newStars, name: 'คุณ', text: newText.trim() }, ...prev])
-    setNewStars(0)
-    setNewText('')
-    setReviewFormOpen(false)
-    actions.showToast('ขอบคุณสำหรับรีวิว')
-  }
+  // Reviews live on Google, not on our site: "write" opens Google's review form
+  // for this place and "more" opens its Maps listing. Without a Google place id
+  // we can only search Maps by name + address.
+  const mapsListingUrl = p.googlePlaceId
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.name)}&query_place_id=${encodeURIComponent(p.googlePlaceId)}`
+    : p.mapsUrl || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([p.name, p.address].filter(Boolean).join(' '))}`
+  const writeReviewUrl = p.googlePlaceId ? `https://search.google.com/local/writereview?placeid=${encodeURIComponent(p.googlePlaceId)}` : mapsListingUrl
 
   // Reports need an account (spam is attributable); send visitors to log in.
   const handleReport = () => {
@@ -61,11 +57,11 @@ export default function PlaceDetailView({ place: p, imageHeight = 460 }) {
             {p.businessStatus === 'CLOSED_PERMANENTLY' && <span style={{ fontSize: 12, fontWeight: 700, color: '#B91C1C', background: '#FEE2E2', padding: '4px 11px', borderRadius: 10 }}>ปิดถาวรแล้ว</span>}
           </div>
           <h1 style={{ fontSize: 26, fontWeight: 700, color: '#1B5E20', margin: '0 0 8px', lineHeight: 1.25 }}>{p.name}</h1>
-          <div style={{ fontWeight: 300, fontSize: 14, color: '#6d7a72', marginBottom: 16 }}>★ {p.rating} ({p.reviews} รีวิว) · {p.price}</div>
+          <div style={{ fontWeight: 300, fontSize: 14, color: '#5f6a63', marginBottom: 16 }}><StarGlyph size={14} /> {p.rating} ({p.reviews} รีวิว) · {p.price}</div>
           {(p.tags || []).length > 0 && (
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 }}>
               {p.tags.map((tag, i) => (
-                <span key={i} style={{ fontSize: 11.5, fontWeight: 600, color: '#6d7a72', background: '#F4F2E8', border: '1px solid #E7E3D2', padding: '3px 10px', borderRadius: 12 }}>#{tag}</span>
+                <span key={i} style={{ fontSize: 11.5, fontWeight: 600, color: '#5f6a63', background: '#F4F2E8', border: '1px solid #E7E3D2', padding: '3px 10px', borderRadius: 12 }}>#{tag}</span>
               ))}
             </div>
           )}
@@ -85,9 +81,9 @@ export default function PlaceDetailView({ place: p, imageHeight = 460 }) {
                 {p.isFavorite ? 'บันทึกแล้ว' : 'บันทึกรายการโปรด'}
               </button>
             )}
-            <button onClick={() => setReviewFormOpen((v) => !v)} style={{ display: 'flex', alignItems: 'center', gap: 7, background: '#fff', color: '#1f2a24', border: '1px solid #DCD8C6', padding: '10px 18px', borderRadius: 20, fontSize: 13.5, fontWeight: 700, cursor: 'pointer' }}><PencilIcon size={16} color="#1f2a24" box={false} />เขียนรีวิว</button>
+            <a href={writeReviewUrl} target="_blank" rel="noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 7, background: '#fff', color: '#1f2a24', border: '1px solid #DCD8C6', padding: '10px 18px', borderRadius: 20, fontSize: 13.5, fontWeight: 700, cursor: 'pointer' }}><PencilIcon size={16} color="#1f2a24" box={false} />เขียนรีวิวบน Google</a>
             <button onClick={handleShare} style={{ display: 'flex', alignItems: 'center', gap: 7, background: '#fff', color: '#1f2a24', border: '1px solid #DCD8C6', padding: '10px 18px', borderRadius: 20, fontSize: 13.5, fontWeight: 700, cursor: 'pointer' }}><ShareArrowIcon size={16} color="#1f2a24" box={false} />แชร์</button>
-            <button onClick={handleReport} style={{ display: 'flex', alignItems: 'center', gap: 7, background: '#fff', color: '#6d7a72', border: '1px solid #DCD8C6', padding: '10px 18px', borderRadius: 20, fontSize: 13.5, fontWeight: 700, cursor: 'pointer' }}>⚑ แจ้งข้อมูลไม่ถูกต้อง</button>
+            <button onClick={handleReport} style={{ display: 'flex', alignItems: 'center', gap: 7, background: '#fff', color: '#5f6a63', border: '1px solid #DCD8C6', padding: '10px 18px', borderRadius: 20, fontSize: 13.5, fontWeight: 700, cursor: 'pointer' }}>⚑ แจ้งข้อมูลไม่ถูกต้อง</button>
           </div>
         </div>
         <div>
@@ -107,7 +103,7 @@ export default function PlaceDetailView({ place: p, imageHeight = 460 }) {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '14px 20px', marginBottom: 28 }}>
             {groupAmenities(p.amenities || []).map(({ group, items }) => (
               <div key={group}>
-                <div style={{ fontSize: 11.5, fontWeight: 700, color: '#6d7a72', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 7 }}>{group}</div>
+                <div style={{ fontSize: 11.5, fontWeight: 700, color: '#5f6a63', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 7 }}>{group}</div>
                 <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
                   {items.map((am, i) => (
                     <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12.5, background: '#F1F8E9', border: '1px solid #C8E6C9', padding: '5px 10px', borderRadius: 12, color: '#2E7D32' }}>
@@ -123,39 +119,19 @@ export default function PlaceDetailView({ place: p, imageHeight = 460 }) {
             <StarIcon />
             <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1B5E20', margin: 0 }}>รีวิวจากผู้เยี่ยมชม</h3>
           </div>
-          {reviewFormOpen && (
-            <div style={{ border: '1px solid #E7E3D2', borderRadius: 12, padding: 16, marginBottom: 14 }}>
-              <div style={{ display: 'flex', gap: 4, marginBottom: 10 }}>
-                {[1, 2, 3, 4, 5].map((n) => (
-                  <span key={n} onClick={() => setNewStars(n)} style={{ cursor: 'pointer', fontSize: 22, color: n <= newStars ? '#FBC02D' : '#DCD8C6' }}>★</span>
-                ))}
-              </div>
-              <textarea
-                value={newText}
-                onChange={(e) => setNewText(e.target.value)}
-                placeholder="เล่าประสบการณ์ของคุณ..."
-                style={{ width: '100%', minHeight: 70, border: '1px solid #DCD8C6', borderRadius: 8, padding: 9, fontSize: 13.5, marginBottom: 10 }}
-              />
-              <button
-                onClick={submitReview}
-                disabled={!newStars || !newText.trim()}
-                style={{ background: (!newStars || !newText.trim()) ? '#eee' : 'linear-gradient(135deg,#66BB6A,#388E3C)', color: (!newStars || !newText.trim()) ? '#999' : '#fff', border: 'none', padding: '9px 18px', borderRadius: 16, fontSize: 13.5, fontWeight: 700, cursor: (!newStars || !newText.trim()) ? 'not-allowed' : 'pointer' }}
-              >ส่งรีวิว</button>
-            </div>
-          )}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 14 }}>
             {reviewsToShow.length === 0 && (
-              <div style={{ border: '1px solid #E7E3D2', borderRadius: 12, padding: 16, fontWeight: 300, fontSize: 13.5, color: '#6d7a72', textAlign: 'center' }}>ยังไม่มีรีวิวสำหรับสถานที่นี้</div>
+              <div style={{ border: '1px solid #E7E3D2', borderRadius: 12, padding: 16, fontWeight: 300, fontSize: 13.5, color: '#5f6a63', textAlign: 'center' }}>ยังไม่มีรีวิวสำหรับสถานที่นี้</div>
             )}
             {reviewsToShow.map((r, i) => (
               <div key={i} style={{ border: '1px solid #E7E3D2', borderRadius: 12, padding: 16 }}>
-                <div style={{ fontWeight: 400, fontSize: 14, color: '#1f2a24' }}>{'★'.repeat(r.stars)}{'☆'.repeat(5 - r.stars)} {r.name}</div>
-                <div style={{ fontWeight: 300, fontSize: 13.5, color: '#6d7a72', marginTop: 6 }}>{r.text}</div>
+                <div style={{ fontWeight: 400, fontSize: 14, color: '#1f2a24' }}>{Array.from({ length: 5 }, (_, i) => <StarGlyph key={i} size={14} filled={i < r.stars} />)} {r.name}</div>
+                <div style={{ fontWeight: 300, fontSize: 13.5, color: '#5f6a63', marginTop: 6 }}>{r.text}</div>
               </div>
             ))}
           </div>
           {reviewsToShow.length > 0 && (
-            <button style={{ width: '100%', background: '#fff', color: '#2E7D32', border: '1px solid #C8E6C9', padding: 11, borderRadius: 14, fontSize: 13.5, fontWeight: 700, cursor: 'pointer', marginBottom: 20 }}>ดูรีวิวเพิ่มเติม</button>
+            <a href={mapsListingUrl} target="_blank" rel="noreferrer" style={{ display: 'block', boxSizing: 'border-box', textAlign: 'center', width: '100%', background: '#fff', color: '#2E7D32', border: '1px solid #C8E6C9', padding: 11, borderRadius: 14, fontSize: 13.5, fontWeight: 700, cursor: 'pointer', marginBottom: 20 }}>ดูรีวิวเพิ่มเติมบน Google Maps</a>
           )}
           <div data-role="place-detail-info-grid" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div style={{ border: '1px solid #E7E3D2', borderRadius: 14, padding: 18 }}>

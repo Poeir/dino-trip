@@ -1,29 +1,79 @@
-# chatbot-service on a single VPS: Caddy terminates HTTPS and proxies to the
-# FastAPI container. Run from this directory:  docker compose up -d --build
+# Whole site on a single VPS behind one hostname (so the session cookie is
+# first-party and no domain name has to be bought):
+#   caddy   -> serves the built React app, proxies /api/*, /chat/*, /trip/*
+#   backend -> Express API
+#   chatbot -> FastAPI (not published; only reachable inside this network)
+# Run from this directory:  docker compose up -d --build
+
+# Docker's default json-file logs grow without limit and eventually fill the
+# 40GB disk; keep the last 3 x 10MB per container.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   chatbot:
     build: ../chatbot-service
     env_file: ./chatbot.env
     environment:
       PORT: "8000"
+      APP_VERSION: ${APP_VERSION:-dev}
+      GIT_SHA: ${GIT_SHA:-}
     volumes:
       # Keeps the downloaded embedding model across rebuilds/restarts.
       - hf_cache:/app/.cache/huggingface
+    logging: *default-logging
+    security_opt:
+      - no-new-privileges:true
     restart: unless-stopped
-    # Not published to the host: only Caddy (same compose network) can reach it.
+
+  backend:
+    build: ../backend
+    env_file: ./backend.env
+    environment:
+      NODE_ENV: production
+      PORT: "4000"
+      APP_VERSION: ${APP_VERSION:-dev}
+      GIT_SHA: ${GIT_SHA:-}
+      # Set here rather than in backend.env so they can't drift from the
+      # setup this file describes. FRONTEND_ORIGIN must equal the browser's
+      # Origin exactly (CORS + links in emails).
+      FRONTEND_ORIGIN: https://${CHAT_DOMAIN:?set CHAT_DOMAIN in deploy/.env}
+      CHATBOT_SERVICE_URL: http://chatbot:8000
+    logging: *default-logging
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
 
   caddy:
-    image: caddy:2
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.web
+      args:
+        VITE_GOOGLE_MAPS_API_KEY: ${VITE_GOOGLE_MAPS_API_KEY:-}
+        VITE_SITE_URL: https://${CHAT_DOMAIN:?set CHAT_DOMAIN in deploy/.env}
+        APP_VERSION: ${APP_VERSION:-}
+        GIT_SHA: ${GIT_SHA:-}
     ports:
       - "80:80"
       - "443:443"
     environment:
       CHAT_DOMAIN: ${CHAT_DOMAIN:?set CHAT_DOMAIN in deploy/.env}
+      OLD_DOMAIN: ${OLD_DOMAIN:-localhost}
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # A directory, not the single file: git replaces files by renaming a new
+      # one into place, and a container that bind-mounts one file keeps seeing the
+      # old (deleted) inode, so Caddyfile edits would never reach it.
+      - ./caddy:/etc/caddy:ro
       - caddy_data:/data
     depends_on:
+      - backend
       - chatbot
+    logging: *default-logging
+    security_opt:
+      - no-new-privileges:true
     restart: unless-stopped
 
 volumes:
