@@ -12,8 +12,30 @@ API_KEY = os.environ.get("KKU_API_KEY")
 # gateway's other providers) is a .env edit, not a code change. Defaults match
 # what this app has always shipped with, so an unset .env behaves identically
 # to before.
-BASE_URL = os.environ.get("LLM_BASE_URL", "https://gen.ai.kku.ac.th/api/v1")
-MODEL_NAME = os.environ.get("MODEL_NAME", "gemini-2.5-flash")
+#
+# LLM_PROVIDER picks the backend: "kku" (default, API_KEY above) or "vertex"
+# (Vertex AI's OpenAI-compatible endpoint, auth via Application Default
+# Credentials -- see src/core/llm_client.py). Vertex needs VERTEX_PROJECT, and
+# model names there carry a "google/" prefix.
+LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "kku").strip().lower()
+if LLM_PROVIDER not in ("kku", "vertex"):
+    raise ValueError(f"LLM_PROVIDER must be 'kku' or 'vertex', got {LLM_PROVIDER!r}")
+VERTEX_PROJECT = os.environ.get("VERTEX_PROJECT")
+VERTEX_LOCATION = os.environ.get("VERTEX_LOCATION", "global")
+
+if LLM_PROVIDER == "vertex":
+    if not VERTEX_PROJECT:
+        raise ValueError("LLM_PROVIDER=vertex requires VERTEX_PROJECT. Check chatbot-service/.env.")
+    _host = "aiplatform.googleapis.com" if VERTEX_LOCATION == "global" else f"{VERTEX_LOCATION}-aiplatform.googleapis.com"
+    _default_base_url = f"https://{_host}/v1/projects/{VERTEX_PROJECT}/locations/{VERTEX_LOCATION}/endpoints/openapi"
+    _default_model, _default_trip_model, _default_desc_model = (
+        "google/gemini-2.5-flash", "google/gemini-2.5-pro", "google/gemini-2.5-flash")
+else:
+    _default_base_url = "https://gen.ai.kku.ac.th/api/v1"
+    _default_model, _default_trip_model, _default_desc_model = "gemini-2.5-flash", "gemini-2.5-pro", "gemini-3.7-flash"
+
+BASE_URL = os.environ.get("LLM_BASE_URL", _default_base_url)
+MODEL_NAME = os.environ.get("MODEL_NAME", _default_model)
 
 # Trip planner (generator + judge) only -- kept separate from MODEL_NAME so
 # trying a different model there doesn't also change chat/events extraction.
@@ -24,14 +46,14 @@ MODEL_NAME = os.environ.get("MODEL_NAME", "gemini-2.5-flash")
 # model. NOTE: judge.py's PASS_SCORE_THRESHOLD was calibrated against
 # gemini-2.5-flash's scoring behavior -- re-run the live test battery before
 # trusting that threshold after changing this.
-TRIP_PLANNER_MODEL_NAME = os.environ.get("TRIP_PLANNER_MODEL_NAME", "gemini-2.5-pro")
+TRIP_PLANNER_MODEL_NAME = os.environ.get("TRIP_PLANNER_MODEL_NAME", _default_trip_model)
 
 # scripts/generate_descriptions.py only -- same "kept separate" reasoning as
 # TRIP_PLANNER_MODEL_NAME above, plus it's genuinely useful here: this script
 # burns through a model's daily quota on the KKU gateway fast (~600+ calls in
 # one run), so being able to point it at a different provider (e.g. gpt-5.4)
 # without touching chat/events/trip-planner is the point, not just hygiene.
-DESCRIPTION_MODEL_NAME = os.environ.get("DESCRIPTION_MODEL_NAME", "gemini-3.7-flash")
+DESCRIPTION_MODEL_NAME = os.environ.get("DESCRIPTION_MODEL_NAME", _default_desc_model)
 
 # Not validated here (unlike SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY below) --
 # scripts/embed_content.py imports this module too and never touches the LLM,

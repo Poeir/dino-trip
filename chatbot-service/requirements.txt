@@ -8,3 +8,5 @@ openai
 requests
 beautifulsoup4
 pytest
+
+google-auth

@@ -3,9 +3,9 @@ import logging
 import time
 from typing import List, Optional
 
-from openai import OpenAI
 
-from src.core.config import API_KEY, BASE_URL, TRIP_PLANNER_MODEL_NAME
+from src.core.llm_client import make_llm_client
+from src.core.config import TRIP_PLANNER_MODEL_NAME
 from src.core.usage import UsageTracker
 from .json_utils import clean_json_string
 from .models import DailyItinerary, JudgeVerdict, TripInput
@@ -31,7 +31,7 @@ PASS_SCORE_THRESHOLD = 0.45
 
 class TripItineraryJudge:
     def __init__(self):
-        self.client = OpenAI(api_key=API_KEY, base_url=BASE_URL)
+        self.client = make_llm_client()
         self.default_model = TRIP_PLANNER_MODEL_NAME
         # Shared with LLMTripPlanner, which assigns its own tracker here so
         # generate + judge calls land in one per-trip total.

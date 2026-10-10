@@ -16,9 +16,8 @@ import json
 import os
 import re
 
-from openai import OpenAI
 
-from src.core.config import API_KEY, BASE_URL
+from src.core.llm_client import make_llm_client
 
 DEFAULT_JUDGE_MODEL = os.environ.get("EVAL_JUDGE_MODEL", "claude-sonnet-5.5")
 
@@ -143,7 +142,7 @@ def _parse(content):
 class EvalJudge:
     def __init__(self, model=None):
         self.model = model or DEFAULT_JUDGE_MODEL
-        self.client = OpenAI(api_key=API_KEY, base_url=BASE_URL)
+        self.client = make_llm_client()
 
     def score(self, user_input, candidates, itinerary):
         prompt = build_prompt(user_input, candidates, itinerary)

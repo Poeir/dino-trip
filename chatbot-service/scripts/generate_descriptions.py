@@ -54,7 +54,8 @@ from bs4 import BeautifulSoup
 from openai import OpenAI
 from urllib.parse import urlparse
 
-from src.core.config import API_KEY, BASE_URL, DESCRIPTION_MODEL_NAME, SERPER_API_KEY
+from src.core.llm_client import make_llm_client
+from src.core.config import DESCRIPTION_MODEL_NAME, SERPER_API_KEY
 from src.core.db import supabase
 from src.services.trip_planner.json_utils import clean_json_string
 
@@ -318,7 +319,7 @@ def main():
         print("Missing SERPER_API_KEY. Copy chatbot-service/.env.example to .env and fill it in.")
         sys.exit(1)
 
-    client = OpenAI(api_key=API_KEY, base_url=BASE_URL)
+    client = make_llm_client()
 
     places = (
         supabase.table("places")

@@ -4,9 +4,9 @@ import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Set, Tuple
 
-from openai import OpenAI
 
-from src.core.config import API_KEY, BASE_URL, TRIP_PLANNER_MODEL_NAME
+from src.core.llm_client import make_llm_client
+from src.core.config import TRIP_PLANNER_MODEL_NAME
 from . import route_scheduler
 from .json_utils import clean_json_string
 from src.core.usage import UsageTracker
@@ -55,7 +55,7 @@ class LLMTripPlanner:
         self.must_go_ids = must_go_ids or set()
         self.location_map = {loc.id: loc for loc in candidates}
         self.default_model = TRIP_PLANNER_MODEL_NAME
-        self.client = OpenAI(api_key=API_KEY, base_url=BASE_URL)
+        self.client = make_llm_client()
         self.judge = TripItineraryJudge()
         # One tracker for the whole trip (every generate + judge call, retries
         # included); the route attaches metadata and calls finish().

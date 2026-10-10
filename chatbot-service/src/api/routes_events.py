@@ -3,16 +3,16 @@ import logging
 from datetime import date
 
 from fastapi import APIRouter, HTTPException
-from openai import OpenAI
 from pydantic import BaseModel
 
-from src.core.config import API_KEY, BASE_URL, MODEL_NAME
+from src.core.llm_client import make_llm_client
+from src.core.config import MODEL_NAME
 from src.services.trip_planner.json_utils import clean_json_string
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/events", tags=["Events"])
-client = OpenAI(api_key=API_KEY, base_url=BASE_URL)
+client = make_llm_client()
 
 # Matches the admin event form fields 1:1 (frontend/src/admin/EventsTab.jsx) --
 # the LLM's raw JSON is never trusted as-is, only these keys are ever read

@@ -2,8 +2,9 @@ import datetime
 import itertools
 import logging
 import time
-from openai import BadRequestError, OpenAI
-from src.core.config import API_KEY, BASE_URL, MODEL_NAME
+from openai import BadRequestError
+from src.core.llm_client import make_llm_client
+from src.core.config import MODEL_NAME
 from src.core.usage import UsageTracker
 from src.services.rag.retriever import PlaceRetriever
 
@@ -109,7 +110,7 @@ def _tag_sources(tag: str) -> set[str]:
 class RAGChatbotService:
     def __init__(self):
         self.retriever = PlaceRetriever()
-        self.client = OpenAI(api_key=API_KEY, base_url=BASE_URL, timeout=LLM_TIMEOUT_S, max_retries=LLM_MAX_RETRIES)
+        self.client = make_llm_client(timeout=LLM_TIMEOUT_S, max_retries=LLM_MAX_RETRIES)
         self.model_name = MODEL_NAME
 
     def _rewrite_query(self, user_message: str, history: list[dict], usage: UsageTracker | None = None) -> str:
