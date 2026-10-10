@@ -9,6 +9,7 @@ from openai import OpenAI
 from src.core.config import API_KEY, BASE_URL, TRIP_PLANNER_MODEL_NAME
 from . import route_scheduler
 from .json_utils import clean_json_string
+from src.core.usage import UsageTracker
 from .judge import TripItineraryJudge
 from .models import DailyItinerary, JudgeVerdict, Place, TripInput
 
@@ -56,6 +57,10 @@ class LLMTripPlanner:
         self.default_model = TRIP_PLANNER_MODEL_NAME
         self.client = OpenAI(api_key=API_KEY, base_url=BASE_URL)
         self.judge = TripItineraryJudge()
+        # One tracker for the whole trip (every generate + judge call, retries
+        # included); the route attaches metadata and calls finish().
+        self.usage = UsageTracker("trip")
+        self.judge.usage = self.usage
         # Populated by _build_itinerary_from_llm_days on every call (most
         # recently by whichever judge round's result solve_route_with_llm
         # ultimately returned) -- must-go places that never made it into
@@ -160,6 +165,9 @@ class LLMTripPlanner:
             temperature=0.2,
             response_format={"type": "json_object"},
         )
+        # Recorded before parsing so a malformed-JSON attempt (retried) is
+        # still counted -- it was billed.
+        self.usage.record_response("generate", self.default_model, response)
         content = response.choices[0].message.content
         return json.loads(clean_json_string(content))
 
