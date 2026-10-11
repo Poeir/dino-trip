@@ -1,6 +1,7 @@
 import { CalendarDays, MapPin, Send, X } from 'lucide-react'
 import { StarGlyph } from './Icons.jsx'
 import { Fragment, useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useApp } from '../context/AppContext.jsx'
 import AiNotice from './AiNotice.jsx'
 
@@ -237,6 +238,11 @@ export default function ChatWidget() {
               </div>
             )}
           </div>
+          {derived.chatMessagesView.some((m) => m.from !== 'bot') && (
+            <Link to="/survey" onClick={actions.toggleChat} style={{ display: 'block', padding: '7px 14px', textAlign: 'center', fontSize: 12, fontWeight: 700, color: '#1B5E20', background: '#E8F5E9', borderTop: '1px solid #C8E6C9', textDecoration: 'none' }}>
+              ใช้งานแล้วเป็นอย่างไร? ช่วยทำแบบประเมินความพึงพอใจ (3 นาที)
+            </Link>
+          )}
           <div style={{ display: 'flex', gap: 8, padding: '12px 14px', borderTop: '1px solid #E7E3D2', background: '#fff' }}>
             <input
               value={state.chatInput}

@@ -22,6 +22,7 @@ import { adminPlaceSyncRouter } from './routes/adminPlaceSync.routes.js'
 import { adminPlaceImportRouter } from './routes/adminPlaceImport.routes.js'
 import { eventReportsRouter, adminEventReportsRouter } from './routes/eventReports.routes.js'
 import { eventRequestsRouter, adminEventRequestsRouter } from './routes/eventRequests.routes.js'
+import { surveyRouter, adminSurveyRouter } from './routes/survey.routes.js'
 import { notFoundHandler, errorHandler } from './middleware/errorHandler.js'
 import { db } from './lib/db.js'
 import { rateLimit } from './lib/rateLimit.js'
@@ -73,6 +74,7 @@ app.use('/api/places', placesRouter)
 app.use('/api/events', eventReportsRouter)
 app.use('/api/events', eventsRouter)
 app.use('/api/event-requests', eventRequestsRouter)
+app.use('/api/survey', surveyRouter)
 app.use('/api/knowledge-base', knowledgeBaseRouter)
 app.use('/api/qrs', qrsRouter)
 app.use('/api/rewards', rewardsRouter)
@@ -87,6 +89,7 @@ app.use('/api/admin/trips', adminTripsRouter)
 app.use('/api/admin/place-reports', adminPlaceReportsRouter)
 app.use('/api/admin/event-reports', adminEventReportsRouter)
 app.use('/api/admin/event-requests', adminEventRequestsRouter)
+app.use('/api/admin/survey', adminSurveyRouter)
 app.use('/api/admin/place-sync', adminPlaceSyncRouter)
 app.use('/api/admin/place-import', adminPlaceImportRouter)
 app.use('/api/reindex', reindexRouter)

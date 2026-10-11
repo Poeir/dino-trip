@@ -33,6 +33,7 @@ const ForgotPasswordPage = lazyPage(() => import('./pages/ForgotPasswordPage.jsx
 const AdminLoginPage = lazyPage(() => import('./pages/AdminLoginPage.jsx'))
 const ConfirmEmailPage = lazyPage(() => import('./pages/ConfirmEmailPage.jsx'))
 const ResetPasswordPage = lazyPage(() => import('./pages/ResetPasswordPage.jsx'))
+const SurveyPage = lazyPage(() => import('./pages/SurveyPage.jsx'))
 const AdminDashboardPage = lazyPage(() => import('./pages/AdminDashboardPage.jsx'))
 
 function PublicLayout() {
@@ -100,6 +101,7 @@ function Shell() {
           <Route path="/trip/:id" element={<TripResultPage />} />
           <Route path="/points" element={<PointsPage />} />
           <Route path="/profile" element={<RequireAuth><ProfilePage /></RequireAuth>} />
+          <Route path="/survey" element={<SurveyPage />} />
           <Route path="/scan/:qrId" element={<ScanLandingPage />} />
           <Route path="/login" element={<RedirectIfAuthed><LoginPage /></RedirectIfAuthed>} />
           <Route path="/signup" element={<RedirectIfAuthed><SignupPage /></RedirectIfAuthed>} />

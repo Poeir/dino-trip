@@ -265,6 +265,19 @@ export const fetchAdminEventRequestCount = () => apiGet('/api/admin/event-reques
 export const approveEventRequest = (id) => apiPost(`/api/admin/event-requests/${id}/approve`, {})
 export const rejectEventRequest = (id, reason) => apiPost(`/api/admin/event-requests/${id}/reject`, { reason })
 
+// Satisfaction survey (backend/src/routes/survey.routes.js). Anonymous: no
+// login needed to answer. `payload` is { gender, age, occupation, occupationOther,
+// answers: { 1: 1-5, ..., 15: 1-5 }, strengths?, improvements?, website? }
+// (`website` is the honeypot field and must stay empty).
+export const fetchSurveyQuestions = () => apiGet('/api/survey/questions')
+export const submitSurvey = (payload) => apiPost('/api/survey', payload)
+// Admin: per-question / per-dimension mean + S.D., demographics, comments.
+export const fetchAdminSurveySummary = () => apiGet('/api/admin/survey/summary')
+export const fetchAdminSurveyResponses = (params) => apiGet('/api/admin/survey/responses', params)
+export const deleteAdminSurveyResponse = (id) => apiDelete(`/api/admin/survey/${id}`)
+// A plain link, not a fetch: the browser downloads the CSV with the session cookie.
+export const adminSurveyExportUrl = () => `${BASE_URL}/api/admin/survey/export`
+
 // Admin: reports grouped per place. Params: status (pending|resolved|rejected|
 // superseded), page, limit.
 export const fetchAdminPlaceReports = (params) => apiGet('/api/admin/place-reports', params)

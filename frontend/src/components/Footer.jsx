@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { useApp } from '../context/AppContext.jsx'
 
 const iconWrapStyle = { width: 30, height: 30, borderRadius: '50%', background: 'rgba(27,94,32,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }
@@ -53,6 +54,7 @@ export default function Footer() {
           <FacebookIcon />
           <InstagramIcon />
           <LineIcon />
+          <Link to="/survey" style={{ fontSize: 12, color: '#1B5E20', fontWeight: 700, marginLeft: 8 }}>ประเมินความพึงพอใจ</Link>
           <a href="#" onClick={(e) => { e.preventDefault(); actions.goAdminLogin() }} style={{ fontSize: 12, color: '#5f6a63', marginLeft: 8 }}>สำหรับผู้ดูแลระบบ</a>
         </div>
       </div>
