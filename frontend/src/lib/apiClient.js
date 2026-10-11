@@ -59,6 +59,9 @@ export const fetchPlaceNames = () => apiGet('/api/places/meta/names')
 export const createPlace = (payload) => apiPost('/api/places', payload)
 export const updatePlace = (id, payload) => apiPut(`/api/places/${id}`, payload)
 export const deletePlace = (id) => apiDelete(`/api/places/${id}`)
+// Admin-only: LLM-written description from reviews + search snippets. Returns
+// { description, source } and saves nothing -- see backend places.routes.js.
+export const generatePlaceDescription = (payload) => apiPost('/api/places/describe', payload)
 
 export const fetchEvents = (params) => apiGet('/api/events', params)
 export const createEvent = (payload) => apiPost('/api/events', payload)

@@ -12,6 +12,7 @@ directly from the browser.
 - `POST /trip/llm` -- trip planner (LLM picks places, Python computes times/costs)
 - `POST /events/extract` -- event extraction
 - `POST /admin/reindex`, `GET /admin/reindex/status`, `GET /admin/reindex/pending`
+- `POST /admin/places/describe` — generates one place's description from reviews + serper.dev search snippets (needs `SERPER_API_KEY` for the search part; reviews-only without it). Backend proxies it from `POST /api/places/describe` (admin-only)
 - `GET /health`, `GET /version` (version + git SHA; not exposed publicly by Caddy)
 
 ## Run locally

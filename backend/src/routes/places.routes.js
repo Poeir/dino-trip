@@ -9,6 +9,8 @@ import { asyncHandler } from '../middleware/asyncHandler.js'
 import { httpError } from '../middleware/errorHandler.js'
 import { createImageUploadMiddleware } from '../lib/imageUpload.js'
 import { uploadImageBuffer, deleteImage } from '../lib/cloudinary.js'
+import { forwardToChatbotService } from '../lib/chatbotProxy.js'
+import { rateLimit } from '../lib/rateLimit.js'
 
 // Excludes `embedding` (384-float pgvector column, RAG-only) and
 // `hours_periods`/`price_level` -- the frontend doesn't read them.
@@ -112,6 +114,36 @@ placesRouter.get('/meta/names', asyncHandler(async (req, res) => {
   const rows = await db('places').select('id', 'name').orderBy('name')
   setCached(PLACES_NAMES_CACHE_KEY, rows)
   res.json(rows)
+}))
+
+// Each call spends a serper.dev search plus an LLM request, so cap it per admin.
+const describeLimit = rateLimit({ windowMs: 60 * 60 * 1000, max: 60, message: 'สร้างคำอธิบายบ่อยเกินไป กรุณารอสักครู่แล้วลองใหม่' })
+
+const stringList = (v, max) => (Array.isArray(v) ? v.filter((s) => typeof s === 'string').slice(0, max) : [])
+
+// "Generate description with AI" button in the admin place form: reviews +
+// Google Search snippets summarized by the LLM (chatbot-service
+// src/services/place_description.py). Returns { description, source } for the
+// admin to review -- nothing is saved here. Proxied (not browser -> chatbot-
+// service) because that service has no auth; requireAdmin is the real gate.
+// Takes the form's current values so unsaved edits are used; `placeId` only
+// lets chatbot-service add the stored Google reviews/rating.
+placesRouter.post('/describe', requireAdmin, describeLimit, asyncHandler(async (req, res) => {
+  const { placeId, name, category, district, tags, amenities } = req.body || {}
+  if (typeof name !== 'string' || !name.trim()) throw httpError(400, 'กรุณากรอกชื่อสถานที่ก่อน')
+  if (typeof category !== 'string' || !category.trim()) throw httpError(400, 'กรุณาเลือกหมวดหมู่ก่อน')
+  res.json(await forwardToChatbotService('/admin/places/describe', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      placeId: placeId != null ? String(placeId) : null,
+      name: name.trim().slice(0, 200),
+      category: category.trim().slice(0, 100),
+      district: typeof district === 'string' ? district.slice(0, 100) : null,
+      tags: stringList(tags, 30),
+      amenities: stringList(amenities, 50),
+    }),
+  }))
 }))
 
 const photoUpload = createImageUploadMiddleware('photoFile')
