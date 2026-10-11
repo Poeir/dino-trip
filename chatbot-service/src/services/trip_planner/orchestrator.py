@@ -1,5 +1,5 @@
 import math
-from datetime import datetime
+from datetime import datetime, timedelta
 from itertools import zip_longest
 from src.core.db import find_place_by_name
 from src.services.rag.retriever import PlaceRetriever
@@ -163,37 +163,92 @@ class TripBuilderService:
                 if len(interest_list) >= candidate_pool_target:
                     break
 
-        # Unconditional floor, on top of remaining_slots -- interest-only
-        # retrieval can otherwise hand back a whole trip's worth of
-        # candidates with no "ร้านอาหาร" among them at all (e.g.
-        # interests=["วัฒนธรรม","ศาสนา"]), leaving every day with zero
-        # places to eat at. A day with no meal isn't a reasonable
-        # itinerary regardless of what interests were stated, so a small
-        # reserve of restaurants is kept available for llm_extractor.py to
-        # guarantee at least one per day even when nothing above surfaced
-        # any.
+        # --- Meal reserve -------------------------------------------------
+        # A day with no meal isn't a reasonable itinerary regardless of what
+        # interests were stated, so llm_extractor.py guarantees at least one
+        # restaurant per day from this pool -- which only works if the pool
+        # holds restaurants that can really be visited on this trip:
+        #   1. open during the trip's daily window (route_scheduler.open_for_meal),
+        #   2. enough LUNCH-capable ones for the number of days, when the
+        #      window covers lunch (evening-only restaurants alone leave
+        #      every midday without a meal).
+        # Interest retrieval ranks by relevance, not by either.
+        # (Tried and removed: also reserving restaurants near each outlying
+        # cluster of places. Replaying stored LLM picks, it moved a Phu Wiang
+        # day's meal from an in-town lunch on the way to a 15:13 meal at a
+        # nearby restaurant, because the scheduler weighs distance far above
+        # meal timing -- a net loss, with no measurable gain.)
+        start_min = start_dt.hour * 60 + start_dt.minute
+        end_min = end_dt.hour * 60 + end_dt.minute
+        trip_start = datetime.strptime(user_input.start_date, "%Y-%m-%d").date()
+        trip_dates = [trip_start + timedelta(days=i) for i in range(user_input.trip_duration_days)]
+        needs_lunch = bool(route_scheduler.meal_probe_minutes(start_min, end_min, route_scheduler.MEAL_LUNCH_WINDOW))
+
+        def usable(p):
+            return route_scheduler.open_for_meal(p, trip_dates, start_min, end_min)
+
+        def lunch_capable(p):
+            return route_scheduler.open_for_meal(p, trip_dates, start_min, end_min, route_scheduler.MEAL_LUNCH_WINDOW)
+
+        # Restaurants that can never be visited within the window only waste
+        # a slot and invite the LLM to pick a meal the scheduler must drop.
+        # Must-go restaurants are exempt: the user asked for them by name.
+        interest_list = [p for p in interest_list if p.category != "ร้านอาหาร" or usable(p)]
+        existing_ids = {p.id for p in must_go_list + interest_list}
+
+        def meal_counts():
+            restaurants = [p for p in must_go_list + interest_list if p.category == "ร้านอาหาร" and usable(p)]
+            return len(restaurants), sum(1 for p in restaurants if lunch_capable(p))
+
         meal_reserve_needed = user_input.trip_duration_days * 2
-        existing_restaurant_count = sum(1 for p in must_go_list + interest_list if p.category == "ร้านอาหาร")
-        if existing_restaurant_count < meal_reserve_needed:
-            meal_rows = self.retriever.search_and_expand(
-                query="ร้านอาหารแนะนำ ขอนแก่น", limit=meal_reserve_needed * 3,
-            )
-            for row in meal_rows:
-                if existing_restaurant_count >= meal_reserve_needed:
+        lunch_needed = user_input.trip_duration_days if needs_lunch else 0
+
+        def acceptable_meal(row, require_lunch=False):
+            place_id = row.get("id")
+            if not place_id or place_id in existing_ids:
+                return None
+            place = Place(**row)
+            if place.category != "ร้านอาหาร":
+                return None
+            if place.price_level is not None and place.price_level not in allowed_prices:
+                return None
+            if user_input.area_scope == "เมือง" and not _is_mueang_district(place.district):
+                return None
+            if not usable(place) or (require_lunch and not lunch_capable(place)):
+                return None
+            return place
+
+        def add_meal(place):
+            interest_list.append(place)
+            existing_ids.add(place.id)
+
+        def by_rating(rows):
+            return sorted(rows, key=lambda r: (-(r.get("rating") or 0.0), -(r.get("review_count") or 0)))
+
+        have, have_lunch = meal_counts()
+        if have < meal_reserve_needed or have_lunch < lunch_needed:
+            # Relevance-ranked first (the old behaviour), over a wider net
+            # than before since many top results can be unusable.
+            for row in self.retriever.search_and_expand(
+                query="ร้านอาหารแนะนำ ขอนแก่น", limit=meal_reserve_needed * 10,
+            ):
+                if have >= meal_reserve_needed and have_lunch >= lunch_needed:
                     break
-                place_id = row.get("id")
-                if not place_id or place_id in existing_ids:
-                    continue
-                place = Place(**row)
-                if place.category != "ร้านอาหาร":
-                    continue
-                if place.price_level is not None and place.price_level not in allowed_prices:
-                    continue
-                if user_input.area_scope == "เมือง" and not _is_mueang_district(place.district):
-                    continue
-                interest_list.append(place)
-                existing_ids.add(place_id)
-                existing_restaurant_count += 1
+                place = acceptable_meal(row, require_lunch=have >= meal_reserve_needed)
+                if place:
+                    add_meal(place)
+                    have, have_lunch = have + 1, have_lunch + (1 if lunch_capable(place) else 0)
+
+            # Still short (e.g. the ranked results were all evening-only):
+            # fall back to the full restaurant list, best-rated first.
+            if have < meal_reserve_needed or have_lunch < lunch_needed:
+                for row in by_rating(self.retriever.list_restaurants()):
+                    if have >= meal_reserve_needed and have_lunch >= lunch_needed:
+                        break
+                    place = acceptable_meal(row, require_lunch=have >= meal_reserve_needed)
+                    if place:
+                        add_meal(place)
+                        have, have_lunch = have + 1, have_lunch + (1 if lunch_capable(place) else 0)
 
         return accommodation, must_go_list + interest_list, missing_must_go, {p.id for p in must_go_list}
 

@@ -54,7 +54,8 @@ from bs4 import BeautifulSoup
 from openai import OpenAI
 from urllib.parse import urlparse
 
-from src.core.config import API_KEY, BASE_URL, DESCRIPTION_MODEL_NAME, SERPER_API_KEY
+from src.core.llm_client import make_llm_client
+from src.core.config import DESCRIPTION_MODEL_NAME, SERPER_API_KEY
 from src.core.db import supabase
 from src.services.trip_planner.json_utils import clean_json_string
 
@@ -253,12 +254,10 @@ MAX_LLM_ATTEMPTS = 2  # the KKU gateway occasionally returns an empty message.co
 # tracked per underlying provider, not just per model id.
 MODEL_FALLBACK_CHAIN = [
     DESCRIPTION_MODEL_NAME,
-    "gemini-2.5-flash",
-    "gpt-5.4",
-    "claude-haiku-4.5",
-    "deepseek-v3.2",
-    "gpt-5.1",
-    "gemini-2.5-flash-lite",
+    "gemini-3.7-flash",
+    "gpt-5.6-luna",
+    "deepseek-v4-pro",
+    "gpt-5.6-terra",
     "llama-4-scout",
 ]
 # De-dupe while preserving order (DESCRIPTION_MODEL_NAME may already be one of the defaults).
@@ -320,7 +319,7 @@ def main():
         print("Missing SERPER_API_KEY. Copy chatbot-service/.env.example to .env and fill it in.")
         sys.exit(1)
 
-    client = OpenAI(api_key=API_KEY, base_url=BASE_URL)
+    client = make_llm_client()
 
     places = (
         supabase.table("places")

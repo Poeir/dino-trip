@@ -25,9 +25,12 @@ def generate_trip_llm(user_input: TripInput):
     # No fallback to a deterministic planner on failure -- surface the error
     # so the frontend shows it and lets the user retry, per the plan's
     # trip-planner failure-handling decision.
+    planner.usage.meta.update(days=user_input.trip_duration_days, candidates=len(candidates), pace=user_input.trip_pace)
     try:
         final_itinerary, planning_rationale = planner.solve_route_with_llm(user_input, pace_inst, budget_inst)
     except Exception as e:
+        planner.usage.meta["failed"] = True
+        planner.usage.finish()  # failed attempts were still billed
         logger.error("trip planning failed for %d-day trip (%d candidates): %s", user_input.trip_duration_days, len(candidates), e)
         raise HTTPException(status_code=502, detail=f"Trip planning failed: {e}")
 
@@ -55,4 +58,5 @@ def generate_trip_llm(user_input: TripInput):
         note=note,
         summary=summary_data,
         planning_rationale=planning_rationale,
+        usage=planner.usage.finish(),
     )

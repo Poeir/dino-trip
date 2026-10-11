@@ -10,11 +10,15 @@ from src.services.trip_planner.models import TripInput
 
 
 class FakeRetriever:
-    def __init__(self, places):
+    def __init__(self, places, restaurants=()):
         self._places = places
+        self._restaurants = list(restaurants)
 
     def search_and_expand(self, query, limit=5):
         return self._places
+
+    def list_restaurants(self):
+        return self._restaurants
 
 
 class FakeRetrieverByQuery:
@@ -22,20 +26,26 @@ class FakeRetrieverByQuery:
     simulate one interest having far more real matches than another --
     the exact shape of the bug that motivated round-robin merging."""
 
-    def __init__(self, results_by_query):
+    def __init__(self, results_by_query, restaurants=()):
         self._results_by_query = results_by_query
+        self._restaurants = list(restaurants)
         self.queries_seen = []
 
     def search_and_expand(self, query, limit=5):
         self.queries_seen.append(query)
         return self._results_by_query.get(query, [])
 
+    def list_restaurants(self):
+        return self._restaurants
 
-def make_place_row(place_id, name, district, category="คาเฟ่", price_level=None):
-    return {
+
+def make_place_row(place_id, name, district, category="คาเฟ่", price_level=None, **extra):
+    row = {
         "id": place_id, "name": name, "category": category, "rating": 4.5,
         "lat": 16.44, "lng": 102.84, "price_level": price_level, "district": district,
     }
+    row.update(extra)
+    return row
 
 
 def make_user_input(**overrides):
@@ -208,3 +218,106 @@ class TestAccommodationLocation:
         accommodation, _, _, _ = service.build_candidate_list(user_input)
         assert accommodation.lat == orchestrator_module.DEFAULT_HOTEL_LOCATION["lat"]
         assert accommodation.lng == orchestrator_module.DEFAULT_HOTEL_LOCATION["lng"]
+
+
+def daily_hours(open_h, close_h=23):
+    """hours_periods for a place open every day from open_h to close_h:59."""
+    return [
+        {"open": {"day": d, "hour": open_h, "minute": 0}, "close": {"day": d, "hour": close_h, "minute": 59}}
+        for d in range(7)
+    ]
+
+
+def restaurant_row(place_id, name, open_h, **extra):
+    return make_place_row(place_id, name, "เมืองขอนแก่น", category="ร้านอาหาร", hours_periods=daily_hours(open_h), **extra)
+
+
+class RaisesOnListRestaurants(FakeRetriever):
+    def list_restaurants(self):
+        raise AssertionError("the full restaurant list should not have been needed")
+
+
+def names(candidates):
+    return {p.name for p in candidates}
+
+
+class TestMealReserveUsability:
+    """The meal reserve only holds restaurants that can be visited within the
+    trip's daily window (default 09:00-18:00), and enough lunch-capable ones
+    when that window covers lunch."""
+
+    def test_evening_only_restaurant_from_retrieval_is_excluded_and_a_lunch_one_kept(self, service):
+        service.retriever = FakeRetriever([
+            restaurant_row("late", "LateRestaurant", 18),
+            restaurant_row("noon1", "NoonRestaurant1", 10),
+            restaurant_row("noon2", "NoonRestaurant2", 10),
+        ])
+        _, candidates, _, _ = service.build_candidate_list(make_user_input())
+        assert "LateRestaurant" not in names(candidates)
+        assert {"NoonRestaurant1", "NoonRestaurant2"} <= names(candidates)
+
+    def test_must_go_restaurant_is_kept_even_if_it_cannot_be_visited_in_the_window(self, service, monkeypatch):
+        late = restaurant_row("late", "LateRestaurant", 18)
+        monkeypatch.setattr(orchestrator_module, "find_place_by_name", lambda name_query: late)
+        service.retriever = FakeRetriever([], restaurants=[restaurant_row("noon", "Noon", 10)])
+        _, candidates, _, must_go_ids = service.build_candidate_list(make_user_input(must_go=["LateRestaurant"]))
+        assert "LateRestaurant" in names(candidates)
+        assert "late" in must_go_ids
+
+    def test_lunch_capable_restaurants_are_added_from_the_full_list_when_retrieval_has_none(self, service):
+        # retrieval only surfaces a restaurant that opens after the day ends
+        service.retriever = FakeRetriever(
+            [restaurant_row("late", "LateRestaurant", 18)],
+            restaurants=[restaurant_row("noon1", "NoonA", 10, rating=4.8), restaurant_row("noon2", "NoonB", 10, rating=4.1)],
+        )
+        _, candidates, _, _ = service.build_candidate_list(make_user_input())
+        assert {"NoonA", "NoonB"} <= names(candidates)
+        assert "LateRestaurant" not in names(candidates)
+
+    def test_full_list_is_best_rated_first(self, service):
+        service.retriever = FakeRetriever(
+            [],
+            restaurants=[
+                restaurant_row("low", "Low", 10, rating=3.0), restaurant_row("high", "High", 10, rating=4.9),
+                restaurant_row("mid", "Mid", 10, rating=4.2),
+            ],
+        )
+        _, candidates, _, _ = service.build_candidate_list(make_user_input())
+        # a 1-day trip reserves 2: the two best-rated, not the first two in table order
+        assert {"High", "Mid"} <= names(candidates)
+        assert "Low" not in names(candidates)
+
+    def test_full_list_is_not_read_when_retrieval_already_covers_the_reserve(self, service):
+        service.retriever = RaisesOnListRestaurants([
+            restaurant_row("noon1", "Noon1", 10), restaurant_row("noon2", "Noon2", 10),
+        ])
+        _, candidates, _, _ = service.build_candidate_list(make_user_input())
+        assert {"Noon1", "Noon2"} <= names(candidates)
+
+    def test_lunch_is_not_required_when_the_trip_window_misses_lunch(self, service):
+        # 15:00-20:00 never reaches the lunch window, so evening restaurants are enough
+        service.retriever = RaisesOnListRestaurants([
+            restaurant_row("e1", "Evening1", 16), restaurant_row("e2", "Evening2", 16),
+        ])
+        _, candidates, _, _ = service.build_candidate_list(make_user_input(start_time="15:00", end_time="20:00"))
+        assert {"Evening1", "Evening2"} <= names(candidates)
+
+    def test_budget_filter_still_applies_to_full_list_restaurants(self, service):
+        service.retriever = FakeRetriever(
+            [], restaurants=[restaurant_row("pricey", "Pricey", 10, price_level=4), restaurant_row("ok", "Ok", 10, price_level=1)],
+        )
+        _, candidates, _, _ = service.build_candidate_list(make_user_input(budget_level="ประหยัด"))
+        assert "Pricey" not in names(candidates)
+        assert "Ok" in names(candidates)
+
+    def test_area_scope_filter_still_applies_to_full_list_restaurants(self, service):
+        service.retriever = FakeRetriever(
+            [],
+            restaurants=[
+                make_place_row("far", "Far", "อำเภอชุมแพ", category="ร้านอาหาร", hours_periods=daily_hours(10)),
+                restaurant_row("city", "City", 10),
+            ],
+        )
+        _, candidates, _, _ = service.build_candidate_list(make_user_input(area_scope="เมือง"))
+        assert "Far" not in names(candidates)
+        assert "City" in names(candidates)

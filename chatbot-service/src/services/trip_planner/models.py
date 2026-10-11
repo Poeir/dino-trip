@@ -118,6 +118,7 @@ class TripResponse(BaseModel):
     note: str
     summary: Optional[TripSummary] = None
     planning_rationale: str = ""  # judge's user-facing explanation, "" hides the frontend block
+    usage: Optional[dict] = None  # LLM token/cost totals for this trip (src/core/usage.py)
 
 
 class JudgeVerdict(BaseModel):

@@ -600,6 +600,71 @@ class TestGuaranteedRestaurantPerDay:
         assert "SpareRestaurant" not in names
 
 
+class TestPickFallbackRestaurant:
+    """Which restaurant tops up a day the LLM left without one: open at a meal
+    time in the day's window first, then at least visitable, then closest to
+    the day's other places, then best rated. Used to be "first unused in
+    candidate order", which handed a 09:00-18:00 day an evening-only place."""
+    from datetime import date as _date, time as _time
+    DAY = _date(2026, 8, 3)  # Monday
+
+    @staticmethod
+    def rest(place_id, open_h, lat=16.44, lng=102.84, rating=4.5):
+        periods = [
+            {"open": {"day": d, "hour": open_h, "minute": 0}, "close": {"day": d, "hour": 23, "minute": 59}}
+            for d in range(7)
+        ]
+        return make_place(id=place_id, name=place_id, category="ร้านอาหาร", lat=lat, lng=lng, rating=rating, hours_periods=periods)
+
+    def _pick(self, candidates, day_places=(), start=(9, 0), end=(18, 0), used=()):
+        planner = LLMTripPlanner(candidates=list(candidates), start_point=HOTEL_PLACE)
+        return planner._pick_fallback_restaurant(
+            list(day_places), self.DAY, self._time(*start), self._time(*end), set(used),
+        )
+
+    def test_returns_none_when_there_is_no_unused_restaurant(self):
+        assert self._pick([]) is None
+        assert self._pick([self.rest("a", 10)], used={"a"}) is None
+
+    def test_prefers_a_restaurant_open_at_lunch_over_an_evening_only_one_listed_first(self):
+        picked = self._pick([self.rest("evening", 17), self.rest("noon", 10)])
+        assert picked.id == "noon"
+
+    def test_prefers_a_visitable_restaurant_over_one_that_opens_after_the_day_ends(self):
+        # 13:00-18:00 window: neither is open at the 15:30 meal time; "ok" opens
+        # at 17:00 (still reachable before the end), "never" opens at 18:00.
+        picked = self._pick([self.rest("never", 18), self.rest("ok", 17)], start=(13, 0), end=(18, 0))
+        assert picked.id == "ok"
+
+    def test_prefers_the_restaurant_closest_to_the_days_other_places(self):
+        stop = make_place(id="stop", name="Stop", category="สถานที่ท่องเที่ยว", lat=16.70, lng=102.30)
+        far = self.rest("far", 10, lat=16.44, lng=102.84)      # in town, ~70 km from the stop
+        near = self.rest("near", 10, lat=16.70, lng=102.31)    # next to the stop
+        assert self._pick([far, near], day_places=[stop]).id == "near"
+
+    def test_uses_the_hotel_as_the_anchor_when_the_day_has_no_places(self):
+        near_hotel = self.rest("near", 10, lat=16.441, lng=102.841)
+        far_away = self.rest("far", 10, lat=16.70, lng=102.30)
+        assert self._pick([far_away, near_hotel]).id == "near"
+
+    def test_better_rating_breaks_a_distance_tie(self):
+        a = self.rest("a", 10, rating=3.5)
+        b = self.rest("b", 10, rating=4.8)
+        assert self._pick([a, b]).id == "b"
+
+    def test_solve_route_gives_a_day_without_a_restaurant_the_lunch_capable_one(self):
+        attraction = make_place(id="a1", name="Attraction", category="สถานที่ท่องเที่ยว", lat=16.441, lng=102.841, hours_periods=None)
+        planner = LLMTripPlanner(
+            candidates=[attraction, self.rest("evening", 17), self.rest("noon", 10)], start_point=HOTEL_PLACE,
+        )
+        force_passing_judge(planner)
+        planner._call_llm_for_itinerary = lambda prompt: {"itinerary": [{"day": 1, "places": [{"place_id": "a1"}]}]}
+        user_input = TripInput(trip_duration_days=1, start_date="2026-08-03", accommodation_name="Hotel", start_time="09:00", end_time="18:00")
+        result, _ = planner.solve_route_with_llm(user_input, "", "")
+        meals = [s.place.id for s in result[0].schedule if s.place.category == "ร้านอาหาร"]
+        assert meals == ["noon"]
+
+
 class TestBuildPostScheduleFeedback:
     def _hotel_leg(self):
         return TimeSlot(

@@ -2,8 +2,10 @@ import datetime
 import itertools
 import logging
 import time
-from openai import OpenAI
-from src.core.config import API_KEY, BASE_URL, MODEL_NAME
+from openai import BadRequestError
+from src.core.llm_client import make_llm_client
+from src.core.config import MODEL_NAME
+from src.core.usage import UsageTracker
 from src.services.rag.retriever import PlaceRetriever
 
 logger = logging.getLogger(__name__)
@@ -108,10 +110,10 @@ def _tag_sources(tag: str) -> set[str]:
 class RAGChatbotService:
     def __init__(self):
         self.retriever = PlaceRetriever()
-        self.client = OpenAI(api_key=API_KEY, base_url=BASE_URL, timeout=LLM_TIMEOUT_S, max_retries=LLM_MAX_RETRIES)
+        self.client = make_llm_client(timeout=LLM_TIMEOUT_S, max_retries=LLM_MAX_RETRIES)
         self.model_name = MODEL_NAME
 
-    def _rewrite_query(self, user_message: str, history: list[dict]) -> str:
+    def _rewrite_query(self, user_message: str, history: list[dict], usage: UsageTracker | None = None) -> str:
         """Turns a follow-up ("แล้วร้านนั้นเปิดกี่โมง") into a standalone
         query for retrieval -- searching on the raw follow-up finds nothing
         because the referent only exists in the history. Skipped on the first
@@ -132,6 +134,8 @@ class RAGChatbotService:
                 temperature=0,
                 timeout=REWRITE_TIMEOUT_S,
             )
+            if usage:
+                usage.record_response("rewrite", self.model_name, response)
             rewritten = (response.choices[0].message.content or "").strip().splitlines()
             rewritten = rewritten[0].strip()[:MAX_REWRITE_CHARS] if rewritten else ""
         except Exception as e:
@@ -139,10 +143,10 @@ class RAGChatbotService:
             return user_message
         return rewritten or user_message
 
-    def _prepare(self, user_message: str, history=None) -> tuple[list[dict], list[dict], list[dict], dict]:
+    def _prepare(self, user_message: str, history=None, usage: UsageTracker | None = None) -> tuple[list[dict], list[dict], list[dict], dict]:
         history = clean_history(history)
         t0 = time.time()
-        search_query = self._rewrite_query(user_message, history)
+        search_query = self._rewrite_query(user_message, history, usage)
         rewrite_ms = (time.time() - t0) * 1000
 
         # Retrieve from places, knowledge_base, and events -- unlike the old
@@ -248,7 +252,8 @@ class RAGChatbotService:
 
     def chat(self, user_message: str, history=None) -> dict:
         t_total0 = time.time()
-        messages, source_places, source_events, timings = self._prepare(user_message, history)
+        usage = UsageTracker("chat", turn=len(history or []) // 2 + 1)
+        messages, source_places, source_events, timings = self._prepare(user_message, history, usage)
 
         t0 = time.time()
         response = self.client.chat.completions.create(
@@ -260,6 +265,7 @@ class RAGChatbotService:
             # requests during testing.
             temperature=0.1,
         )
+        usage.record_response("answer", self.model_name, response)
         raw_reply = response.choices[0].message.content
         llm_ms = (time.time() - t0) * 1000
 
@@ -286,7 +292,7 @@ class RAGChatbotService:
             matched_tag, timings["retrieve_ms"], llm_ms, total_ms,
         )
 
-        return {"reply": bot_reply, "places": source_places, "events": source_events}
+        return {"reply": bot_reply, "places": source_places, "events": source_events, "usage": usage.finish()}
 
     def chat_stream(self, user_message: str, history=None):
         """Generator yielding {"type": "token", "text": ...} chunks as the LLM
@@ -295,10 +301,11 @@ class RAGChatbotService:
         [MATCH]/[NO_MATCH] tag has been read from the stream, so they're
         withheld until the last event rather than sent up front."""
         t_total0 = time.time()
-        messages, source_places, source_events, timings = self._prepare(user_message, history)
+        usage = UsageTracker("chat", turn=len(history or []) // 2 + 1)
+        messages, source_places, source_events, timings = self._prepare(user_message, history, usage)
 
         t0 = time.time()
-        stream = self.client.chat.completions.create(
+        stream_kwargs = dict(
             model=self.model_name,
             messages=messages,
             # Low temperature: the [MATCH]/[NO_MATCH] decision at the start of
@@ -308,6 +315,16 @@ class RAGChatbotService:
             temperature=0.1,
             stream=True,
         )
+        try:
+            # include_usage makes the gateway append a final chunk carrying
+            # token counts (with empty `choices`).
+            stream = self.client.chat.completions.create(**stream_kwargs, stream_options={"include_usage": True})
+        except BadRequestError:
+            # Gateway rejects stream_options: chat still works, this turn's
+            # answer call is just recorded as usage_missing.
+            logger.warning("gateway rejected stream_options; answer usage unavailable for streamed chat")
+            stream = self.client.chat.completions.create(**stream_kwargs)
+        stream_usage = None
 
         full_text = ""
         tag_buffer = ""
@@ -323,6 +340,10 @@ class RAGChatbotService:
         # skip survive across chunk boundaries instead.
         skip_leading_ws = False
         for chunk in stream:
+            if getattr(chunk, "usage", None):
+                stream_usage = chunk.usage
+            if not chunk.choices:
+                continue
             delta = chunk.choices[0].delta.content
             if not delta:
                 continue
@@ -387,4 +408,5 @@ class RAGChatbotService:
             is_fallback, include_places, include_events, timings["retrieve_ms"], llm_ms, total_ms,
         )
 
-        yield {"type": "done", "reply": final_reply, "places": final_places, "events": final_events}
+        usage.record("answer", self.model_name, stream_usage)
+        yield {"type": "done", "reply": final_reply, "places": final_places, "events": final_events, "usage": usage.finish()}
