@@ -4,6 +4,7 @@ import LoadingSpinner from '../components/LoadingSpinner.jsx'
 import LoadError from '../components/LoadError.jsx'
 import { fetchSurveyQuestions, submitSurvey } from '../lib/apiClient.js'
 import { useSeo } from '../lib/useSeo.js'
+import { MASCOT } from '../data/categoryImages.js'
 
 // Anonymous satisfaction questionnaire for the project report. The questions
 // come from the backend (GET /api/survey/questions) so the wording lives in one
@@ -24,27 +25,40 @@ function wasSubmitted() {
   try { return localStorage.getItem(STORAGE_KEY) === '1' } catch { return false }
 }
 
-// One 1-5 rating question: five big tap targets, highest satisfaction first
-// (same order as the printed form). Real radio inputs, so keyboard and screen
-// readers work; the label text is the whole clickable pill.
+// Face and colour per score, so the five buttons read at a glance.
+const LEVEL_STYLE = {
+  1: { face: '😞', color: '#E57373' },
+  2: { face: '🙁', color: '#FFB74D' },
+  3: { face: '😐', color: '#FFD54F', dark: true },
+  4: { face: '🙂', color: '#9CCC65' },
+  5: { face: '😄', color: '#43A047' },
+}
+
+// One 1-5 rating question: five big tap targets, least to most satisfied
+// (1 -> 5, left to right). Real radio inputs, so keyboard and screen readers
+// work; the whole pill is the clickable label.
 function LikertQuestion({ q, scale, value, onChange, invalid }) {
+  const ordered = [...scale].sort((a, b) => a.value - b.value)
   return (
     <fieldset id={`q-${q.no}`} style={{ ...card, ...(invalid ? cardError : null), margin: '0 0 12px', minWidth: 0 }}>
       <legend style={{ padding: 0, fontSize: 14.5, fontWeight: 700, color: '#26332b', lineHeight: 1.5, float: 'left', width: '100%', marginBottom: 12 }}>
         <span style={{ color: '#388E3C', marginRight: 6 }}>{q.no}.</span>{q.text}
       </legend>
       <div style={{ clear: 'both', display: 'grid', gridTemplateColumns: `repeat(${scale.length}, minmax(0, 1fr))`, gap: 6 }}>
-        {scale.map((s) => {
+        {ordered.map((s) => {
           const active = value === s.value
+          const lv = LEVEL_STYLE[s.value]
           return (
             <label
               key={s.value}
               style={{
                 position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2,
-                padding: '8px 2px', borderRadius: 12, cursor: 'pointer', textAlign: 'center', minHeight: 58,
-                border: `1.5px solid ${active ? '#388E3C' : '#DCD8C6'}`,
-                background: active ? 'linear-gradient(135deg,#66BB6A,#388E3C)' : '#FBFAF4',
-                color: active ? '#fff' : '#3d4a41', transition: 'background .12s, border-color .12s',
+                padding: '10px 2px', borderRadius: 14, cursor: 'pointer', textAlign: 'center', minHeight: 74,
+                border: `2px solid ${active ? lv.color : '#E3E0D0'}`,
+                background: active ? lv.color : '#FBFAF4',
+                color: active ? (lv.dark ? '#3b3000' : '#fff') : '#3d4a41',
+                transform: active ? 'scale(1.04)' : 'none', boxShadow: active ? '0 4px 10px rgba(0,0,0,0.12)' : 'none',
+                transition: 'background .12s, border-color .12s, transform .12s',
               }}
             >
               <input
@@ -52,8 +66,9 @@ function LikertQuestion({ q, scale, value, onChange, invalid }) {
                 onChange={() => onChange(q.no, s.value)}
                 style={{ position: 'absolute', opacity: 0, width: 1, height: 1, pointerEvents: 'none' }}
               />
-              <span style={{ fontSize: 17, fontWeight: 800, lineHeight: 1.1 }}>{s.value}</span>
-              <span style={{ fontSize: 10.5, lineHeight: 1.2 }}>{s.label}</span>
+              <span style={{ fontSize: 22, lineHeight: 1.1 }} aria-hidden="true">{lv.face}</span>
+              <span style={{ fontSize: 15, fontWeight: 800, lineHeight: 1.1 }}>{s.value}</span>
+              <span style={{ fontSize: 11, lineHeight: 1.2 }}>{s.label}</span>
             </label>
           )
         })}
@@ -198,11 +213,17 @@ export default function SurveyPage() {
 
   return (
     <main style={{ maxWidth: 760, margin: '0 auto', padding: 'var(--page-pv-center) var(--page-gutter)' }}>
-      <h1 data-font="culture" style={{ fontSize: 24, fontWeight: 800, color: '#1B5E20', margin: '0 0 8px', textAlign: 'center' }}>แบบสอบถามความพึงพอใจ</h1>
-      <p style={{ ...hint, textAlign: 'center', margin: '0 auto 18px', maxWidth: 560 }}>
-        ระบบวางแผนท่องเที่ยวขอนแก่น (Dino) ใช้เวลาประมาณ 3–4 นาที คำตอบเป็นแบบไม่ระบุตัวตน และใช้เพื่อการศึกษาและปรับปรุงระบบเท่านั้น
-        ก่อนตอบ ขอแนะนำให้ลองใช้งานระบบ เช่น ถามแชทบอท 1 คำถาม และสร้างแผนเที่ยว 1 ทริป
+      <div style={{ textAlign: 'center' }}>
+        <img src={MASCOT.wave} alt="" width={88} height={88} style={{ width: 88, height: 'auto', marginBottom: 6 }} />
+      </div>
+      <h1 data-font="culture" style={{ fontSize: 24, fontWeight: 800, color: '#1B5E20', margin: '0 0 8px', textAlign: 'center' }}>ช่วยบอกน้องไดโนหน่อยนะ</h1>
+      <p style={{ ...hint, textAlign: 'center', margin: '0 auto 12px', maxWidth: 560, fontSize: 14 }}>
+        ความคิดเห็นของคุณช่วยให้ระบบวางแผนเที่ยวขอนแก่นดีขึ้นกว่าเดิม ใช้เวลาไม่เกิน 5 นาที
+        และเป็นการตอบแบบไม่ระบุตัวตน ไม่มีถูกไม่มีผิด ตอบตามความรู้สึกได้เลย
       </p>
+      <div style={{ background: '#E8F5E9', border: '1px solid #C8E6C9', borderRadius: 14, padding: '10px 14px', margin: '0 auto 18px', maxWidth: 560, fontSize: 13, color: '#2e4a33', lineHeight: 1.6, textAlign: 'center' }}>
+        💡 ถ้ายังไม่ได้ลอง ลองถามแชทบอท 1 คำถาม และสร้างแผนเที่ยว 1 ทริปก่อน แล้วค่อยกลับมาตอบนะ
+      </div>
 
       {alreadyAnswered && (
         <div style={{ background: '#FFF8E1', color: '#8a6d1d', fontSize: 13, padding: '10px 14px', borderRadius: 10, marginBottom: 16 }}>
@@ -258,7 +279,7 @@ export default function SurveyPage() {
 
         <h2 style={sectionTitle}>ตอนที่ 3 ความพึงพอใจต่อระบบ</h2>
         <p style={hint}>
-          เลือกระดับความพึงพอใจของท่านต่อหัวข้อในแต่ละข้อ — 5 = มากที่สุด, 4 = มาก, 3 = ปานกลาง, 2 = น้อย, 1 = น้อยที่สุด
+          แตะหน้ายิ้มที่ตรงกับความรู้สึกของท่านในแต่ละข้อ — 1 = น้อยที่สุด ไปจนถึง 5 = มากที่สุด
           หากยังไม่เคยใช้แชทบอทหรือตัวช่วยวางแผนเที่ยว ให้เลือก “ยังไม่เคยใช้ฟีเจอร์นี้” ในข้อนั้น
         </p>
         {meta.dimensions.map((dim, i) => {

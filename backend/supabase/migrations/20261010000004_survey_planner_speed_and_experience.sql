@@ -5,8 +5,10 @@
 -- Rows already collected are shifted to match, and get NULL (= "never used")
 -- for the new Q10. Keep in step with backend/src/lib/surveyQuestions.js.
 -- Safe to re-run: the shift only touches rows whose q16 is still empty.
+-- Order matters: q10 must accept NULL before the UPDATE writes one.
 alter table survey_responses
-  add column if not exists q16 smallint check (q16 between 1 and 5);
+  add column if not exists q16 smallint check (q16 between 1 and 5),
+  alter column q10 drop not null;
 
 -- One UPDATE: every right-hand side reads the row's old values.
 update survey_responses set
@@ -14,8 +16,7 @@ update survey_responses set
 where q16 is null;
 
 alter table survey_responses
-  alter column q16 set not null,
-  alter column q10 drop not null;
+  alter column q16 set not null;
 
 alter table survey_responses
   add column if not exists exp_plan_method text check (exp_plan_method in ('search','social','maps','friends','app','ai','none')),

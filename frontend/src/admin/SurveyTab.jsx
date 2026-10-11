@@ -62,8 +62,8 @@ const QUESTION_COLUMNS = [
   { key: 'mean', header: 'x̄', nowrap: true, render: (q) => f2(q.mean) },
   { key: 'sd', header: 'S.D.', nowrap: true, render: (q) => f2(q.sd) },
   { key: 'level', header: 'ระดับ', nowrap: true, render: (q) => <LevelBadge level={q.level} /> },
-  // counts are ordered 1..5; shown 5..1 like the questionnaire's scale.
-  { key: 'counts', header: 'จำนวนคนที่ตอบ 5 / 4 / 3 / 2 / 1', nowrap: true, render: (q) => [...q.counts].reverse().join(' / ') },
+  // counts are ordered 1..5, the same order as the questionnaire's buttons.
+  { key: 'counts', header: 'จำนวนคนที่ตอบ 1 / 2 / 3 / 4 / 5', nowrap: true, render: (q) => q.counts.join(' / ') },
 ]
 
 const RESPONSE_FILTERS = [
