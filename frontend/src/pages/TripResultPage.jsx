@@ -8,7 +8,7 @@ import { placeCategoryIcon, MASCOT } from '../data/categoryImages.js'
 import DayRouteMap from '../components/DayRouteMap.jsx'
 import Modal from '../components/Modal.jsx'
 import PlaceDetailView from '../components/PlaceDetailView.jsx'
-import { CalendarIcon, RouteIcon, GiftIcon, PencilIcon, PinIcon } from '../components/Icons.jsx'
+import { CalendarIcon, RouteIcon, GiftIcon, PinIcon } from '../components/Icons.jsx'
 import { fetchPlace, fetchPlaces } from '../lib/apiClient.js'
 import { dayDirectionsUrls } from '../utils/mapsLink.js'
 
@@ -155,15 +155,6 @@ export default function TripResultPage() {
             </div>
           )}
 
-          <div style={{ background: 'linear-gradient(135deg,#F1F8E9,#E8F5E9)', border: '1px solid #C8E6C9', borderRadius: 20, padding: 22 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-              <PencilIcon size={17} />
-              <span style={{ fontWeight: 800, fontSize: 14, color: '#1B5E20' }}>อยากปรับตรงไหนของแผนไหมครับ</span>
-            </div>
-            <textarea value={state.feedbackText} onChange={actions.onFeedbackChange} placeholder="เช่น ตารางแน่นเกินไป อยากได้เวลาพักมากกว่านี้..." style={{ width: '100%', minHeight: 70, border: '1px solid #DCD8C6', borderRadius: 12, padding: 11, fontSize: 13.5, resize: 'vertical', marginBottom: 12, background: '#fff' }}></textarea>
-            <button onClick={actions.regeneratePlan} style={{ width: '100%', background: 'linear-gradient(135deg,#66BB6A,#2E7D32)', color: '#fff', border: 'none', padding: 13, borderRadius: 20, fontWeight: 800, fontSize: 13.5, cursor: 'pointer', boxShadow: '0 10px 22px rgba(46,125,50,0.25)' }}>ปรับแผนการเดินทางอีกครั้ง</button>
-          </div>
-
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <a href="#" onClick={(e) => { e.preventDefault(); actions.goTripForm() }} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, fontWeight: 700, color: '#5f6a63' }}><RouteIcon size={15} color="#5f6a63" box={false} />สร้างแผนใหม่</a>
           </div>
@@ -214,14 +205,6 @@ export default function TripResultPage() {
                         <span style={{ fontSize: 10.5, fontWeight: 700, color: '#2E7D32', background: '#E8F5E9', padding: '2px 9px', borderRadius: 10 }}>{item.place.category}</span>
                         <div style={{ fontWeight: 700, fontSize: 15.5, color: '#1f2a24', margin: '5px 0 3px' }}>{item.place.name}</div>
                         <div style={{ fontSize: 12.5, color: '#5f6a63', marginBottom: 9, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}><StarGlyph /> {item.place.rating} · {item.place.address}</div>
-                        <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', gap: 8 }}>
-                          <button onClick={item.onLike} style={{ display: 'flex', alignItems: 'center', gap: 5, border: `1px solid ${item.likeBorder}`, background: item.likeBg, color: item.likeColor, borderRadius: 12, padding: '4px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
-                            <span style={{ width: 0, height: 0, borderLeft: '5px solid transparent', borderRight: '5px solid transparent', borderBottom: `7px solid ${item.likeColor}` }}></span>ถูกใจ
-                          </button>
-                          <button onClick={item.onDislike} style={{ display: 'flex', alignItems: 'center', gap: 5, border: `1px solid ${item.dislikeBorder}`, background: item.dislikeBg, color: item.dislikeColor, borderRadius: 12, padding: '4px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
-                            <span style={{ width: 0, height: 0, borderLeft: '5px solid transparent', borderRight: '5px solid transparent', borderTop: `7px solid ${item.dislikeColor}` }}></span>ไม่ถูกใจ
-                          </button>
-                        </div>
                       </div>
                     </div>
                   </div>

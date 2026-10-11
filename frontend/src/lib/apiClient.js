@@ -190,7 +190,6 @@ export const fetchTrips = (params) => apiGet('/api/trips', params)
 // `fields` is { title } and/or { isFavorite }.
 export const updateTrip = (id, fields) => request(`/api/trips/${id}`, { method: 'PATCH', body: JSON.stringify(fields) })
 // `liked` is true (like), false (dislike) or null (clear).
-export const setTripItemLike = (tripId, itemId, liked) => request(`/api/trips/${tripId}/items/${itemId}`, { method: 'PATCH', body: JSON.stringify({ liked }) })
 export const deleteTrip = (id) => apiDelete(`/api/trips/${id}`)
 export const duplicateTrip = (id) => apiPost(`/api/trips/${id}/duplicate`)
 

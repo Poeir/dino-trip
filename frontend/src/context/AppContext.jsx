@@ -14,7 +14,7 @@ import {
   forgotPassword as apiForgotPassword, resetPassword as apiResetPassword,
   logout as apiLogout, fetchMe,
   fetchPointsBalance, scanQr,
-  createTrip, fetchTrip, setTripItemLike,
+  createTrip, fetchTrip,
 } from '../lib/apiClient.js'
 import { sendChatMessage, requestTripPlan } from '../lib/chatbotService.js'
 import { getCurrentPosition, LOCATION_ERROR_MESSAGE, GENERIC_LOCATION_ERROR } from '../lib/geolocation.js'
@@ -129,7 +129,6 @@ const initialState = {
   tripLoadError: '',
   tripPlanNote: '',
   tripPlanRationale: '',
-  feedbackText: '',
   scanState: 'idle',
   scanError: '',
   scanResultPoints: 0,
@@ -648,7 +647,6 @@ export function AppProvider({ children }) {
   const setPace = (p) => setState((s) => ({ tripForm: { ...s.tripForm, pace: p } }))
   const onDailyStartChange = (e) => updateTripField('dailyStart', e.target.value)
   const onDailyEndChange = (e) => updateTripField('dailyEnd', e.target.value)
-  const onFeedbackChange = (e) => setState({ feedbackText: e.target.value })
   const toggleInterest = (tag) => setState((s) => {
     const has = s.tripForm.interests.includes(tag)
     return { tripForm: { ...s.tripForm, interests: has ? s.tripForm.interests.filter((x) => x !== tag) : [...s.tripForm.interests, tag] } }
@@ -789,7 +787,6 @@ export function AppProvider({ children }) {
         tripPlanRationale: detail.planningRationale,
         tripForm: inputToTripForm(detail.input, s.tripForm),
         tripLoading: false,
-        feedbackText: '',
       }))
     } catch (err) {
       console.error('Loading saved trip failed:', err)
@@ -866,7 +863,7 @@ export function AppProvider({ children }) {
         // Only someone who expects a saved copy needs to hear that it failed.
         if (stateRef.current.loggedIn) showToast(err.status === 409 || err.status === 429 ? err.message : 'บันทึกแผนทริปไม่สำเร็จ แต่ยังดูแผนนี้ได้ตามปกติ')
       }
-      setState({ tripId, tripPlan: plan, tripPlanNote: resp.note, tripPlanRationale: resp.planning_rationale || '', tripPlanning: false, feedbackText: '' })
+      setState({ tripId, tripPlan: plan, tripPlanNote: resp.note, tripPlanRationale: resp.planning_rationale || '', tripPlanning: false })
       navigate(tripId ? `/trip/${tripId}` : '/trip/result')
     } catch (err) {
       console.error('Trip plan request failed:', err)
@@ -874,68 +871,14 @@ export function AppProvider({ children }) {
     }
   }
 
-  const setLikeInPlan = (dayNum, placeId, liked) => setState((s) => ({
-    tripPlan: {
-      ...s.tripPlan,
-      days: s.tripPlan.days.map((d) => d.dayNum !== dayNum ? d : { ...d, items: d.items.map((it) => it.placeId !== placeId ? it : { ...it, liked }) })
-    }
-  }))
-
-  // Clicking the active button again clears the vote. The button reacts at
-  // once; for a saved trip the vote is stored too, and rolled back (with a
-  // toast) if that fails. Items without an itemId (e.g. one put in by
-  // regeneratePlan, which isn't synced yet) only change on screen.
-  const setItemLike = async (dayNum, placeId, val) => {
-    const { tripPlan, tripId } = stateRef.current
-    const item = tripPlan?.days.find((d) => d.dayNum === dayNum)?.items.find((it) => it.placeId === placeId)
-    if (!item) return
-    const previous = item.liked
-    const next = previous === val ? null : val
-    setLikeInPlan(dayNum, placeId, next)
-    if (!tripId || !item.itemId) return
-    try {
-      await setTripItemLike(tripId, item.itemId, next)
-    } catch (err) {
-      console.error('Saving like failed:', err)
-      // Only undo if nothing else has changed this item's vote in the meantime.
-      const current = stateRef.current.tripPlan?.days.find((d) => d.dayNum === dayNum)?.items.find((it) => it.placeId === placeId)
-      if (current && current.liked === next) setLikeInPlan(dayNum, placeId, previous)
-      showToast('บันทึกความชอบไม่สำเร็จ ลองอีกครั้งนะครับ')
-    }
-  }
-
   // Shapes a fetched place row into the same trimmed `place` object
-  // tripResponseToPlan embeds on every item -- regeneratePlan needs to embed
-  // this itself (there's no bulk `state.places` for the derived `tripPlan`
-  // view's fallback lookup to fall back to anymore, see below). Swapping a
-  // single item was cut from the product (no UI calls it) -- removed here too.
+  // tripResponseToPlan embeds on every item (there's no bulk `state.places`
+  // for the derived `tripPlan` view's fallback lookup to fall back to
+  // anymore, see below).
   const toTripPlace = (p) => ({
     id: p.id, name: p.name, category: p.category, rating: p.rating, address: p.address, img: p.img,
     location: (p.location?.lat != null && p.location?.lng != null) ? p.location : null,
   })
-
-  const regeneratePlan = async () => {
-    const plan = stateRef.current.tripPlan
-    const usedIds = new Set(plan.days.flatMap((d) => d.items.map((i) => i.placeId)))
-    const dislikedIds = new Set(plan.days.flatMap((d) => d.items.filter((i) => i.liked === false).map((i) => i.placeId)))
-    const { data: pool } = await fetchPlaces({ isActive: true, limit: 50 }).catch(() => ({ data: [] }))
-    const replacements = pool.filter((p) => !usedIds.has(p.id))
-    let ri = 0
-    const newDays = plan.days.map((d) => ({
-      ...d,
-      items: d.items.map((it) => {
-        if (dislikedIds.has(it.placeId) && ri < replacements.length) {
-          const rep = replacements[ri++]
-          return { placeId: rep.id, time: it.time, liked: null, place: toTripPlace(rep) }
-        }
-        return { ...it, liked: null }
-      })
-    }))
-    // Client-side reshuffle only, no /trip/llm call -- the judge's rationale
-    // describes the AI's original ordering logic, which may no longer hold
-    // once places get swapped, so clear it rather than leave stale text.
-    setState({ tripPlan: { ...plan, days: newDays }, tripPlanRationale: '', feedbackText: '' })
-  }
 
   // The QR's own content only ever carries an opaque id (see QrTab.jsx's
   // qrValue) -- points/place come back from the backend after claimScan,
@@ -1127,7 +1070,7 @@ export function AppProvider({ children }) {
     onStartDateChange, onEndDateChange, onAccommodationLocationChange, onAccommodationSelect, useCurrentLocationForAccommodation, setTripDatePreset,
     onMustGoQueryChange, addMustGo, removeMustGo, onMustGoKeyDown,
     setPace, onDailyStartChange, onDailyEndChange,
-    onFeedbackChange, toggleInterest, setBudget, setAreaScope, submitTripForm, loadTrip, setItemLike, regeneratePlan,
+    toggleInterest, setBudget, setAreaScope, submitTripForm, loadTrip,
     startScan, handleQrDetected, handleScanCancelled, claimScan, resetScan,
     adminLogin, adminLogout, openCreateForm, openEditForm, updateFormField, cancelForm, applyEventUpdate, applyRewardUpdate, applyQrUpdate, handleSessionExpired, reportError, reloadData: loadData,
     saveForm, deleteItem, onNewPlace, onNewEvent, onNewKb, onNewQr, onNewReward,
@@ -1273,10 +1216,6 @@ export function AppProvider({ children }) {
           ...it, place,
           timeRangeLabel: (it.departureTime && it.departureTime !== it.time) ? `${it.time} - ${it.departureTime}` : it.time,
           durationLabel: isHotelReturn ? 'ถึงที่พัก' : (formatDurationMinutes(durationMin) ? `อยู่ประมาณ ${formatDurationMinutes(durationMin)}` : null),
-          onLike: () => setItemLike(d.dayNum, it.placeId, true),
-          onDislike: () => setItemLike(d.dayNum, it.placeId, false),
-          likeBg: it.liked === true ? '#E8F5E9' : '#fff', likeColor: it.liked === true ? '#2E7D32' : '#5f6a63', likeBorder: it.liked === true ? '#2E7D32' : '#DCD8C6',
-          dislikeBg: it.liked === false ? '#fdecec' : '#fff', dislikeColor: it.liked === false ? '#a33232' : '#5f6a63', dislikeBorder: it.liked === false ? '#a33232' : '#DCD8C6'
         }
       })
     }))
