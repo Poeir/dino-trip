@@ -51,7 +51,7 @@ const categoryByPrimaryType = {
   place_of_worship: 'วัด', buddhist_temple: 'วัด', hindu_temple: 'วัด', mosque: 'วัด',
   state_park: 'สวนสาธารณะ', park: 'สวนสาธารณะ',
   museum: 'พิพิธภัณฑ์',
-  shopping_mall: 'ตลาด',
+  shopping_mall: 'ห้างสรรพสินค้า', department_store: 'ห้างสรรพสินค้า',
   hotel: 'ที่พัก',
   bakery: 'คาเฟ่', cake_shop: 'คาเฟ่', coffee_shop: 'คาเฟ่', cafe: 'คาเฟ่',
   tourist_attraction: 'สถานที่ท่องเที่ยว', scenic_spot: 'สถานที่ท่องเที่ยว', bridge: 'สถานที่ท่องเที่ยว',
