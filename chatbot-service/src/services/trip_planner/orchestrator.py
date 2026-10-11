@@ -19,6 +19,16 @@ BUDGET_PRICE_RANGES = {
     "หรูหรา": [2, 3, 4],
 }
 
+# Categories kept out of the RAG candidate pool for a budget tier. The price
+# filter above can't do this on its own: price_level is null for 38 of the 40
+# "ตลาด" rows in the live `places` table (and nothing at all is rated 3-4), so
+# a หรูหรา trip kept every night market -- both as an LLM pick (the prompt
+# carries no price) and as a backfill/gap-filler stop, since those draw from
+# this same pool. Must-go places are exempt, same as the price filter.
+BUDGET_EXCLUDED_CATEGORIES = {
+    "หรูหรา": {"ตลาด"},
+}
+
 # Google's administrative_area_level_2 name for Khon Kaen's city district
 # (see import-places.js's mapDistrict()) comes back inconsistently across
 # rows -- confirmed against the live `places` table: "อำเภอเมืองขอนแก่น" (the
@@ -111,6 +121,7 @@ class TripBuilderService:
 
         existing_ids = {p.id for p in must_go_list}
         allowed_prices = BUDGET_PRICE_RANGES.get(user_input.budget_level, [0, 1, 2])
+        excluded_categories = BUDGET_EXCLUDED_CATEGORIES.get(user_input.budget_level, set())
 
         interest_list = []
         if remaining_slots > 0:
@@ -149,7 +160,7 @@ class TripBuilderService:
                 # excluding it, or budget filtering would return almost nothing.
                 if place.price_level is not None and place.price_level not in allowed_prices:
                     continue
-                if place.category == "ที่พัก":
+                if place.category == "ที่พัก" or place.category in excluded_categories:
                     continue
                 # Only applies to RAG-sourced candidates, same as the budget
                 # filter above -- must_go places are honored regardless of

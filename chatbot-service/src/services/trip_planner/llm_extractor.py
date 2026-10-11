@@ -699,6 +699,7 @@ class LLMTripPlanner:
                 route, anchor_ids, meal_roles, self.start_point,
                 day_date, start_time_of_day, end_time_of_day, user_input.trip_pace,
                 gap_filler_pool=backfill_pool, max_attractions=stop_max,
+                must_go_ids=self.must_go_ids | meal_fallback_ids,
             )
             final_itinerary.append(DailyItinerary(
                 day=day_num, date=day_date.strftime("%Y-%m-%d"), schedule=schedule,

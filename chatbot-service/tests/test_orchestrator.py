@@ -142,6 +142,39 @@ class TestAreaScopeFilter:
         assert "Outlying" not in [p.name for p in candidates]
 
 
+class TestBudgetCategoryFilter:
+    """A หรูหรา trip drops "ตลาด" from the candidate pool by category: the
+    price filter can't, since markets almost never carry a price_level."""
+
+    def market_and_mall(self):
+        return FakeRetriever([
+            make_place_row("mk", "NightMarket", "เมืองขอนแก่น", category="ตลาด"),
+            make_place_row("ml", "Mall", "เมืองขอนแก่น", category="ห้างสรรพสินค้า"),
+        ])
+
+    def test_luxury_budget_excludes_markets_but_keeps_malls(self, service):
+        service.retriever = self.market_and_mall()
+        _, candidates, _, _ = service.build_candidate_list(make_user_input(budget_level="หรูหรา"))
+        assert "NightMarket" not in names(candidates)
+        assert "Mall" in names(candidates)
+
+    @pytest.mark.parametrize("budget_level", ["ประหยัด", "ปานกลาง"])
+    def test_other_budgets_keep_markets(self, service, budget_level):
+        service.retriever = self.market_and_mall()
+        _, candidates, _, _ = service.build_candidate_list(make_user_input(budget_level=budget_level))
+        assert {"NightMarket", "Mall"} <= names(candidates)
+
+    def test_must_go_market_is_kept_on_a_luxury_budget(self, service, monkeypatch):
+        market = make_place_row("mk", "NightMarket", "เมืองขอนแก่น", category="ตลาด")
+        monkeypatch.setattr(orchestrator_module, "find_place_by_name", lambda name_query: market)
+        service.retriever = FakeRetriever([])
+        _, candidates, _, must_go_ids = service.build_candidate_list(
+            make_user_input(budget_level="หรูหรา", must_go=["NightMarket"]),
+        )
+        assert "NightMarket" in names(candidates)
+        assert must_go_ids == {"mk"}
+
+
 class TestMultiInterestRoundRobin:
     """Regression: combining multiple interests into one query string let an
     interest with many real matches drown out one with few in the top-N
