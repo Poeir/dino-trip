@@ -25,8 +25,8 @@ export function parseSubmission(body) {
   row.occupation_other = null
   if (row.occupation === 'other') {
     const text = typeof b.occupationOther === 'string' ? b.occupationOther.trim() : ''
-    if (!text) throw httpError(400, 'กรุณาระบุสถานภาพ')
-    if (text.length > OCCUPATION_OTHER_MAX) throw httpError(400, `สถานภาพยาวเกินไป (ไม่เกิน ${OCCUPATION_OTHER_MAX} ตัวอักษร)`)
+    if (!text) throw httpError(400, 'กรุณาระบุอาชีพ')
+    if (text.length > OCCUPATION_OTHER_MAX) throw httpError(400, `อาชีพยาวเกินไป (ไม่เกิน ${OCCUPATION_OTHER_MAX} ตัวอักษร)`)
     row.occupation_other = text
   }
 

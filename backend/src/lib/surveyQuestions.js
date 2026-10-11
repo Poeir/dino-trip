@@ -66,7 +66,7 @@ export const DEMOGRAPHICS = [
     ],
   },
   {
-    key: 'occupation', column: 'occupation', label: 'สถานภาพ',
+    key: 'occupation', column: 'occupation', label: 'อาชีพ',
     options: [
       { value: 'student', label: 'นักศึกษา' },
       { value: 'staff', label: 'บุคลากร' },

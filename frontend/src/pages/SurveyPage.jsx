@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import LoadingSpinner from '../components/LoadingSpinner.jsx'
 import LoadError from '../components/LoadError.jsx'
-import { fetchSurveyQuestions, submitSurvey } from '../lib/apiClient.js'
+import { fetchSurveyQuestions, fetchSurveyStatus, submitSurvey } from '../lib/apiClient.js'
 import { useSeo } from '../lib/useSeo.js'
 import { MASCOT } from '../data/categoryImages.js'
 
@@ -134,13 +134,18 @@ export default function SurveyPage() {
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState('')
   const [done, setDone] = useState(false)
-  const [alreadyAnswered] = useState(wasSubmitted)
+  // One answer per browser: set from this device's flag at once, and from the
+  // server's cookie check (survives clearing localStorage, and is the real gate).
+  const [blocked, setBlocked] = useState(wasSubmitted)
 
   const load = () => {
     setLoadError(false)
     fetchSurveyQuestions().then(setMeta).catch(() => setLoadError(true))
   }
   useEffect(load, [])
+  useEffect(() => {
+    fetchSurveyStatus().then((s) => { if (s?.submitted) setBlocked(true) }).catch(() => { /* the POST still enforces it */ })
+  }, [])
 
   // gender, age, occupation (the derived age group has no input of its own)
   const demoInputs = useMemo(() => (meta ? meta.demographics.filter((d) => !d.derived) : []), [meta])
@@ -153,6 +158,19 @@ export default function SurveyPage() {
 
   if (loadError) return <main style={{ maxWidth: 760, margin: '0 auto', padding: 24 }}><LoadError message="โหลดแบบสอบถามไม่สำเร็จ" onRetry={load} /></main>
   if (!meta) return <LoadingSpinner size={36} label="กำลังโหลดแบบสอบถาม..." />
+
+  if (blocked && !done) {
+    return (
+      <main style={{ maxWidth: 520, margin: '0 auto', padding: 'var(--page-pv-center) var(--page-gutter)', textAlign: 'center' }}>
+        <div style={{ ...card, padding: 32 }}>
+          <img src={MASCOT.celebrate} alt="" width={88} height={88} style={{ width: 88, height: 'auto', marginBottom: 8 }} />
+          <h1 data-font="culture" style={{ fontSize: 22, fontWeight: 800, color: '#1B5E20', margin: '0 0 10px' }}>ท่านตอบแบบสอบถามนี้แล้ว</h1>
+          <p style={{ ...hint, margin: '0 0 20px' }}>ขอบคุณที่สละเวลาช่วยกันนะครับ แบบสอบถามนี้ตอบได้เครื่องละ 1 ครั้ง</p>
+          <Link to="/" style={{ display: 'inline-block', background: 'linear-gradient(135deg,#66BB6A,#388E3C)', color: '#fff', padding: '10px 28px', borderRadius: 20, fontWeight: 800, fontSize: 14.5 }}>กลับหน้าแรก</Link>
+        </div>
+      </main>
+    )
+  }
 
   if (done) {
     return (
@@ -203,6 +221,7 @@ export default function SurveyPage() {
       setDone(true)
       window.scrollTo({ top: 0 })
     } catch (err) {
+      if (err.status === 409) { rememberSubmitted(); setBlocked(true); return }
       setSubmitError(err.status === undefined ? 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่' : err.message)
     } finally {
       setSubmitting(false)
@@ -219,17 +238,11 @@ export default function SurveyPage() {
       <h1 data-font="culture" style={{ fontSize: 24, fontWeight: 800, color: '#1B5E20', margin: '0 0 8px', textAlign: 'center' }}>ช่วยบอกน้องไดโนหน่อยนะ</h1>
       <p style={{ ...hint, textAlign: 'center', margin: '0 auto 12px', maxWidth: 560, fontSize: 14 }}>
         ความคิดเห็นของคุณช่วยให้ระบบวางแผนเที่ยวขอนแก่นดีขึ้นกว่าเดิม ใช้เวลาไม่เกิน 5 นาที
-        และเป็นการตอบแบบไม่ระบุตัวตน ไม่มีถูกไม่มีผิด ตอบตามความรู้สึกได้เลย
+        และเป็นการตอบแบบไม่ระบุตัวตน ไม่มีถูกไม่มีผิด ตอบตามความรู้สึกได้เลย (ตอบได้ 1 ครั้งต่อเครื่อง)
       </p>
       <div style={{ background: '#E8F5E9', border: '1px solid #C8E6C9', borderRadius: 14, padding: '10px 14px', margin: '0 auto 18px', maxWidth: 560, fontSize: 13, color: '#2e4a33', lineHeight: 1.6, textAlign: 'center' }}>
         💡 ถ้ายังไม่ได้ลอง ลองถามแชทบอท 1 คำถาม และสร้างแผนเที่ยว 1 ทริปก่อน แล้วค่อยกลับมาตอบนะ
       </div>
-
-      {alreadyAnswered && (
-        <div style={{ background: '#FFF8E1', color: '#8a6d1d', fontSize: 13, padding: '10px 14px', borderRadius: 10, marginBottom: 16 }}>
-          เครื่องนี้เคยส่งแบบสอบถามแล้ว หากท่านตอบไปแล้ว ไม่จำเป็นต้องตอบซ้ำ
-        </div>
-      )}
 
       <form onSubmit={submit} noValidate>
         {/* Honeypot: people never see or fill this; bots that fill every input do. */}
@@ -259,7 +272,7 @@ export default function SurveyPage() {
             )}
             {d.key === 'occupation' && form.occupation === 'other' && (
               <div id="demo-occupationOther" style={{ ...card, ...(missing.has('demo-occupationOther') ? cardError : null) }}>
-                <label htmlFor="occupationOther" style={{ display: 'block', fontSize: 14.5, fontWeight: 700, color: '#26332b', marginBottom: 8 }}>โปรดระบุสถานภาพ</label>
+                <label htmlFor="occupationOther" style={{ display: 'block', fontSize: 14.5, fontWeight: 700, color: '#26332b', marginBottom: 8 }}>โปรดระบุอาชีพ</label>
                 <input
                   id="occupationOther" type="text" maxLength={meta.occupationOtherMax} value={form.occupationOther}
                   onChange={(e) => setDemo('occupationOther', e.target.value)}

@@ -273,6 +273,8 @@ export const rejectEventRequest = (id, reason) => apiPost(`/api/admin/event-requ
 // (`website` is the honeypot field and must stay empty).
 export const fetchSurveyQuestions = () => apiGet('/api/survey/questions')
 export const submitSurvey = (payload) => apiPost('/api/survey', payload)
+// { submitted } -- true once this browser has saved a response (httpOnly cookie).
+export const fetchSurveyStatus = () => apiGet('/api/survey/status')
 // Admin: per-question / per-dimension mean + S.D., demographics, comments.
 export const fetchAdminSurveySummary = () => apiGet('/api/admin/survey/summary')
 export const fetchAdminSurveyResponses = (params) => apiGet('/api/admin/survey/responses', params)

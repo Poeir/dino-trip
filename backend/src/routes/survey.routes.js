@@ -24,12 +24,28 @@ surveyRouter.get('/questions', (req, res) => {
   res.json({ scale: SCALE, dimensions: DIMENSIONS, questions: QUESTIONS, demographics: DEMOGRAPHICS, experience: EXPERIENCE, comments: COMMENT_FIELDS, age: { min: AGE_MIN, max: AGE_MAX }, occupationOtherMax: OCCUPATION_OTHER_MAX })
 })
 
+// One answer per browser. The survey is anonymous (no account, no IP stored), so
+// "one per person" can only be a cookie set once a response is saved. It stops
+// repeat taps and casual re-submits; someone who clears cookies or switches
+// browser can still answer again, which is the price of staying anonymous.
+const DONE_COOKIE = 'survey_done'
+const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000
+const alreadyAnswered = (req) => req.cookies?.[DONE_COOKIE] === '1'
+
+surveyRouter.get('/status', (req, res) => {
+  res.json({ submitted: alreadyAnswered(req) })
+})
+
 surveyRouter.post('/', submitLimit, asyncHandler(async (req, res) => {
   // Honeypot: the form renders a hidden "website" field no person fills in.
   // Pretend success so a bot gets no signal, but store nothing.
   if (typeof req.body?.website === 'string' && req.body.website.trim()) return res.status(201).json({ ok: true })
+  if (alreadyAnswered(req)) throw httpError(409, 'เครื่องนี้ตอบแบบสอบถามแล้ว ขอบคุณที่ร่วมตอบ')
   const row = parseSubmission(req.body)
   await db('survey_responses').insert({ ...row, app_version: APP_VERSION })
+  res.cookie(DONE_COOKIE, '1', {
+    httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', path: '/', maxAge: ONE_YEAR_MS,
+  })
   res.status(201).json({ ok: true })
 }))
 
