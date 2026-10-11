@@ -24,6 +24,7 @@ const TAB_COMPONENTS = {
   redeem: lazyPage(() => import('../admin/RedeemTab.jsx')),
   users: lazyPage(() => import('../admin/users/UsersTab.jsx')),
   trips: lazyPage(() => import('../admin/TripsTab.jsx')),
+  survey: lazyPage(() => import('../admin/SurveyTab.jsx')),
 }
 
 export default function AdminDashboardPage() {

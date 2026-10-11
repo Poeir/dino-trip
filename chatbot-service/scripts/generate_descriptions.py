@@ -1,45 +1,27 @@
 """Generates a grounded, place-specific description for every `places` row,
-replacing the 100% generic "{category}ในขอนแก่น คะแนนรีวิว X ดาว..." fallback
-template that import-places.js's mapDesc() writes when Google Places API
-doesn't return generativeSummary/editorialSummary -- confirmed empty for all
-664 rows in this dataset, even well-known landmarks, so there's nothing left
-to gain by re-fetching from Google.
+replacing the generic "{category}ในขอนแก่น คะแนนรีวิว X ดาว..." fallback that
+the backend's mapDesc() writes when Google Places returns no
+generativeSummary/editorialSummary -- confirmed empty for all 664 rows in this
+dataset, even well-known landmarks, so there's nothing left to gain by
+re-fetching from Google.
 
-Sources, in priority order:
-  1. Existing Google Maps reviews (places.reviews -- already in DB, capped at
-     5/place by Google itself, not by us; no more obtainable there).
-  2. Google Search snippets via serper.dev -- independent write-ups/news/blog
-     mentions beyond the review cap. (Google's own Custom Search JSON API is
-     closed to new customers as of this writing -- existing customers only,
-     until 2027-01-01 -- so serper.dev, a paid proxy in front of real Google
-     Search results, stands in for it.) One plain query per place
-     (name + district/ขอนแก่น, for disambiguation against same-named places
-     elsewhere in Thailand) -- an earlier version biased landmark-category
-     places to a Wikipedia/TAT-only query first, but that returned
-     noticeably thinner results than a plain search, so it was dropped.
-  3. If neither is available: a deterministic tags/amenities/category
-     template (no LLM call) -- still specific to that place, not the old
-     generic rating-only line.
+The actual pipeline (reviews + serper.dev search snippets -> LLM -> template
+fallback) lives in src/services/place_description.py, shared with the admin
+form's "generate with AI" button (POST /admin/places/describe). This script is
+only the batch driver: it walks the whole table and writes results straight
+to the DB.
 
-Deliberately NOT scraping Wongnai/Facebook/TripAdvisor directly (ToS risk);
-search snippets from those sites are normal search-engine indexing, not us
-fetching their pages ourselves.
-
-Run whenever descriptions need regenerating (e.g. after a fresh
-import-places.js run):
-    cd chatbot-service && python scripts/generate_descriptions.py [--dry-run] [--limit N]
+Run whenever descriptions need regenerating (e.g. after a bulk import):
+    cd chatbot-service && python scripts/generate_descriptions.py [--dry-run] [--limit N] [--force]
 
 Re-run scripts/embed_content.py afterward -- description feeds its
 place_text() composition, so embeddings go stale otherwise.
 """
 import argparse
-import json
 import logging
 import os
-import re
 import sys
 import time
-from typing import Dict, List, Optional
 
 # Windows consoles default to a legacy codepage (cp874 for Thai locale) that
 # can't encode most Thai/Unicode output -- force UTF-8 stdout so printing
@@ -49,15 +31,10 @@ if sys.stdout.encoding != "utf-8":
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import requests
-from bs4 import BeautifulSoup
-from openai import OpenAI
-from urllib.parse import urlparse
-
 from src.core.llm_client import make_llm_client
-from src.core.config import DESCRIPTION_MODEL_NAME, SERPER_API_KEY
+from src.core.config import SERPER_API_KEY
 from src.core.db import supabase
-from src.services.trip_planner.json_utils import clean_json_string
+from src.services.place_description import ModelChain, generate_description, needs_processing
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
@@ -320,6 +297,9 @@ def main():
         sys.exit(1)
 
     client = make_llm_client()
+    # One chain for the whole run: once a model's daily quota is gone the
+    # switch sticks, instead of retrying the dead model on every place.
+    chain = ModelChain()
 
     places = (
         supabase.table("places")
@@ -338,22 +318,12 @@ def main():
             print(f"[{i}/{len(places)}] {place['name']} (skipped, already processed)")
             continue
 
-        has_reviews = bool(place.get("reviews"))
-        search_results = search_for_place(place["name"], place.get("district"))
-        time.sleep(0.2)  # courtesy pacing for the Custom Search per-second quota
-
-        if has_reviews or search_results:
-            description = llm_summarize(client, place, search_results)
-            time.sleep(0.3)  # courtesy pacing -- KKU_API_KEY is a shared university gateway
-        else:
-            description = None
-
-        if description:
-            source = "search_assisted" if search_results else "reviews_only"
-        else:
-            description = template_description(place["name"], place["category"], place.get("tags") or [], place.get("amenities") or [])
-            source = "template_only"
+        result = generate_description(client, place, chain)
+        description, source = result["description"], result["source"]
         stats[source] += 1
+        # Courtesy pacing -- the search proxy has a per-second quota and
+        # KKU_API_KEY is a shared university gateway.
+        time.sleep(0.5)
 
         print(f"[{i}/{len(places)}] {place['name']} ({source})\n  -> {description}")
 

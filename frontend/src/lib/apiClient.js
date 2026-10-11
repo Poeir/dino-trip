@@ -59,6 +59,9 @@ export const fetchPlaceNames = () => apiGet('/api/places/meta/names')
 export const createPlace = (payload) => apiPost('/api/places', payload)
 export const updatePlace = (id, payload) => apiPut(`/api/places/${id}`, payload)
 export const deletePlace = (id) => apiDelete(`/api/places/${id}`)
+// Admin-only: LLM-written description from reviews + search snippets. Returns
+// { description, source } and saves nothing -- see backend places.routes.js.
+export const generatePlaceDescription = (payload) => apiPost('/api/places/describe', payload)
 
 export const fetchEvents = (params) => apiGet('/api/events', params)
 export const createEvent = (payload) => apiPost('/api/events', payload)
@@ -190,7 +193,6 @@ export const fetchTrips = (params) => apiGet('/api/trips', params)
 // `fields` is { title } and/or { isFavorite }.
 export const updateTrip = (id, fields) => request(`/api/trips/${id}`, { method: 'PATCH', body: JSON.stringify(fields) })
 // `liked` is true (like), false (dislike) or null (clear).
-export const setTripItemLike = (tripId, itemId, liked) => request(`/api/trips/${tripId}/items/${itemId}`, { method: 'PATCH', body: JSON.stringify({ liked }) })
 export const deleteTrip = (id) => apiDelete(`/api/trips/${id}`)
 export const duplicateTrip = (id) => apiPost(`/api/trips/${id}/duplicate`)
 
@@ -264,6 +266,21 @@ export const fetchAdminEventRequests = (params) => apiGet('/api/admin/event-requ
 export const fetchAdminEventRequestCount = () => apiGet('/api/admin/event-requests/count')
 export const approveEventRequest = (id) => apiPost(`/api/admin/event-requests/${id}/approve`, {})
 export const rejectEventRequest = (id, reason) => apiPost(`/api/admin/event-requests/${id}/reject`, { reason })
+
+// Satisfaction survey (backend/src/routes/survey.routes.js). Anonymous: no
+// login needed to answer. `payload` is { gender, age, occupation, occupationOther,
+// answers: { 1: 1-5, ..., 15: 1-5 }, strengths?, improvements?, website? }
+// (`website` is the honeypot field and must stay empty).
+export const fetchSurveyQuestions = () => apiGet('/api/survey/questions')
+export const submitSurvey = (payload) => apiPost('/api/survey', payload)
+// { submitted } -- true once this browser has saved a response (httpOnly cookie).
+export const fetchSurveyStatus = () => apiGet('/api/survey/status')
+// Admin: per-question / per-dimension mean + S.D., demographics, comments.
+export const fetchAdminSurveySummary = () => apiGet('/api/admin/survey/summary')
+export const fetchAdminSurveyResponses = (params) => apiGet('/api/admin/survey/responses', params)
+export const deleteAdminSurveyResponse = (id) => apiDelete(`/api/admin/survey/${id}`)
+// A plain link, not a fetch: the browser downloads the CSV with the session cookie.
+export const adminSurveyExportUrl = () => `${BASE_URL}/api/admin/survey/export`
 
 // Admin: reports grouped per place. Params: status (pending|resolved|rejected|
 // superseded), page, limit.

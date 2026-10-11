@@ -15,6 +15,7 @@ import { useDirtyGuard } from '../hooks/useDirtyGuard.js'
 import { usePhotoQueue } from '../hooks/usePhotoQueue.js'
 import FormSection, { FormActions, FormGrid, FormGroup } from '../ui/FormSection.jsx'
 import PlaceSyncInfo from '../PlaceSyncInfo.jsx'
+import PlaceAiDescription from './PlaceAiDescription.jsx'
 
 function validate(f) {
   const e = {}
@@ -180,6 +181,18 @@ export default function PlaceFormModal({ onChanged }) {
           <Field label="คำอธิบาย">
             <textarea className="ad-textarea" value={f.desc || ''} onChange={actions.onField_desc} placeholder="รายละเอียดสถานที่" />
           </Field>
+          <PlaceAiDescription
+            canGenerate={!!f.name?.trim() && !!f.category}
+            getInput={() => ({
+              placeId: state.editingId || null,
+              name: f.name,
+              category: f.category,
+              district: f.district || null,
+              tags: f.tags || [],
+              amenities: f.amenities || [],
+            })}
+            onApply={(text) => actions.updateFormField('desc', text)}
+          />
           <FormGroup legend="สิ่งอำนวยความสะดวก">
             <ChipMultiSelect
               value={f.amenities}

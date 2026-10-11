@@ -23,5 +23,6 @@ export const adminTabs = [
   { key: 'rewards', label: 'ของรางวัล', icon: 'rewards', group: 'พอยท์และรางวัล' },
   { key: 'redeem', label: 'แลกที่เคาน์เตอร์', icon: 'redeem', group: 'พอยท์และรางวัล' },
   { key: 'users', label: 'ผู้ใช้', icon: 'users', group: 'ผู้ใช้และการใช้งาน' },
-  { key: 'trips', label: 'ทริป', icon: 'trips', group: 'ผู้ใช้และการใช้งาน' }
+  { key: 'trips', label: 'ทริป', icon: 'trips', group: 'ผู้ใช้และการใช้งาน' },
+  { key: 'survey', label: 'ความพึงพอใจ', icon: 'survey', group: 'ผู้ใช้และการใช้งาน' }
 ]

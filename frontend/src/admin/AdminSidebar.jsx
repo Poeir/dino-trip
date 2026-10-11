@@ -1,4 +1,4 @@
-import { BookOpen, CalendarDays, Flag, Gift, Inbox, LayoutDashboard, LogOut, MapPin, QrCode, Route, Ticket, Users, X } from 'lucide-react'
+import { BookOpen, CalendarDays, ClipboardList, Flag, Gift, Inbox, LayoutDashboard, LogOut, MapPin, QrCode, Route, Ticket, Users, X } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useApp } from '../context/AppContext.jsx'
@@ -17,6 +17,7 @@ const ICONS = {
   redeem: Ticket,
   users: Users,
   trips: Route,
+  survey: ClipboardList,
 }
 
 const FOCUSABLE = 'a[href],button:not([disabled]),[tabindex]:not([tabindex="-1"])'
