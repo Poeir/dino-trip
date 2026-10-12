@@ -6,7 +6,7 @@ import pytest
 
 from src.services.trip_planner import orchestrator as orchestrator_module
 from src.services.trip_planner.orchestrator import TripBuilderService
-from src.services.trip_planner.models import TripInput
+from src.services.trip_planner.models import Place, TripInput
 
 
 class FakeRetriever:
@@ -272,6 +272,83 @@ class RaisesOnListRestaurants(FakeRetriever):
 
 def names(candidates):
     return {p.name for p in candidates}
+
+
+class FakeCategoryRetriever:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def list_by_categories(self, categories):
+        return [r for r in self._rows if r["category"] in categories]
+
+
+class TestSparePool:
+    """build_spare_pool: neutral places to fill dead time on trips whose
+    interests can't -- well-established, near the accommodation, a market
+    only when its time of day is known. Never shown to the LLM."""
+
+    @staticmethod
+    def spare_row(place_id, category="สวนสาธารณะ", **extra):
+        row = make_place_row(place_id, place_id, "เมืองขอนแก่น", category=category, review_count=500)
+        row.update(extra)
+        return row
+
+    def _pool(self, service, rows, exclude=(), **input_overrides):
+        service.retriever = FakeCategoryRetriever(rows)
+        hotel = Place(id="hotel", name="Hotel", category="ที่พัก", lat=16.44, lng=102.84)
+        return service.build_spare_pool(make_user_input(**input_overrides), hotel, set(exclude))
+
+    def test_every_spare_is_flagged(self, service):
+        pool = self._pool(service, [self.spare_row("park")])
+        assert [p.id for p in pool] == ["park"] and pool[0].is_spare
+
+    def test_quality_bar_is_rating_4_and_200_reviews(self, service):
+        pool = self._pool(service, [
+            self.spare_row("ok", rating=4.0, review_count=200),
+            self.spare_row("low_rating", rating=3.9),
+            self.spare_row("few_reviews", review_count=199),
+        ])
+        assert names(pool) == {"ok"}
+
+    def test_only_neutral_categories(self, service):
+        pool = self._pool(service, [
+            self.spare_row("park"), self.spare_row("landmark", category="สถานที่ท่องเที่ยว"),
+            self.spare_row("temple", category="วัด"), self.spare_row("museum", category="พิพิธภัณฑ์"),
+            self.spare_row("cafe", category="คาเฟ่"),
+        ])
+        assert names(pool) == {"park", "landmark"}
+
+    def test_market_only_when_its_time_of_day_is_known(self, service):
+        pool = self._pool(service, [
+            self.spare_row("ตลาดโต้รุ่ง", category="ตลาด"),
+            self.spare_row("ตลาดจอมพล", category="ตลาด"),
+            self.spare_row("ตลาดตองแปด", category="ตลาด", market_time="all_day"),
+            self.spare_row("ตลาดศิลานคร", category="ตลาด", market_time="evening"),
+        ])
+        assert names(pool) == {"ตลาดโต้รุ่ง", "ตลาดศิลานคร"}
+
+    def test_luxury_budget_gets_no_market_spares(self, service):
+        rows = [self.spare_row("ตลาดโต้รุ่ง", category="ตลาด"), self.spare_row("park")]
+        assert names(self._pool(service, rows, budget_level="หรูหรา")) == {"park"}
+
+    def test_candidates_already_in_play_and_closed_places_are_left_out(self, service):
+        pool = self._pool(service, [
+            self.spare_row("taken"), self.spare_row("shut", business_status="CLOSED_PERMANENTLY"), self.spare_row("free"),
+        ], exclude={"taken"})
+        assert names(pool) == {"free"}
+
+    def test_area_scope_and_distance_from_the_accommodation(self, service):
+        rows = [
+            self.spare_row("city"),
+            self.spare_row("other_district", district="ภูเวียง"),
+            self.spare_row("city_but_far", lat=16.80),      # ~40 km away
+        ]
+        assert names(self._pool(service, rows, area_scope="เมือง")) == {"city"}
+        assert names(self._pool(service, rows, area_scope="ทั่วขอนแก่น")) == {"city", "other_district"}
+
+    def test_nearest_first(self, service):
+        pool = self._pool(service, [self.spare_row("far", lat=16.50), self.spare_row("near", lat=16.445)])
+        assert [p.id for p in pool] == ["near", "far"]
 
 
 class TestMealReserveUsability:

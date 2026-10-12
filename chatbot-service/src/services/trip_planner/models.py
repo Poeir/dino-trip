@@ -34,6 +34,15 @@ class Place(BaseModel):
     amenities: List[str] = []
     tags: List[str] = []
     img: Optional[str] = None
+    # Admin-set time of day for a "ตลาด" row: morning / evening / all_day
+    # (places.market_time). None = not labelled; route_scheduler.market_kind
+    # then falls back to opening hours and the name.
+    market_time: Optional[str] = None
+    # Not a DB column. True for a place from the orchestrator's spare pool:
+    # nobody asked for it (not an interest match, never shown to the LLM), it
+    # only fills dead time under stricter rules -- see route_scheduler's
+    # MAX_SPARE_STOPS_PER_DAY / auto_add_time_ok.
+    is_spare: bool = False
 
     class Config:
         extra = "ignore"  # ignore extra columns we don't model here (source, google_place_id, has_qr, ...)
