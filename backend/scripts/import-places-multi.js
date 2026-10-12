@@ -52,6 +52,7 @@ const categoryByPrimaryType = {
   state_park: 'สวนสาธารณะ', park: 'สวนสาธารณะ',
   museum: 'พิพิธภัณฑ์',
   shopping_mall: 'ห้างสรรพสินค้า', department_store: 'ห้างสรรพสินค้า',
+  gift_shop: 'ร้านของฝาก',
   hotel: 'ที่พัก',
   bakery: 'คาเฟ่', cake_shop: 'คาเฟ่', coffee_shop: 'คาเฟ่', cafe: 'คาเฟ่',
   tourist_attraction: 'สถานที่ท่องเที่ยว', scenic_spot: 'สถานที่ท่องเที่ยว', bridge: 'สถานที่ท่องเที่ยว',
