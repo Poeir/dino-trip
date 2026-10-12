@@ -36,6 +36,7 @@ venv\Scripts\python -m evals.trip_prompt.report --run exp2      # -> runs/exp2/r
 - `--variants`, `--cases`, `--reps` เลือกขอบเขตการรัน
 - `--max-gen-tokens`, `--max-judge-tokens` เพดานงบ token ของ generator และ judge (หยุดเริ่มงานใหม่เมื่อถึง; งานที่กำลังรันอยู่ ≤ จำนวน worker จะรันต่อจนจบ)
 - `--workers` (ค่าเริ่มต้น 2), `--gen-model`, `--judge-model` (หรือ env `EVAL_JUDGE_MODEL`), `--refresh-cache`
+- **เลือก provider แยกต่อบทบาท** (เฉพาะ eval; production ยังใช้ `LLM_PROVIDER` ตัวเดียว): ใส่ `kku:` หรือ `vertex:` นำหน้าชื่อโมเดลใน `--gen-model` / `--judge-model` / `EVAL_JUDGE_MODEL` เช่น `--gen-model vertex:gemini-2.5-pro --judge-model kku:claude-sonnet-5.5` (`vertex:` เติม `google/` ให้เอง) ถ้าไม่ใส่ prefix จะใช้ `LLM_PROVIDER` เหมือนเดิมและไม่แก้ชื่อโมเดล ต้องมี `VERTEX_PROJECT` (และ ADC) สำหรับ vertex และ `KKU_API_KEY` สำหรับ kku ระบบเช็กก่อนเริ่มรัน `rejudge.py` รับ `--judge-model` แบบเดียวกัน ผลลัพธ์แต่ละรันบันทึก `gen_provider` / `judge.judge_provider` ไว้
 - `--mode loop` รันแบบครบระบบ production (judge ในลูป + regenerate) ใช้ยืนยัน variant ที่ผ่านเกณฑ์แล้ว
 
 ถ้ารันคำสั่งเดิมซ้ำ ระบบจะทำต่อจากจุดเดิม และข้ามงานที่สำเร็จไปแล้ว การนำผลของ run เก่ามาใช้ซ้ำทำได้โดยคัดลอกบรรทัดใน `results.jsonl` ไปไว้ใน run ใหม่ (ทำได้เฉพาะเมื่อ prompt ของ variant นั้นและ rubric ของ judge ไม่เปลี่ยน)
@@ -44,7 +45,7 @@ venv\Scripts\python -m evals.trip_prompt.report --run exp2      # -> runs/exp2/r
 
 - **candidate pool ถูก cache ไว้ต่อเคส** (`cache/`) ทุก variant และทุกรอบจึงได้ข้อมูลชุดเดียวกัน
 - **โหมด `single` (ค่าเริ่มต้น)** เรียก generate ครั้งเดียว ไม่มี judge ในลูป เพราะทั้งลูป regenerate และ scheduler (cap/backfill/gap-filler) คอยซ่อมผลลัพธ์ที่ไม่ดี ถ้าเปิดไว้จะกลบความต่างระหว่าง prompt
-- **judge สำหรับประเมินแยกจาก judge ในลูป** (`eval_judge.py`) ใช้โมเดลคนละตระกูลกับ generator (ค่าเริ่มต้น `claude-sonnet-5.5`) ไม่รู้ว่าผลมาจาก variant ไหน มองเห็น candidate pool ด้วย ให้คะแนนจำนวนเต็ม 1–5 ใน 5 เกณฑ์ที่มี anchor กำกับ (`interest_fit`, `constraint_fit`, `variety_flow`, `day_coherence`, `selection_quality`) โดยเขียน critique ก่อนให้คะแนน และไม่ตัดสินเวลา/ระยะทาง/ลำดับ เพราะ scheduler เป็นเจ้าของส่วนนั้น
+- **judge สำหรับประเมินแยกจาก judge ในลูป** (`eval_judge.py`) ใช้โมเดลคนละตระกูลกับ generator (ค่าเริ่มต้น `kku:claude-sonnet-5.5`) ไม่รู้ว่าผลมาจาก variant ไหน มองเห็น candidate pool ด้วย ให้คะแนนจำนวนเต็ม 1–5 ใน 5 เกณฑ์ที่มี anchor กำกับ (`interest_fit`, `constraint_fit`, `variety_flow`, `day_coherence`, `selection_quality`) โดยเขียน critique ก่อนให้คะแนน และไม่ตัดสินเวลา/ระยะทาง/ลำดับ เพราะ scheduler เป็นเจ้าของส่วนนั้น
 - **metric แบบ deterministic**
   - วัดจาก output ดิบของ LLM ก่อนถูกซ่อม ได้แก่ ID ผิด/ซ้ำ, ขาด must-go, เกิน cap, meal_role ผิด, เลือกที่ที่ปิดวันนั้น, จำนวนอำเภอต่อวัน
   - วัดจากตัวเลือกของ LLM (`metrics.py` คำนวณจาก output ที่เก็บไว้ ใช้กับผลเก่าได้): interest match, rating เฉลี่ย, จำนวนที่ที่รีวิว < 20

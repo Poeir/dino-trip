@@ -39,6 +39,7 @@ from src.services.trip_planner.models import Place, TripInput
 from .cases import CASES
 from .eval_judge import EvalJudge
 from .prompts import VARIANTS
+from .providers import check_provider, make_client, parse_spec
 
 HERE = Path(__file__).parent
 CACHE_DIR = HERE / "cache"
@@ -107,9 +108,13 @@ class EvalPlanner(LLMTripPlanner):
     def __init__(self, *args, prompt_fn, gen_model=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.prompt_fn = prompt_fn
+        self.provider = parse_spec(None)[0]
         if gen_model:
-            self.default_model = gen_model
-            self.judge.default_model = gen_model
+            # "provider:model" lets the generator sit on a different provider than the judge (providers.py)
+            self.provider, self.default_model = parse_spec(gen_model)
+            self.client = make_client(self.provider)
+            self.judge.client = self.client  # only used by --mode loop
+            self.judge.default_model = self.default_model
         self.calls = []  # one dict per generation call: prompt_chars, usage, raw content, latency
 
     def generate_prompt(self, user_input, pace_instruction, budget_instruction, feedback_block=""):
@@ -222,7 +227,7 @@ def run_one(variant, case, rep, ctx, mode, gen_model, judge, budget):
     planner = EvalPlanner(candidates, start_point=hotel, must_go_ids=must_go_ids,
                           prompt_fn=VARIANTS[variant], gen_model=gen_model)
     rec = {"variant": variant, "case": case["id"], "rep": rep, "mode": mode,
-           "gen_model": planner.default_model, "n_candidates": len(candidates)}
+           "gen_model": planner.default_model, "gen_provider": planner.provider, "n_candidates": len(candidates)}
     t0 = time.time()
     try:
         if mode == "single":
@@ -271,8 +276,10 @@ def main():
     ap.add_argument("--cases", nargs="*", default=[c["id"] for c in CASES])
     ap.add_argument("--reps", type=int, default=3)
     ap.add_argument("--mode", choices=["single", "loop"], default="single")
-    ap.add_argument("--gen-model", default=None, help="override TRIP_PLANNER_MODEL_NAME for generation")
-    ap.add_argument("--judge-model", default=None, help="override EVAL_JUDGE_MODEL")
+    ap.add_argument("--gen-model", default=None,
+                    help="override TRIP_PLANNER_MODEL_NAME; 'kku:<model>' or 'vertex:<model>' picks the provider")
+    ap.add_argument("--judge-model", default=None,
+                    help="override EVAL_JUDGE_MODEL; 'kku:<model>' or 'vertex:<model>' picks the provider")
     ap.add_argument("--workers", type=int, default=2)
     ap.add_argument("--max-gen-tokens", type=int, default=0, help="stop starting new jobs after this many generator tokens (0 = no cap)")
     ap.add_argument("--max-judge-tokens", type=int, default=0, help="same, for the evaluation judge")
@@ -286,6 +293,10 @@ def main():
     unknown = set(args.variants) - set(VARIANTS)
     if unknown:
         raise SystemExit(f"unknown variants: {unknown}")
+    # Fail now on a missing credential/project, not once per job (which would
+    # write an error record for every queued run).
+    gen_provider, gen_model_name = parse_spec(args.gen_model)
+    check_provider(gen_provider)
     cases = [c for c in CASES if c["id"] in args.cases]
 
     from .freeze import provenance, verify
@@ -332,7 +343,8 @@ def main():
             if (v, c["id"], r) not in done and (v, c["id"], r) not in needs_rejudge]
     (out_dir / "config.json").write_text(json.dumps({
         "variants": args.variants, "cases": args.cases, "reps": args.reps, "mode": args.mode,
-        "gen_model": args.gen_model or llm_extractor.TRIP_PLANNER_MODEL_NAME, "judge_model": judge.model,
+        "gen_model": gen_model_name or llm_extractor.TRIP_PLANNER_MODEL_NAME, "gen_provider": gen_provider,
+        "judge_model": judge.model, "judge_provider": judge.provider,
         "started_at": datetime.now().isoformat(timespec="seconds"),
         "pool_tag": args.pool_tag, "pool_frozen": pool_frozen, "provenance": provenance(),
     }, ensure_ascii=False, indent=1), encoding="utf-8")

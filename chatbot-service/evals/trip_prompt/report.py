@@ -24,6 +24,7 @@ from pathlib import Path
 
 from .eval_judge import CRITERIA
 from .metrics import final_compliance, pick_quality
+from .panel_report import panel_lines
 from .stats import BOOT_N, BOOT_SEED, min_detectable_effect, paired_bootstrap, spearman
 
 HERE = Path(__file__).parent
@@ -267,6 +268,9 @@ def main():
             lines.append(f"- **Agreement with a code check**: {label}: cannot be assessed -- "
                          f"{'every run' if yes else 'no run'} has the defect (n={len(yes) or len(no)}).")
     lines.append("")
+
+    # ---- extra judges (judgements.jsonl); empty when the run has only its own judge ----
+    lines += panel_lines(run_dir, ok, cases, variants, BASELINE, MIN_NOISE_FLOOR, MAX_CASE_LOSS)
 
     # ---- decision ----
     lines += ["## Decision rule", "",
