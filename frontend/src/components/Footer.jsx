@@ -42,11 +42,10 @@ export default function Footer() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
             <img src="/assets/logos/cpkku.webp" alt="วิทยาลัยการคอมพิวเตอร์ มหาวิทยาลัยขอนแก่น" width={113} height={34} loading="lazy" decoding="async" style={{ height: 34, width: 'auto', display: 'block' }} />
             <img src="/assets/logos/kku.webp" alt="มหาวิทยาลัยขอนแก่น" width={73} height={34} loading="lazy" decoding="async" style={logoStyle} />
-            <img src="/assets/logos/tat.webp" alt="การท่องเที่ยวแห่งประเทศไทย" width={40} height={40} loading="lazy" decoding="async" style={{ height: 40, width: 'auto', display: 'block' }} />
           </div>
           <div style={{ fontSize: 12.5, lineHeight: 1.5, color: '#3d4a41', maxWidth: 420 }}>
             <span style={{ fontWeight: 700, color: '#1B5E20' }}>สร้างสรรค์โดย </span>
-            วิทยาลัยการคอมพิวเตอร์ มหาวิทยาลัยขอนแก่น ร่วมกับ การท่องเที่ยวแห่งประเทศไทย (ททท.) สำนักงานขอนแก่น
+            วิทยาลัยการคอมพิวเตอร์ มหาวิทยาลัยขอนแก่น
           </div>
         </div>
 

@@ -9,6 +9,7 @@ import { eventPayload } from '../lib/mappers.js'
 import { db } from '../lib/db.js'
 import { createImageUploadMiddleware } from '../lib/imageUpload.js'
 import { uploadImageBuffer, deleteImage } from '../lib/cloudinary.js'
+import { forwardToChatbotService } from '../lib/chatbotProxy.js'
 
 const THAI_MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
 const thaiParts = (iso) => { const [y, m, d] = iso.split('-').map(Number); return { d, m: THAI_MONTHS[m - 1], y: y + 543 } }
@@ -83,6 +84,24 @@ export const eventRequestsRouter = Router()
 
 const submitLimit = rateLimit({ windowMs: 60 * 60 * 1000, max: 10, message: 'ส่งคำขอบ่อยเกินไป กรุณารอสักครู่แล้วลองใหม่' })
 const MAX_PENDING_PER_USER = 5
+
+// Same LLM extraction the admin form uses (events.routes.js), open to any
+// logged-in requester so they can paste a Facebook post instead of typing the
+// form. Every call costs an LLM request, hence the per-account budget and the
+// text cap (chatbot-service itself has no auth or length limit).
+const extractLimit = rateLimit({ windowMs: 60 * 60 * 1000, max: 20, message: 'ใช้ AI ดึงข้อมูลบ่อยเกินไป กรุณารอสักครู่แล้วลองใหม่' })
+const MAX_EXTRACT_CHARS = 5000
+
+eventRequestsRouter.post('/extract', requireAuth, extractLimit, asyncHandler(async (req, res) => {
+  const text = typeof req.body?.text === 'string' ? req.body.text.trim() : ''
+  if (!text) throw httpError(400, 'กรุณาวางข้อความจากโพสต์')
+  if (text.length > MAX_EXTRACT_CHARS) throw httpError(400, `ข้อความยาวเกินไป (ไม่เกิน ${MAX_EXTRACT_CHARS} ตัวอักษร)`)
+  res.json(await forwardToChatbotService('/events/extract', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  }))
+}))
 
 eventRequestsRouter.post('/', requireAuth, submitLimit, asyncHandler(async (req, res) => {
   const fields = requestPayload(req.body || {})
