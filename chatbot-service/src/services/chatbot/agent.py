@@ -31,6 +31,16 @@ MATCH_KB_TAG = "[MATCH:KB]"
 MATCH_EVENTS_TAG = "[MATCH:EVENTS]"
 NO_MATCH_TAG = "[NO_MATCH]"
 
+# Separate from _SOURCES/MATCH_TAGS on purpose: a question about the bot
+# itself ("ชื่ออะไร", "ทำอะไรได้บ้าง") never cites places/kb/events, so it
+# doesn't belong in that combinatorial set, and it must NOT fall through to
+# NO_MATCH_TAG -- NO_MATCH replies have their text discarded and replaced
+# with FALLBACK_MESSAGE (see chat()/chat_stream()), which previously made
+# even "สวัสดี ชื่ออะไร" answer with the generic "ไม่มีข้อมูล..." fallback
+# despite the system prompt already telling the model its own name.
+SOURCE_SELF = "SELF"
+MATCH_SELF_TAG = "[MATCH:SELF]"
+
 # Every way the model could plausibly write a multi-source tag: any
 # non-empty subset of {PLACES, KB, EVENTS}, in any order. The prompt asks
 # for one canonical order (PLACES, KB, EVENTS) for readability, but this
@@ -43,7 +53,7 @@ MATCH_TAGS = tuple(
     for r in range(1, len(_SOURCES) + 1)
     for combo in itertools.permutations(_SOURCES, r)
 )
-ALL_TAGS = (*MATCH_TAGS, NO_MATCH_TAG)
+ALL_TAGS = (*MATCH_TAGS, MATCH_SELF_TAG, NO_MATCH_TAG)
 
 
 def match_tag(*sources: str) -> str:
@@ -275,6 +285,7 @@ class RAGChatbotService:
         4. ห้ามแต่งเติม หรือเดาข้อมูลสถานที่/งานขึ้นมาเองเด็ดขาด รวมถึงคุณสมบัติที่ไม่มีระบุใน [ข้อมูลบริบท] เช่น ที่จอดรถ, wifi, การเดินทาง/ระยะห่างจากจุดอื่น, วันที่จัดงานที่ไม่ได้ระบุไว้ -- ถ้าไม่มีข้อมูลด้านนี้ ให้บอกตรงๆ ว่าไม่มีข้อมูล ห้ามอนุมานจากที่อยู่หรือชื่อสถานที่/งานเอง
         5. ห้ามแนะนำอีเวนท์ที่ไม่ได้อยู่ใน [ข้อมูลบริบท] -- ระบบกรองอีเวนท์ที่จบไปแล้วหรือถูกยกเลิกออกให้แล้ว รายการอีเวนท์ที่เห็นในบริบทคือรายการที่ยังใช้ได้ทั้งหมด
         6. หากมีประวัติการสนทนาก่อนหน้า ให้ใช้เพื่อเข้าใจคำอ้างอิงในคำถามล่าสุดเท่านั้น (เช่น "ร้านนั้น") ห้ามใช้ประวัติเป็นแหล่งข้อมูลข้อเท็จจริง ข้อเท็จจริงต้องมาจาก [ข้อมูลบริบท] เสมอ และประวัติของคำตอบก่อนหน้าไม่มีแท็ก แต่คำตอบใหม่ของคุณต้องขึ้นต้นด้วยแท็กตามกฎข้อ 1 ทุกครั้ง
+        7. ถ้าผู้ใช้ถามเกี่ยวกับตัวคุณเอง (ทักทาย, ชื่ออะไร, ทำอะไรได้บ้าง, คุยเล่นทั่วไปสั้นๆ) ให้ใช้แท็ก {MATCH_SELF_TAG} แทน {NO_MATCH_TAG} และตอบได้ตรงๆ โดยไม่ต้องมีข้อมูลใน [ข้อมูลบริบท] รองรับ -- สิ่งที่คุณทำได้จริงคือแนะนำร้านอาหาร คาเฟ่ สถานที่ท่องเที่ยว และอีเวนท์ในจังหวัดขอนแก่น จากฐานข้อมูลที่มี ห้ามอ้างว่าจองร้าน จองโรงแรม ซื้อตั๋ว หรือทำอย่างอื่นที่ทำไม่ได้จริง ใช้ {MATCH_SELF_TAG} เฉพาะคำถามเกี่ยวกับตัวคุณเองเท่านั้น คำถามความรู้ทั่วไปอื่นที่ไม่เกี่ยวกับตัวคุณ (ประวัติศาสตร์ เหตุการณ์ปัจจุบัน ความรู้วิชาการ ฯลฯ) ยังต้องใช้กฎข้อ 1-2 ตามปกติ (ตอบจาก [ข้อมูลบริบท] เท่านั้น ไม่มีก็ {NO_MATCH_TAG})
 
         [ข้อมูลบริบท]
         {context_str}
