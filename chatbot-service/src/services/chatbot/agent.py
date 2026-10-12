@@ -76,6 +76,23 @@ LLM_MAX_RETRIES = 1
 REWRITE_TIMEOUT_S = 8
 _HISTORY_ROLES = ("user", "assistant")
 
+# Gemini 3 Flash "thinks" by default even for a one-line query rewrite --
+# measured via usage.jsonl: reasoning_tokens alone hit 600-900 (more than the
+# visible output), adding 3-15s of *variable* latency on top of a pipeline
+# that already makes two sequential LLM calls (rewrite, then answer) on every
+# turn past the first -- this is the real reason turns 2+ feel much slower
+# than turn 1, more than history size ever was. reasoning_effort="low" cut a
+# measured rewrite call from ~8.5s to ~3s with no change in output quality;
+# "minimal" is rejected outright by this model ("THINKING_LEVEL_MINIMAL
+# unsupported"). Deliberately NOT applied to the answer call too: tried that
+# and it broke the live golden-set tests hard (10/33 failing -- event
+# matching, sushi retrieval, multi-turn referent resolution), because the
+# [MATCH]/[NO_MATCH] tag decision and source-citation rules actually need the
+# reasoning budget, unlike the mechanical rewrite task. Some gateways may
+# reject the param entirely -- probed once per process (see _create) and
+# skipped afterwards rather than retried every call once we know it doesn't work.
+REASONING_EFFORT = "low"
+
 REWRITE_PROMPT = """คุณเขียนคำถามล่าสุดของผู้ใช้ใหม่ให้เป็นประโยคที่เข้าใจได้ด้วยตัวเอง โดยไม่ต้องอ่านบทสนทนาก่อนหน้า
 - แทนคำอ้างอิงอย่าง "ร้านนั้น" "งานนั้น" "แล้วที่สองล่ะ" ด้วยชื่อจริงจากบทสนทนา
 - ถ้าคำถามล่าสุดเปลี่ยนหัวข้อใหม่หรือเข้าใจได้ด้วยตัวเองอยู่แล้ว ให้ตอบคำถามเดิมทุกตัวอักษร ห้ามเอาหัวข้อเก่ามาปน
@@ -112,6 +129,20 @@ class RAGChatbotService:
         self.retriever = PlaceRetriever()
         self.client = make_llm_client(timeout=LLM_TIMEOUT_S, max_retries=LLM_MAX_RETRIES)
         self.model_name = MODEL_NAME
+        self._reasoning_effort_supported = True
+
+    def _create(self, **kwargs):
+        """chat.completions.create with REASONING_EFFORT applied, falling
+        back to the plain call (and remembering not to retry) if the gateway
+        rejects the parameter outright instead of paying a failed attempt on
+        every single call."""
+        if self._reasoning_effort_supported:
+            try:
+                return self.client.chat.completions.create(reasoning_effort=REASONING_EFFORT, **kwargs)
+            except BadRequestError:
+                logger.warning("gateway rejected reasoning_effort=%s; disabling it for this process", REASONING_EFFORT)
+                self._reasoning_effort_supported = False
+        return self.client.chat.completions.create(**kwargs)
 
     def _rewrite_query(self, user_message: str, history: list[dict], usage: UsageTracker | None = None) -> str:
         """Turns a follow-up ("แล้วร้านนั้นเปิดกี่โมง") into a standalone
@@ -125,7 +156,7 @@ class RAGChatbotService:
             f"{'ผู้ใช้' if m['role'] == 'user' else 'น้องไดโน'}: {m['content']}" for m in history
         )
         try:
-            response = self.client.chat.completions.create(
+            response = self._create(
                 model=self.model_name,
                 messages=[
                     {"role": "system", "content": REWRITE_PROMPT},
@@ -256,6 +287,10 @@ class RAGChatbotService:
         messages, source_places, source_events, timings = self._prepare(user_message, history, usage)
 
         t0 = time.time()
+        # Not routed through _create: the answer call needs its full
+        # reasoning budget for the [MATCH]/[NO_MATCH] decision (see
+        # REASONING_EFFORT's comment -- reasoning_effort="low" here broke
+        # 10/33 live golden-set tests).
         response = self.client.chat.completions.create(
             model=self.model_name,
             messages=messages,
@@ -315,6 +350,9 @@ class RAGChatbotService:
             temperature=0.1,
             stream=True,
         )
+        # Not given REASONING_EFFORT, same reason as the non-streamed answer
+        # call above: this is the call that makes the [MATCH]/[NO_MATCH]
+        # decision, and cutting its reasoning budget broke live tests.
         try:
             # include_usage makes the gateway append a final chunk carrying
             # token counts (with empty `choices`).

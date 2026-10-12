@@ -3,6 +3,7 @@ opening-hours, anchor-detection, and ordering/scheduling logic. No network,
 no LLM: everything here is pure arithmetic over fixed lat/lng and hours_periods
 fixtures.
 """
+import itertools
 from datetime import date, datetime, time, timedelta
 
 import pytest
@@ -328,16 +329,23 @@ class TestOrderDayStops:
     DAY = date(2026, 7, 27)  # Monday
 
     def test_reorders_a_geographically_bad_input_order(self):
-        # Hotel at (16.44, 102.84). Two places, both near the hotel except
-        # "Far" is much further east. Input order deliberately visits Far
-        # first then Near -- a sensible route should still end up visiting
-        # whichever minimizes backtracking, in this case Near before Far
-        # keeps both legs short instead of hotel->Far->Near->(implicit)hotel.
-        near = make_place(id="near", name="Near", category="คาเฟ่", lat=16.441, lng=102.841, hours_periods=None)
-        far = make_place(id="far", name="Far", category="คาเฟ่", lat=16.60, lng=103.20, hours_periods=None)
-        route = rs.order_day_stops([far, near], HOTEL, self.DAY, time(9, 0), time(20, 0), "standard")
-        names = [p.name for p in route]
-        assert names == ["Near", "Far"]
+        # Hotel at (16.44, 102.84). Input order visits the far place first and
+        # the near one in the middle -- a sensible route must come out as a
+        # shortest round trip. Which DIRECTION round the loop is not
+        # asserted: a closed tour and its reverse are the same length, so
+        # with the return leg counted they tie and input order breaks it.
+        near = make_place(id="near", name="Near", category="สถานที่ท่องเที่ยว", lat=16.441, lng=102.841, hours_periods=None)
+        mid = make_place(id="mid", name="Mid", category="สถานที่ท่องเที่ยว", lat=16.44, lng=102.90, hours_periods=None)
+        far = make_place(id="far", name="Far", category="สถานที่ท่องเที่ยว", lat=16.60, lng=103.20, hours_periods=None)
+
+        def tour(order):
+            pts = [HOTEL] + list(order) + [HOTEL]
+            return sum(rs.calculate_distance(a, b) for a, b in zip(pts, pts[1:]))
+
+        route = rs.order_day_stops([far, near, mid], HOTEL, self.DAY, time(9, 0), time(20, 0), "standard")
+        assert len(route) == 3
+        best = min(tour(order) for order in itertools.permutations([near, mid, far]))
+        assert tour(route) == pytest.approx(best)
 
     def test_anchor_holds_its_position_despite_geographic_inconvenience(self):
         # Anchor is geographically far from the hotel and from the flexible
@@ -901,3 +909,156 @@ class TestBackfillUnderfilledTrip:
         )
         assert routes[1] == []
         assert [p.id for p in routes[2]] == ["tue"]
+
+
+class TestFillerTrustTiers:
+    """Auto-added stops prefer places that meet the review/rating bar, and
+    only fall back to thinly-reviewed ones when no trusted place fits."""
+
+    def test_bar_values(self):
+        assert rs.MIN_FILLER_RATING == 3.5 and rs.MIN_FILLER_REVIEWS == 20
+
+    @pytest.mark.parametrize("rating,reviews,expected", [
+        (4.5, 20, True), (4.5, 19, False), (3.5, 50, True), (3.4, 50, False),
+        (4.6, None, True), (None, 50, True), (0.0, 0, True),
+    ])
+    def test_is_trustworthy_filler(self, rating, reviews, expected):
+        p = make_place(category="สถานที่ท่องเที่ยว", rating=rating, review_count=reviews)
+        assert rs.is_trustworthy_filler(p) is expected
+
+    def test_tiers_drop_empty_and_order_trusted_first(self):
+        good = make_place(id="g", category="สถานที่ท่องเที่ยว", review_count=50)
+        thin = make_place(id="t", category="สถานที่ท่องเที่ยว", review_count=3)
+        assert rs._filler_tiers([thin, good]) == [[good], [thin]]
+        assert rs._filler_tiers([thin]) == [[thin]]
+        assert rs._filler_tiers([]) == []
+
+    def _gap_args(self):
+        here = make_place(id="here", lat=16.44, lng=102.84)
+        nxt = make_place(id="next", category="ร้านอาหาร", lat=16.45, lng=102.85)
+        return here, nxt, datetime(2026, 10, 10, 13, 0)
+
+    def test_gap_filler_prefers_trusted_even_when_farther(self):
+        here, nxt, now = self._gap_args()
+        thin_near = make_place(id="thin", category="สถานที่ท่องเที่ยว", lat=16.4405, lng=102.8405, review_count=5)
+        good_far = make_place(id="good", category="สถานที่ท่องเที่ยว", lat=16.447, lng=102.847, review_count=80)
+        found = rs._find_gap_filler([thin_near, good_far], here, nxt, now, 240, "standard", [])
+        assert found["place"].id == "good"
+
+    def test_gap_filler_falls_back_to_thin_when_nothing_else_fits(self):
+        here, nxt, now = self._gap_args()
+        thin = make_place(id="thin", category="สถานที่ท่องเที่ยว", lat=16.4405, lng=102.8405, review_count=5)
+        found = rs._find_gap_filler([thin], here, nxt, now, 240, "standard", [])
+        assert found["place"].id == "thin"
+
+    def test_backfill_prefers_trusted_then_falls_back(self):
+        anchor = make_place(id="a", category="สถานที่ท่องเที่ยว", lat=16.443, lng=102.842, review_count=100)
+        thin = make_place(id="thin", category="สถานที่ท่องเที่ยว", lat=16.4431, lng=102.8421, review_count=2)
+        good = make_place(id="good", category="สถานที่ท่องเที่ยว", lat=16.452, lng=102.851, review_count=90)
+        args = (HOTEL, date(2026, 10, 10), datetime(2026, 10, 10, 9, 0), datetime(2026, 10, 10, 18, 0), "standard", {})
+        place, _ = rs._find_best_backfill_insertion([anchor], *args, [thin, good])
+        assert place.id == "good"
+        place, _ = rs._find_best_backfill_insertion([anchor], *args, [thin])
+        assert place.id == "thin"
+
+
+REAL_HOTEL = make_place(id="mantra", name="Mantra Varee Hotel", category="ที่พัก", lat=16.4237592, lng=102.8396864)
+
+
+class TestRouteCostCountsReturnLeg:
+    """The last stop is driven home from, so its distance to the hotel is
+    part of the route's cost (real trip: a restaurant 0.1 km from the hotel
+    was used at lunch while an evening-only one 6.7 km away closed the day)."""
+    DAY = date(2026, 7, 27)  # Monday
+    START = datetime(2026, 7, 27, 9, 0)
+    END = datetime(2026, 7, 27, 21, 0)
+
+    def _cost(self, route):
+        return rs._route_cost(route, REAL_HOTEL, self.DAY, self.START, self.END, "standard", {})
+
+    def test_return_leg_is_part_of_cost(self):
+        stop = make_place(id="s", name="S", category="สถานที่ท่องเที่ยว", lat=16.4799, lng=102.8164, hours_periods=None)
+        expected = 2 * rs.calculate_distance(REAL_HOTEL, stop) * rs.DISTANCE_WEIGHT
+        assert self._cost([stop]) == pytest.approx(expected, rel=1e-6)
+
+    def test_nearer_final_stop_is_cheaper(self):
+        halong = make_place(id="h", name="Halong", category="ร้านอาหาร", lat=16.4232748, lng=102.8404648, hours_periods=None)
+        labkoi = make_place(id="l", name="Labkoi", category="ร้านอาหาร", lat=16.4798926, lng=102.8163842, hours_periods=None)
+        assert self._cost([halong]) < self._cost([labkoi])
+
+    def test_order_ends_next_to_the_hotel(self):
+        # The morning anchor fixes the first stop, so the other two are an
+        # open path, not a closed tour: B (beside the hotel) then C (far
+        # north) costs less on the way out but ends 15 km from the hotel.
+        # Counting the way home, C then B wins.
+        anchor = make_place(
+            id="a", name="A", category="สถานที่ท่องเที่ยว", lat=16.48, lng=102.84,
+            hours_periods=[{"open": {"day": 1, "hour": 8, "minute": 30}, "close": {"day": 1, "hour": 10, "minute": 30}}],
+        )
+        near_hotel = make_place(id="b", name="B", category="สถานที่ท่องเที่ยว", lat=16.442, lng=102.841, hours_periods=None)
+        far_north = make_place(id="c", name="C", category="สถานที่ท่องเที่ยว", lat=16.58, lng=102.84, hours_periods=None)
+        route = rs.order_day_stops([anchor, near_hotel, far_north], HOTEL, self.DAY, time(9, 0), time(20, 0), "standard")
+        assert [p.id for p in route] == ["a", "c", "b"]
+
+
+class TestMaterializeTailTrim:
+    """materialize_day_schedule re-checks the day's end after waits and
+    placeholder blocks were added (order_day_stops' walk can't see them):
+    shorten the last stop, else drop it, never past a must-go or the only
+    meal."""
+    DAY = date(2026, 7, 27)  # Monday
+
+    def _run(self, route, end, roles=None, must_go=None, pool=None):
+        return rs.materialize_day_schedule(
+            route, set(), roles or {}, REAL_HOTEL, self.DAY, time(9, 0), end, "standard",
+            gap_filler_pool=pool, must_go_ids=must_go,
+        )
+
+    @staticmethod
+    def _minutes(hhmm):
+        h, m = hhmm.split(":")
+        return int(h) * 60 + int(m)
+
+    def _far_pair(self, far_category="สถานที่ท่องเที่ยว"):
+        near = make_place(id="near", name="Near", category="สถานที่ท่องเที่ยว", lat=16.45, lng=102.84, hours_periods=None)
+        far = make_place(id="far", name="Far", category=far_category, lat=17.30, lng=102.84, hours_periods=None)
+        return near, far
+
+    def test_last_stop_dropped_when_even_shortening_cannot_fit(self):
+        near, far = self._far_pair()
+        schedule, cost, travel = self._run([near, far], time(12, 0))
+        names = [s.place.name for s in schedule]
+        assert names == ["Near", "Mantra Varee Hotel"]
+        assert self._minutes(schedule[-1].arrival_time) <= 12 * 60
+        assert travel == sum(s.travel_time_min for s in schedule)
+
+    def test_must_go_last_stop_is_kept_and_day_runs_over(self):
+        near, far = self._far_pair()
+        schedule, _, _ = self._run([near, far], time(12, 0), must_go={"far"})
+        assert [s.place.name for s in schedule][:2] == ["Near", "Far"]
+        assert self._minutes(schedule[-1].arrival_time) > 12 * 60
+
+    def test_only_restaurant_of_the_day_is_kept(self):
+        near, far = self._far_pair(far_category="ร้านอาหาร")
+        schedule, _, _ = self._run([near, far], time(12, 0))
+        assert "Far" in [s.place.name for s in schedule]
+
+    def test_restaurant_dropped_when_the_day_has_another_meal(self):
+        near, far = self._far_pair(far_category="ร้านอาหาร")
+        near_meal = make_place(id="nm", name="NearMeal", category="ร้านอาหาร", lat=16.43, lng=102.84, hours_periods=None)
+        schedule, _, _ = self._run([near_meal, near, far], time(13, 0))
+        names = [s.place.name for s in schedule]
+        assert "NearMeal" in names and "Far" not in names
+
+    def test_trailing_free_time_block_goes_with_the_dropped_stop(self):
+        lunch = make_place(id="r0", name="Lunch", category="ร้านอาหาร", lat=16.43, lng=102.84, hours_periods=None)
+        sight = make_place(id="a", name="Sight", category="สถานที่ท่องเที่ยว", lat=16.45, lng=102.84, hours_periods=None)
+        dinner = make_place(id="r1", name="Dinner", category="ร้านอาหาร", lat=16.43, lng=102.84, hours_periods=None)
+        roles = {"r0": "lunch", "r1": "dinner"}
+        # dinner would be seated at 17:30 and the day ends 18:00: it is cut,
+        # and so is the placeholder that only existed to wait for it.
+        schedule, _, _ = self._run([lunch, sight, dinner], time(18, 0), roles=roles)
+        names = [s.place.name for s in schedule]
+        assert "Dinner" not in names
+        assert names[-2] == "Sight" and schedule[-1].status.startswith("End of Day")
+        assert self._minutes(schedule[-1].arrival_time) <= 18 * 60

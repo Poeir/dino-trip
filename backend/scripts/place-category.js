@@ -55,7 +55,12 @@ export const CATEGORY_BY_TYPE = {
 
   // Shopping -- only the touristy/market types. Supermarkets/convenience
   // stores etc. are out of fetch-places.js's search scope, left unmapped.
-  market: 'ตลาด', flea_market: 'ตลาด', farmers_market: 'ตลาด', shopping_mall: 'ตลาด',
+  market: 'ตลาด', flea_market: 'ตลาด', farmers_market: 'ตลาด',
+
+  // Malls get their own category, not "ตลาด" -- a department store and a
+  // night market are different stops to a visitor, and the trip planner drops
+  // markets (but keeps malls) on a หรูหรา budget.
+  shopping_mall: 'ห้างสรรพสินค้า', department_store: 'ห้างสรรพสินค้า',
 
   // Lodging
   hotel: 'ที่พัก', resort_hotel: 'ที่พัก', motel: 'ที่พัก', hostel: 'ที่พัก',
