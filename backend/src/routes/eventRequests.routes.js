@@ -6,25 +6,12 @@ import { requireAdmin } from '../middleware/requireAdmin.js'
 import { rateLimit } from '../lib/rateLimit.js'
 import { invalidateCache } from '../lib/crudRouter.js'
 import { eventPayload } from '../lib/mappers.js'
+import { formatDateRange, isPlainDateText } from '../lib/eventDate.js'
 import { db } from '../lib/db.js'
 import { createImageUploadMiddleware } from '../lib/imageUpload.js'
 import { uploadImageBuffer, deleteImage } from '../lib/cloudinary.js'
 import { forwardToChatbotService } from '../lib/chatbotProxy.js'
 
-const THAI_MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
-const thaiParts = (iso) => { const [y, m, d] = iso.split('-').map(Number); return { d, m: THAI_MONTHS[m - 1], y: y + 543 } }
-
-// Display text for date_range when the requester only picked dates. Same
-// format the admin form writes ("1-3 ธ.ค. 2569") -- see EventsTab.jsx.
-function formatDateRange(startIso, endIso) {
-  if (!startIso && !endIso) return ''
-  if (!startIso || !endIso || startIso === endIso) { const s = thaiParts(startIso || endIso); return `${s.d} ${s.m} ${s.y}` }
-  const s = thaiParts(startIso)
-  const e = thaiParts(endIso)
-  if (s.m === e.m && s.y === e.y) return `${s.d}-${e.d} ${s.m} ${s.y}`
-  if (s.y === e.y) return `${s.d} ${s.m} - ${e.d} ${e.m} ${s.y}`
-  return `${s.d} ${s.m} ${s.y} - ${e.d} ${e.m} ${e.y}`
-}
 
 const STATUSES = ['pending', 'approved', 'rejected']
 const REQUEST_COLUMNS =['id', 'user_id', 'name', 'category', 'date_range', 'venue_name', 'admission', 'organizer', 'suitable_for', 'description', 'event_start_date', 'event_end_date', 'place_id', 'status', 'reject_reason', 'reviewed_at', 'event_id', 'created_at']
@@ -68,7 +55,7 @@ async function ownPending(req) {
 function requestPayload(body) {
   const p = eventPayload(body)
   if (p.event_start_date && !p.event_end_date) p.event_end_date = p.event_start_date
-  if (!String(p.date_range ?? '').trim()) p.date_range = formatDateRange(p.event_start_date, p.event_end_date)
+  if (isPlainDateText(p.date_range, p.event_start_date, p.event_end_date)) p.date_range = formatDateRange(p.event_start_date, p.event_end_date)
   for (const key of ['category', 'date_range', 'venue_name', 'admission', 'organizer']) {
     if (p[key] != null && String(p[key]).length > 200) throw httpError(400, 'ข้อมูลบางช่องยาวเกินไป (ไม่เกิน 200 ตัวอักษร)')
   }

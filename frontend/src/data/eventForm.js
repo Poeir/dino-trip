@@ -36,6 +36,27 @@ export function formatDateRange(startIso, endIso) {
   return `${s.day} ${s.month} ${s.year} - ${e.day} ${e.month} ${e.year}`
 }
 
+const FULL_MONTHS = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม']
+
+function normalizeDateText(text) {
+  let s = String(text)
+  FULL_MONTHS.forEach((full, i) => { s = s.split(full).join(THAI_MONTHS[i]) })
+  return s.replace(/[–—]/g, '-').replace(/\./g, '').replace(/\s*-\s*/g, '-').replace(/\s+/g, ' ').trim()
+}
+
+// True when `text` only spells out start..end (any month spelling / spacing), i.e. it says nothing
+// the date pickers don't. False for schedules like "ทุกวันเสาร์-อาทิตย์เดือน ธ.ค.". Mirrors
+// backend/src/lib/eventDate.js -- keep the two in sync.
+export function isPlainDateText(text, startIso, endIso) {
+  if (!text || !String(text).trim()) return true
+  if (!startIso) return false
+  const expected = normalizeDateText(formatDateRange(startIso, endIso || startIso))
+  const actual = normalizeDateText(text)
+  if (actual === expected) return true
+  if (!/\d{4}/.test(actual)) return actual === expected.replace(/ \d{4}$/, '').replace(/ \d{4}(?=-)/, '')
+  return false
+}
+
 // Which of the 3 pickers to show when the form opens. Not itself stored --
 // derived fresh each time from whatever dates/text are already on the event,
 // so there's nothing to keep in sync if an admin edits the row from outside

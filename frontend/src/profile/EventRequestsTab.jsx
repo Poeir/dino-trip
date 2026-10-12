@@ -21,7 +21,7 @@ import PlacePicker from '../components/PlacePicker.jsx'
 import EventDateComposer from '../components/EventDateComposer.jsx'
 import { MASCOT, EVENT_ICON } from '../data/categoryImages.js'
 import { EVENT_REQUEST_STATUS } from '../data/eventRequests.js'
-import { EVENT_CATEGORY_OPTIONS, SUITABLE_FOR_OPTIONS, formatDateRange, inferDateMode } from '../data/eventForm.js'
+import { EVENT_CATEGORY_OPTIONS, SUITABLE_FOR_OPTIONS, formatDateRange, inferDateMode, isPlainDateText } from '../data/eventForm.js'
 import { Card, Notice, primaryBtn } from './ui.jsx'
 
 // Same fields (and look) as the admin form in admin/events/EventFormModal.jsx -- minus the
@@ -114,7 +114,7 @@ function RequestModal({ open, request, onClose, onSaved }) {
       if (x.eventStartDate) {
         next.eventStartDate = x.eventStartDate
         next.eventEndDate = x.eventEndDate || x.eventStartDate
-        const plain = !x.dateRange || x.dateRange === formatDateRange(next.eventStartDate, next.eventEndDate)
+        const plain = isPlainDateText(x.dateRange, next.eventStartDate, next.eventEndDate)
         mode = plain ? inferDateMode({ eventStartDate: next.eventStartDate, eventEndDate: next.eventEndDate }) : 'custom'
         if (plain) next.dateRange = formatDateRange(next.eventStartDate, next.eventEndDate) || next.dateRange
       }

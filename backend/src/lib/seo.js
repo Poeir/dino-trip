@@ -145,7 +145,7 @@ ${place.website ? `<p><a href="${escapeHtml(place.website)}" rel="nofollow">เ�
 
 export function eventPage(event, origin) {
   const canonical = `${origin}/events/${event.id}`
-  const description = truncate(event.desc) || truncate([event.dateRange, event.venueName].filter(Boolean).join(' · '))
+  const description = truncate(event.desc) || truncate([event.dateLabel || event.dateRange, event.venueName].filter(Boolean).join(' · '))
   const images = (event.images || []).filter(Boolean).slice(0, 5)
   const title = `${event.name} | ${SITE_NAME}`
 
@@ -170,7 +170,7 @@ export function eventPage(event, origin) {
   } : null
 
   const rows = [
-    ['ช่วงเวลา', event.dateRange],
+    ['ช่วงเวลา', event.dateLabel || event.dateRange],
     ['สถานที่จัดงาน', event.venueName],
     ['ค่าเข้าชม', event.admission],
     ['ผู้จัด', event.organizer],
@@ -215,7 +215,7 @@ export function eventsListPage(events, origin) {
 ${nav(origin)}
 <h1>กิจกรรมและเทศกาลในขอนแก่น</h1>
 <p>${escapeHtml(description)}</p>
-${linkList(events.map((e) => ({ id: e.id, name: e.name, sub: [e.dateRange, e.venueName].filter(Boolean).join(' · ') })), origin, 'events')}
+${linkList(events.map((e) => ({ id: e.id, name: e.name, sub: [e.dateLabel || e.dateRange, e.venueName].filter(Boolean).join(' · ') })), origin, 'events')}
 </main>`
   return renderPage({ title: `กิจกรรมและเทศกาลในขอนแก่น | ${SITE_NAME}`, description, canonical: `${origin}/events`, image: absoluteImage(null, origin), bodyHtml })
 }
@@ -238,7 +238,7 @@ ${nav(origin)}
 <h2>สถานที่ท่องเที่ยวแนะนำ</h2>
 ${linkList(places.map((p) => ({ id: p.id, name: p.name, sub: [p.category, p.district].filter(Boolean).join(' · ') })), origin, 'places')}
 <h2>กิจกรรมและเทศกาล</h2>
-${linkList(events.map((e) => ({ id: e.id, name: e.name, sub: [e.dateRange, e.venueName].filter(Boolean).join(' · ') })), origin, 'events')}
+${linkList(events.map((e) => ({ id: e.id, name: e.name, sub: [e.dateLabel || e.dateRange, e.venueName].filter(Boolean).join(' · ') })), origin, 'events')}
 </main>`
   return renderPage({ title: DEFAULT_TITLE, description: DEFAULT_DESCRIPTION, canonical: `${origin}/`, image: absoluteImage(null, origin), bodyHtml })
 }

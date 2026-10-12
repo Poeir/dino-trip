@@ -120,7 +120,7 @@ export default function HomePage() {
                 <div style={{ padding: '14px 14px 14px 0', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                   <span style={{ fontSize: 11, fontWeight: 700, color: '#9b5527', marginBottom: 12 }}>{event.category}</span>
                   <div style={{ fontWeight: 400, fontSize: 15, color: '#1f2a24', marginBottom: 6, lineHeight: 1.35 }}>{event.name}</div>
-                  <div style={{ fontWeight: 300, fontSize: 12.5, color: '#5f6a63' }}>{event.dateRange} · {event.venueName}</div>
+                  <div style={{ fontWeight: 300, fontSize: 12.5, color: '#5f6a63' }}>{event.dateLabel || event.dateRange} · {event.venueName}</div>
                 </div>
               </div>
             ))}

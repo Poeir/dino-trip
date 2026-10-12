@@ -81,7 +81,7 @@ export default function EventsListPage() {
                 )}
               </div>
               <div style={{ fontWeight: 400, fontSize: 16, color: '#1f2a24', marginBottom: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{event.name}</div>
-              <div style={{ fontWeight: 300, fontSize: 13, color: '#5f6a63', marginBottom: 8, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{event.dateRange}</div>
+              <div style={{ fontWeight: 300, fontSize: 13, color: '#5f6a63', marginBottom: 8, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{event.dateLabel || event.dateRange}</div>
               <div style={{ fontWeight: 300, fontSize: 12.5, color: '#626863', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{event.venueName}</div>
               {event.suitableFor?.length > 0 && (
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10, maxHeight: 24, overflow: 'hidden' }}>

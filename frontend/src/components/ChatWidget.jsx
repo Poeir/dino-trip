@@ -204,7 +204,7 @@ export default function ChatWidget() {
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#5f6a63', minWidth: 0 }}>
                           <CalendarDays size={12} color="#2E7D32" aria-hidden="true" style={{ flexShrink: 0 }} />
-                          <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.dateRange || 'ไม่มีข้อมูลวันที่'}</span>
+                          <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{state.events.find((x) => x.id === e.id)?.dateLabel || e.dateRange || 'ไม่มีข้อมูลวันที่'}</span>
                         </div>
                       </div>
                     ))}
