@@ -1,6 +1,6 @@
 import { CalendarDays, MapPin, Send, X } from 'lucide-react'
 import { StarGlyph } from './Icons.jsx'
-import { Fragment, useEffect, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useApp } from '../context/AppContext.jsx'
 import AiNotice from './AiNotice.jsx'
@@ -109,6 +109,17 @@ export default function ChatWidget() {
   const { state, actions, derived } = useApp()
   const [bubbleVisible, setBubbleVisible] = useState(false)
   const [bubbleIndex, setBubbleIndex] = useState(0)
+  const scrollRef = useRef(null)
+  const stickToBottomRef = useRef(true)
+
+  // Follow the newest message (and streaming text), unless the user scrolled up to read history.
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const last = derived.chatMessagesView[derived.chatMessagesView.length - 1]
+    if (last && last.from !== 'bot') stickToBottomRef.current = true // the user just sent something
+    if (stickToBottomRef.current) el.scrollTop = el.scrollHeight
+  }, [derived.chatMessagesView, state.chatTyping, state.chatOpen])
 
   useEffect(() => {
     if (state.chatOpen) { setBubbleVisible(false); return }
@@ -155,7 +166,13 @@ export default function ChatWidget() {
               <button onClick={actions.toggleChat} style={{ background: 'rgba(255,255,255,0.16)', border: 'none', color: '#fff', fontSize: 16, width: 26, height: 26, borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}><X size={16} /></button>
             </div>
           </div>
-          <div style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 14, background: 'linear-gradient(180deg,#F6F8F1,#FBFAF3 40%)' }}>
+          <div
+            ref={scrollRef}
+            onScroll={(e) => {
+              const el = e.currentTarget
+              stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+            }}
+            style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 14, background: 'linear-gradient(180deg,#F6F8F1,#FBFAF3 40%)' }}>
             <AiNotice variant="compact" />
             {derived.chatMessagesView.map((msg, i) => (
               // sendChat appends an empty bot message as the streaming target; the typing dots cover that gap.
