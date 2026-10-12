@@ -2,6 +2,7 @@ import datetime
 import itertools
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor
 from openai import BadRequestError
 from src.core.llm_client import make_llm_client
 from src.core.config import MODEL_NAME
@@ -183,13 +184,18 @@ class RAGChatbotService:
         # Retrieve from places, knowledge_base, and events -- unlike the old
         # project, which only ever searched places.
         t0 = time.time()
-        # Sequential on purpose: the shared Supabase client talks HTTP/2 over
-        # one connection, and firing these from threads made requests fail with
-        # httpx.ReadError (WinError 10035) in most runs. The embedding is
-        # cached, so the three searches only encode the query once.
-        places = self.retriever.search_and_expand(query=search_query, limit=3)
-        kb_entries = self.retriever.search_knowledge_base(query=search_query, limit=3)
-        events = self.retriever.search_events(query=search_query, limit=3)
+        # Run concurrently: each call now uses its own dedicated Supabase
+        # client (see retriever.py), which fixed the earlier httpx.ReadError
+        # ([WinError 10035]) that a shared client's connection hit when
+        # threads raced on it. The embedding is cached, so the three
+        # searches still only encode the query once.
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            f_places = pool.submit(self.retriever.search_and_expand, query=search_query, limit=3)
+            f_kb = pool.submit(self.retriever.search_knowledge_base, query=search_query, limit=3)
+            f_events = pool.submit(self.retriever.search_events, query=search_query, limit=3)
+            places = f_places.result()
+            kb_entries = f_kb.result()
+            events = f_events.result()
         retrieve_ms = (time.time() - t0) * 1000
 
         logger.info(
