@@ -1,7 +1,9 @@
 import datetime
 import itertools
 import logging
+import re
 import time
+import unicodedata
 from concurrent.futures import ThreadPoolExecutor
 from openai import BadRequestError
 from src.core.llm_client import make_llm_client
@@ -12,6 +14,29 @@ from src.services.rag.retriever import PlaceRetriever
 logger = logging.getLogger(__name__)
 
 FALLBACK_MESSAGE = "(น้องไดโน) ไม่มีข้อมูลในส่วนนี้ครับ ลองถามเกี่ยวกับสถานที่ท่องเที่ยว ร้านอาหาร หรือคาเฟ่ในขอนแก่นดูนะครับ"
+# Shown when a turn fails (LLM timeout, DB error, empty model output). Same
+# wording as the frontend's own catch-all in AppContext.sendChat.
+ERROR_MESSAGE = "ขออภัยครับ ระบบแชทขัดข้องชั่วคราว ลองใหม่อีกครั้งนะครับ"
+
+# Thailand has no DST, so a fixed offset is exact and needs no tz database.
+# Not the process clock: the production container runs in UTC, which put
+# "is it open now" answers 7 hours off.
+BANGKOK_TZ = datetime.timezone(datetime.timedelta(hours=7))
+_THAI_WEEKDAYS = ("จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์", "อาทิตย์")
+_THAI_MONTHS = (
+    "มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
+    "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม",
+)
+
+
+def current_time_text(now: datetime.datetime | None = None) -> str:
+    """Today's date and time in Thailand, in the same Buddhist-era form the
+    event date ranges use ("23-25 ต.ค. 2569") so the model can compare them."""
+    now = (now or datetime.datetime.now(datetime.timezone.utc)).astimezone(BANGKOK_TZ)
+    return (
+        f"วัน{_THAI_WEEKDAYS[now.weekday()]}ที่ {now.day} {_THAI_MONTHS[now.month - 1]} "
+        f"พ.ศ. {now.year + 543} (ค.ศ. {now.year}) เวลา {now:%H:%M} น."
+    )
 
 # The LLM is asked to prefix every reply with one of these tags so the code
 # can detect a no-match answer deterministically (instead of string-matching
@@ -128,6 +153,40 @@ def clean_history(history) -> list[dict]:
     return cleaned[-MAX_HISTORY_MESSAGES:]
 
 
+_PARENTHETICAL_RE = re.compile(r"[(（][^)）]*[)）]")
+# Words the model routinely leaves off a DB name: "พระธาตุขามแก่น จังหวัดขอนแก่น"
+# is written as "พระธาตุขามแก่น", "... อ.อุบลรัตน์ จ.ขอนแก่น" loses its suffix.
+_LOCATION_QUALIFIER_RE = re.compile(r"ขอนแก่น|^(khon|kaen|khonkaen)$|^[อจต]\.", re.IGNORECASE)
+# Below this, what's left of a name is a common word ("ชาม" from
+# "ชาม ( Charm kitchen )" matched "ชามละ 50 บาท"), so only the full name counts.
+_MIN_PARTIAL_NAME_CHARS = 4
+
+
+def _normalize_name(text: str) -> str:
+    """Letters, marks and digits only, case-folded: "**En Khonkaen** (เอ็น
+    ขอนแก่น)" and "En Khonkaen - เอ็น ขอนแก่น" compare equal."""
+    return "".join(c for c in unicodedata.normalize("NFKC", text).casefold() if unicodedata.category(c)[0] in "LMN")
+
+
+def _named_in_reply(name: str, normalized_reply: str) -> bool:
+    if _normalize_name(name) in normalized_reply:
+        return True
+    parts = [_normalize_name(p) for p in _PARENTHETICAL_RE.sub(" ", name).split() if not _LOCATION_QUALIFIER_RE.search(p)]
+    parts = [p for p in parts if p]
+    return sum(map(len, parts)) >= _MIN_PARTIAL_NAME_CHARS and all(p in normalized_reply for p in parts)
+
+
+def cited_only(cards: list[dict], reply: str) -> list[dict]:
+    """The cards whose place/event the reply actually names. Retrieval hands
+    the model three candidates and it often uses one, but every candidate
+    used to ship as a source card: a noodle-shop answer arrived with two
+    temple cards under "อ้างอิงจาก 3 สถานที่". If no name can be found in the
+    reply at all, the cards are left as they were rather than guessing."""
+    normalized_reply = _normalize_name(reply)
+    cited = [c for c in cards if _named_in_reply(c["name"], normalized_reply)]
+    return cited or cards
+
+
 def _tag_sources(tag: str) -> set[str]:
     """Which of PLACES/KB/EVENTS a [MATCH:...] tag cites -- order-independent."""
     if not tag or tag == NO_MATCH_TAG:
@@ -143,17 +202,20 @@ class RAGChatbotService:
         self._reasoning_effort_supported = True
 
     def _create(self, **kwargs):
-        """chat.completions.create with REASONING_EFFORT applied, falling
-        back to the plain call (and remembering not to retry) if the gateway
-        rejects the parameter outright instead of paying a failed attempt on
-        every single call."""
+        """The rewrite call: chat.completions.create with REASONING_EFFORT
+        applied, falling back to the plain call (and remembering not to
+        retry) if the gateway rejects the parameter outright instead of
+        paying a failed attempt on every single call. No SDK retries: the
+        client's LLM_MAX_RETRIES would turn the 8s leash into 16s, and a
+        failed rewrite just falls back to the raw message anyway."""
+        completions = self.client.with_options(max_retries=0).chat.completions
         if self._reasoning_effort_supported:
             try:
-                return self.client.chat.completions.create(reasoning_effort=REASONING_EFFORT, **kwargs)
+                return completions.create(reasoning_effort=REASONING_EFFORT, **kwargs)
             except BadRequestError:
                 logger.warning("gateway rejected reasoning_effort=%s; disabling it for this process", REASONING_EFFORT)
                 self._reasoning_effort_supported = False
-        return self.client.chat.completions.create(**kwargs)
+        return completions.create(**kwargs)
 
     def _rewrite_query(self, user_message: str, history: list[dict], usage: UsageTracker | None = None) -> str:
         """Turns a follow-up ("แล้วร้านนั้นเปิดกี่โมง") into a standalone
@@ -197,8 +259,8 @@ class RAGChatbotService:
         # Run concurrently: each call now uses its own dedicated Supabase
         # client (see retriever.py), which fixed the earlier httpx.ReadError
         # ([WinError 10035]) that a shared client's connection hit when
-        # threads raced on it. The embedding is cached, so the three
-        # searches still only encode the query once.
+        # threads raced on it. retriever.embed() serializes the encode, so
+        # the three searches still only encode the query once.
         with ThreadPoolExecutor(max_workers=3) as pool:
             f_places = pool.submit(self.retriever.search_and_expand, query=search_query, limit=3)
             f_kb = pool.submit(self.retriever.search_knowledge_base, query=search_query, limit=3)
@@ -269,11 +331,9 @@ class RAGChatbotService:
         )
         context_str = "\n---\n".join(filter(None, [place_context, kb_context, event_context])) or "ไม่มีข้อมูลที่ตรงกับคำถามในฐานข้อมูล"
 
-        current_time_info = datetime.datetime.now().strftime("%A เวลา %H:%M น.")
-
         system_prompt = f"""
         คุณคือ 'น้องไดโน' ผู้ช่วยส่วนตัวสำหรับการท่องเที่ยวในจังหวัดขอนแก่น เป็นมิตรและสุภาพ
-        ขณะนี้คือวัน {current_time_info} (ใช้ข้อมูลนี้ตัดสินว่าสถานที่เปิดหรือปิด และงานไหนยังไม่ผ่านไป)
+        ขณะนี้คือ{current_time_text()} ตามเวลาประเทศไทย (ใช้ข้อมูลนี้ตัดสินว่าสถานที่เปิดหรือปิด และงานไหนผ่านไปแล้ว กำลังจัดอยู่ หรือยังไม่ถึง)
 
         [กฎเหล็ก]
         1. ขึ้นต้นคำตอบทุกครั้งด้วยแท็ก [MATCH:...] เป็นอันดับแรกเสมอ (ห้ามมีข้อความอื่นนำหน้าแท็ก) [ข้อมูลบริบท] ด้านล่างมี 3 ส่วนคือ "รายการสถานที่" (ร้าน/คาเฟ่/ที่เที่ยว), "ความรู้ทั่วไป" (ประวัติศาสตร์/วัฒนธรรม/การเดินทาง ฯลฯ), และ "รายการอีเวนท์" (งาน/เทศกาล/กิจกรรม):
@@ -318,7 +378,7 @@ class RAGChatbotService:
             temperature=0.1,
         )
         usage.record_response("answer", self.model_name, response)
-        raw_reply = response.choices[0].message.content
+        raw_reply = response.choices[0].message.content or ""
         llm_ms = (time.time() - t0) * 1000
 
         matched_tag = next((t for t in ALL_TAGS if raw_reply.startswith(t)), None)
@@ -338,6 +398,14 @@ class RAGChatbotService:
             # Model didn't follow the tag instruction -- treat as a match
             # rather than silently dropping the answer.
             bot_reply = raw_reply
+        if not bot_reply:
+            # No content, or a tag with nothing after it.
+            logger.warning("chat got an empty reply (tag=%s)", matched_tag)
+            bot_reply = ERROR_MESSAGE
+            source_places = []
+            source_events = []
+        source_places = cited_only(source_places, bot_reply)
+        source_events = cited_only(source_events, bot_reply)
         total_ms = (time.time() - t_total0) * 1000
         logger.info(
             "chat done tag=%s retrieve_ms=%.0f llm_ms=%.0f total_ms=%.0f",
@@ -351,9 +419,32 @@ class RAGChatbotService:
         streams its answer, then a final {"type": "done", "reply", "places",
         "events"}. `places`/`events` are only known once the leading
         [MATCH]/[NO_MATCH] tag has been read from the stream, so they're
-        withheld until the last event rather than sent up front."""
-        t_total0 = time.time()
+        withheld until the last event rather than sent up front.
+
+        A failure anywhere in the turn (retrieval, the LLM call, or the
+        stream dying mid-answer) ends the stream with ERROR_MESSAGE and a
+        normal `done` instead of an exception: raising here kills the HTTP
+        response after its 200 headers are already sent."""
         usage = UsageTracker("chat", turn=len(history or []) // 2 + 1)
+        emitted = ""
+        try:
+            for event in self._stream_turn(user_message, history, usage):
+                if event["type"] == "token":
+                    emitted += event["text"]
+                yield event
+        except Exception:
+            logger.exception("chat_stream failed query=%r", user_message)
+            # A NO_MATCH turn has already shown its whole answer; only the
+            # hidden text was still being drained.
+            if emitted != FALLBACK_MESSAGE:
+                notice = f"\n\n{ERROR_MESSAGE}" if emitted else ERROR_MESSAGE
+                emitted += notice
+                yield {"type": "token", "text": notice}
+            usage.meta["failed"] = True
+            yield {"type": "done", "reply": emitted, "places": [], "events": [], "usage": usage.finish()}
+
+    def _stream_turn(self, user_message: str, history, usage: UsageTracker):
+        t_total0 = time.time()
         messages, source_places, source_events, timings = self._prepare(user_message, history, usage)
 
         t0 = time.time()
@@ -453,10 +544,20 @@ class RAGChatbotService:
             full_text += delta
             yield {"type": "token", "text": delta}
 
+        if not full_text:
+            # No content at all, a tag with nothing after it, or a stream that
+            # ended mid-tag: the frontend hides an empty bot bubble, so the
+            # user would otherwise see no answer and no error.
+            logger.warning("chat_stream got an empty reply (tag_buffer=%r)", tag_buffer)
+            full_text = ERROR_MESSAGE
+            include_places = False
+            include_events = False
+            yield {"type": "token", "text": ERROR_MESSAGE}
+
         llm_ms = (time.time() - t0) * 1000
         final_reply = FALLBACK_MESSAGE if is_fallback else full_text
-        final_places = source_places if include_places else []
-        final_events = source_events if include_events else []
+        final_places = cited_only(source_places, full_text) if include_places else []
+        final_events = cited_only(source_events, full_text) if include_events else []
         total_ms = (time.time() - t_total0) * 1000
         logger.info(
             "chat_stream done fallback=%s include_places=%s include_events=%s retrieve_ms=%.0f llm_ms=%.0f total_ms=%.0f",

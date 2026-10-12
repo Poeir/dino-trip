@@ -1,4 +1,5 @@
 import itertools
+import threading
 import time
 from functools import lru_cache
 
@@ -20,11 +21,18 @@ def _embed_cached(text: str) -> tuple[float, ...]:
     return tuple(_model.encode(text, normalize_embeddings=True).tolist())
 
 
+_embed_lock = threading.Lock()
+
+
 def embed(text: str) -> list[float]:
     # A chat turn searches places, knowledge_base and events with the same
-    # query: one encode instead of three (~340ms each, about a third of
-    # retrieval time). A fresh list per call so callers can't mutate the cache.
-    return list(_embed_cached(text))
+    # query, from three threads at once. lru_cache alone doesn't dedupe
+    # concurrent misses: all three encoded the same text in parallel (measured
+    # 180 encodes for 60 turns, ~600ms per turn instead of ~130ms). Under the
+    # lock the first caller encodes and the others then hit the cache. A fresh
+    # list per call so callers can't mutate the cache.
+    with _embed_lock:
+        return list(_embed_cached(text))
 
 
 # Columns the trip planner needs to build a Place -- explicit (not "*") so the
