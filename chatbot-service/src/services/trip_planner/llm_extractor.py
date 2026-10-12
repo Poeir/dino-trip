@@ -17,9 +17,19 @@ logger = logging.getLogger(__name__)
 
 # Max "generate -> judge" cycles before giving up on quality and returning the
 # last itinerary anyway. Kept small and NOT an env var (application-logic
-# tunable, not a deployment secret) -- there is no request timeout anywhere in
-# this stack, so this cap is the only thing bounding worst-case latency.
+# tunable, not a deployment secret) -- together with the per-call timeouts
+# below it is what bounds worst-case latency: nothing else in this stack
+# (Caddy, the browser's fetch) times a trip request out.
 MAX_JUDGE_ATTEMPTS = 2
+
+# Per-call limits for the generation call. Without them the OpenAI SDK's own
+# defaults applied (600s per attempt, 2 silent retries), so one stalled
+# gateway call could hold a request -- and the traveller on the loading page --
+# for half an hour. Generous on purpose: a multi-day prompt on the pro-tier
+# model is slow when healthy. No SDK retries: _generate_itinerary_data already
+# retries once itself.
+GENERATE_TIMEOUT_S = 120
+LLM_MAX_RETRIES = 0
 
 # STRICT RULE 6 in generate_prompt() already frames restaurant picks around
 # a lunch/dinner pair -- this is that assumption enforced deterministically,
@@ -61,7 +71,7 @@ class LLMTripPlanner:
         self.must_go_ids = must_go_ids or set()
         self.location_map = {loc.id: loc for loc in candidates}
         self.default_model = TRIP_PLANNER_MODEL_NAME
-        self.client = make_llm_client()
+        self.client = make_llm_client(timeout=GENERATE_TIMEOUT_S, max_retries=LLM_MAX_RETRIES)
         self.judge = TripItineraryJudge()
         # One tracker for the whole trip (every generate + judge call, retries
         # included); the route attaches metadata and calls finish().

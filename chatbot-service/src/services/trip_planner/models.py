@@ -1,6 +1,7 @@
 from __future__ import annotations
+from datetime import datetime
 from typing import Annotated, List, Optional, Any, Dict
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class Place(BaseModel):
@@ -63,6 +64,14 @@ class Place(BaseModel):
         return [self.category] if self.category else []
 
 
+# The values the trip form sends (frontend AppContext paceList, seed.js
+# budgetList / areaScopeList). Anything else used to be accepted and silently
+# treated as the default.
+TRIP_PACES = ("relaxed", "standard", "packed")
+BUDGET_LEVELS = ("ประหยัด", "ปานกลาง", "หรูหรา")
+AREA_SCOPES = ("เมือง", "ทั่วขอนแก่น")
+
+
 class TripInput(BaseModel):
     # Field caps exist because this endpoint is public and these values are
     # interpolated into the LLM prompt (billed per token). The frontend already
@@ -78,8 +87,8 @@ class TripInput(BaseModel):
     # almost never match, silently falling back to a hardcoded city-center
     # point. None for both (old clients, or nothing picked) keeps that old
     # fallback behavior unchanged.
-    accommodation_lat: Optional[float] = None
-    accommodation_lng: Optional[float] = None
+    accommodation_lat: Optional[float] = Field(default=None, ge=-90, le=90)
+    accommodation_lng: Optional[float] = Field(default=None, ge=-180, le=180)
     must_go: List[Annotated[str, Field(max_length=200)]] = Field(default_factory=list, max_length=30)
     interests: List[Annotated[str, Field(max_length=100)]] = Field(default_factory=list, max_length=30)
     trip_pace: str = Field(default="relaxed", max_length=30)  # relaxed | standard | packed
@@ -87,6 +96,55 @@ class TripInput(BaseModel):
     area_scope: str = Field(default="ทั่วขอนแก่น", max_length=30)  # เมือง | ทั่วขอนแก่น -- matches the frontend's areaScopeList directly
     start_time: str = Field(default="09:00", max_length=10)
     end_time: str = Field(default="18:00", max_length=10)
+
+    # Everything below is parsed with strptime further down (orchestrator,
+    # llm_extractor): a malformed value used to surface there as a 500, and an
+    # end time at or before the start as a trip with no stops in it. Rejected
+    # here instead, as a 422 before any retrieval or LLM call is made.
+    @field_validator("start_date")
+    @classmethod
+    def _is_a_date(cls, value: str) -> str:
+        try:
+            datetime.strptime(value, "%Y-%m-%d")
+        except ValueError:
+            raise ValueError("start_date must be YYYY-MM-DD")
+        return value
+
+    @field_validator("start_time", "end_time")
+    @classmethod
+    def _is_a_time(cls, value: str) -> str:
+        try:
+            datetime.strptime(value, "%H:%M")
+        except ValueError:
+            raise ValueError("must be HH:MM")
+        return value
+
+    @field_validator("trip_pace")
+    @classmethod
+    def _known_pace(cls, value: str) -> str:
+        if value not in TRIP_PACES:
+            raise ValueError(f"trip_pace must be one of {TRIP_PACES}")
+        return value
+
+    @field_validator("budget_level")
+    @classmethod
+    def _known_budget(cls, value: str) -> str:
+        if value not in BUDGET_LEVELS:
+            raise ValueError(f"budget_level must be one of {BUDGET_LEVELS}")
+        return value
+
+    @field_validator("area_scope")
+    @classmethod
+    def _known_area(cls, value: str) -> str:
+        if value not in AREA_SCOPES:
+            raise ValueError(f"area_scope must be one of {AREA_SCOPES}")
+        return value
+
+    @model_validator(mode="after")
+    def _day_ends_after_it_starts(self) -> "TripInput":
+        if datetime.strptime(self.end_time, "%H:%M") <= datetime.strptime(self.start_time, "%H:%M"):
+            raise ValueError("end_time must be later than start_time")
+        return self
 
 
 class TimeSlot(BaseModel):

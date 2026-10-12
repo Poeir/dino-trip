@@ -641,8 +641,18 @@ export function AppProvider({ children }) {
       : { tripForm: { ...s.tripForm, mustGo: [...s.tripForm.mustGo, trimmed] }, mustGoQuery: '', tripFormError: '' })
   }
   const removeMustGo = (name) => setState((s) => ({ tripForm: { ...s.tripForm, mustGo: s.tripForm.mustGo.filter((x) => x !== name) } }))
+  // Enter takes the first suggestion when it matches what was typed, so the
+  // chip carries a real place name: the planner only accepts a typed name
+  // that identifies one place (chatbot-service core/db.py), and "วัด" alone
+  // would be skipped. Suggestions arrive debounced, hence the match check --
+  // the list on screen may still belong to an earlier keystroke.
   const onMustGoKeyDown = (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); addMustGo(stateRef.current.mustGoQuery) }
+    if (e.key !== 'Enter') return
+    e.preventDefault()
+    const s = stateRef.current
+    const typed = s.mustGoQuery.trim().toLowerCase()
+    const top = typed && s.mustGoSuggestions.find((p) => !s.tripForm.mustGo.includes(p.name) && p.name.toLowerCase().includes(typed))
+    addMustGo(top ? top.name : s.mustGoQuery)
   }
   const setPace = (p) => setState((s) => ({ tripForm: { ...s.tripForm, pace: p } }))
   const onDailyStartChange = (e) => updateTripField('dailyStart', e.target.value)

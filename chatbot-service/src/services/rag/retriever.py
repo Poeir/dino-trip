@@ -64,7 +64,11 @@ class PlaceRetriever:
         now = time.monotonic()
         if _restaurant_cache and now - _restaurant_cache[0] < _RESTAURANT_CACHE_TTL_S:
             return _restaurant_cache[1]
-        res = supabase.table("places").select(_RESTAURANT_COLUMNS).eq("category", "ร้านอาหาร").limit(2000).execute()
+        # is_active: a hidden restaurant must not come back as a day's meal.
+        res = (
+            supabase.table("places").select(_RESTAURANT_COLUMNS)
+            .eq("category", "ร้านอาหาร").eq("is_active", True).limit(2000).execute()
+        )
         rows = res.data or []
         _restaurant_cache = (now, rows)
         return rows
