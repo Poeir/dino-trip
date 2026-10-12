@@ -56,7 +56,8 @@ export async function requestTripPlan(tripInput) {
   })
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
-    throw new Error(body.detail || `chatbot-service /trip/llm failed (${res.status})`)
+    // FastAPI validation errors (422) put an array in `detail`; only a string is user-facing.
+    throw new Error(typeof body.detail === 'string' && body.detail ? body.detail : `chatbot-service /trip/llm failed (${res.status})`)
   }
   return res.json() // TripResponse
 }

@@ -24,6 +24,15 @@ services:
     volumes:
       # Keeps the downloaded embedding model across rebuilds/restarts.
       - hf_cache:/app/.cache/huggingface
+      # Vertex AI only (LLM_PROVIDER=vertex): the service-account key is NOT in git.
+      # On the VPS it lives in deploy/secrets/ (git-ignored, file owned by uid 1000
+      # mode 0400) and is bind-mounted read-only via a local, untracked
+      # docker-compose.override.yml:
+      #   services:
+      #     chatbot:
+      #       volumes:
+      #         - ./secrets:/run/gcp:ro
+      # chatbot.env then sets GOOGLE_APPLICATION_CREDENTIALS=/run/gcp/vertex-sa.json
     logging: *default-logging
     security_opt:
       - no-new-privileges:true

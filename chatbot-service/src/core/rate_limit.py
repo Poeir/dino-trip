@@ -74,9 +74,14 @@ class RateLimitMiddleware:
     """`limits` maps a path prefix to a SlidingWindowLimiter; only POSTs under
     a listed prefix are counted (preflights and GETs are free)."""
 
-    def __init__(self, app, limits, message="ส่งคำขอบ่อยเกินไป กรุณารอสักครู่แล้วลองใหม่อีกครั้ง"):
+    def __init__(self, app, limits, global_limits=None, message="ส่งคำขอบ่อยเกินไป กรุณารอสักครู่แล้วลองใหม่อีกครั้ง"):
         self.app = app
         self.limits = limits
+        # Optional prefix -> SlidingWindowLimiter shared by *all* clients: a
+        # ceiling on total LLM spend that per-IP limits can't give (many IPs,
+        # IPv6 rotation). Trade-off: a flood can make everyone see 429, which
+        # is preferable to an unbounded cloud bill.
+        self.global_limits = global_limits or {}
         self.message = message
 
     async def __call__(self, scope, receive, send):
@@ -85,6 +90,8 @@ class RateLimitMiddleware:
             for prefix, limiter in self.limits.items():
                 if path.startswith(prefix):
                     retry_after = limiter.check((prefix, _client_ip(scope)))
+                    if retry_after is None and prefix in self.global_limits:
+                        retry_after = self.global_limits[prefix].check((prefix, "*"))
                     if retry_after is not None:
                         await self._reject(send, retry_after)
                         return

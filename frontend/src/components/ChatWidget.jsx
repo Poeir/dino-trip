@@ -246,6 +246,7 @@ export default function ChatWidget() {
           <div style={{ display: 'flex', gap: 8, padding: '12px 14px', borderTop: '1px solid #E7E3D2', background: '#fff' }}>
             <input
               value={state.chatInput}
+              maxLength={500}
               onChange={actions.onChatInputChange}
               onKeyDown={(e) => { if (e.key === 'Enter') actions.sendChat() }}
               placeholder="พิมพ์คำถามของคุณ..."

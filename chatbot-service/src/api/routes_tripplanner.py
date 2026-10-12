@@ -32,7 +32,9 @@ def generate_trip_llm(user_input: TripInput):
         planner.usage.meta["failed"] = True
         planner.usage.finish()  # failed attempts were still billed
         logger.error("trip planning failed for %d-day trip (%d candidates): %s", user_input.trip_duration_days, len(candidates), e)
-        raise HTTPException(status_code=502, detail=f"Trip planning failed: {e}")
+        # Generic on purpose: str(e) from the LLM SDK can carry the GCP project
+        # id/number, endpoint path or quota details. The full error is logged above.
+        raise HTTPException(status_code=502, detail="วางแผนทริปไม่สำเร็จ กรุณาลองใหม่อีกครั้ง")
 
     total_dist = sum(sum(s.distance_km for s in day.schedule) for day in final_itinerary)
     total_cost = sum(day.day_cost_estimate for day in final_itinerary)

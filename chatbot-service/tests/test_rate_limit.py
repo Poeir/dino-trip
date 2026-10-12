@@ -100,6 +100,25 @@ def test_get_and_other_paths_are_not_limited():
         assert client.post("/other").status_code == 200
 
 
+def test_global_limit_caps_total_across_different_clients():
+    app = FastAPI()
+
+    @app.post("/chat/")
+    def chat():
+        return {"ok": True}
+
+    app.add_middleware(
+        RateLimitMiddleware,
+        limits={"/chat/": SlidingWindowLimiter([(60, 100)])},
+        global_limits={"/chat/": SlidingWindowLimiter([(60, 2)])},
+    )
+    client = TestClient(app)
+    assert client.post("/chat/", headers={"X-Forwarded-For": "1.1.1.1"}).status_code == 200
+    assert client.post("/chat/", headers={"X-Forwarded-For": "2.2.2.2"}).status_code == 200
+    # Each IP is well under its own limit, but the shared ceiling is spent.
+    assert client.post("/chat/", headers={"X-Forwarded-For": "3.3.3.3"}).status_code == 429
+
+
 def test_clients_identified_by_forwarded_for_header():
     client = make_client(chat_limit=1)
     assert client.post("/chat/", headers={"X-Forwarded-For": "1.1.1.1"}).status_code == 200

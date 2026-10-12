@@ -13,8 +13,14 @@ class HistoryMessage(BaseModel):
     content: str
 
 
+# Real questions top out around ~50 chars. Without a cap one request could carry
+# an arbitrarily large prompt (rewrite + embedding + answer all see it) and the
+# rate limiter counts requests, not tokens -- on Vertex that is billed per token.
+MAX_MESSAGE_CHARS = 500
+
+
 class ChatRequest(BaseModel):
-    message: str
+    message: str = Field(max_length=MAX_MESSAGE_CHARS)
     # Prior turns, oldest first. The server is stateless -- the client owns
     # the conversation. Sanitized/truncated in agent.clean_history.
     history: list[HistoryMessage] = Field(default_factory=list, max_length=50)

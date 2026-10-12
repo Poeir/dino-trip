@@ -1,6 +1,6 @@
 from __future__ import annotations
-from typing import List, Optional, Any, Dict
-from pydantic import BaseModel
+from typing import Annotated, List, Optional, Any, Dict
+from pydantic import BaseModel, Field
 
 
 class Place(BaseModel):
@@ -55,9 +55,13 @@ class Place(BaseModel):
 
 
 class TripInput(BaseModel):
-    trip_duration_days: int
-    start_date: str
-    accommodation_name: str
+    # Field caps exist because this endpoint is public and these values are
+    # interpolated into the LLM prompt (billed per token). The frontend already
+    # limits trips to 7 days; the server cap is looser so it never rejects a
+    # legitimate request, only abuse.
+    trip_duration_days: int = Field(ge=1, le=14)
+    start_date: str = Field(max_length=10)
+    accommodation_name: str = Field(max_length=200)
     # Real coordinates from the frontend's Google Maps search (LocationPicker)
     # or the browser's geolocation -- when present, orchestrator.py prefers
     # these over find_place_by_name()'s name-matching against the curated
@@ -67,13 +71,13 @@ class TripInput(BaseModel):
     # fallback behavior unchanged.
     accommodation_lat: Optional[float] = None
     accommodation_lng: Optional[float] = None
-    must_go: List[str] = []
-    interests: List[str] = []
-    trip_pace: str = "relaxed"  # relaxed | standard | packed
-    budget_level: str = "ปานกลาง"  # ประหยัด | ปานกลาง | หรูหรา -- matches the frontend's budgetList directly
-    area_scope: str = "ทั่วขอนแก่น"  # เมือง | ทั่วขอนแก่น -- matches the frontend's areaScopeList directly
-    start_time: str = "09:00"
-    end_time: str = "18:00"
+    must_go: List[Annotated[str, Field(max_length=200)]] = Field(default_factory=list, max_length=30)
+    interests: List[Annotated[str, Field(max_length=100)]] = Field(default_factory=list, max_length=30)
+    trip_pace: str = Field(default="relaxed", max_length=30)  # relaxed | standard | packed
+    budget_level: str = Field(default="ปานกลาง", max_length=30)  # ประหยัด | ปานกลาง | หรูหรา -- matches the frontend's budgetList directly
+    area_scope: str = Field(default="ทั่วขอนแก่น", max_length=30)  # เมือง | ทั่วขอนแก่น -- matches the frontend's areaScopeList directly
+    start_time: str = Field(default="09:00", max_length=10)
+    end_time: str = Field(default="18:00", max_length=10)
 
 
 class TimeSlot(BaseModel):
