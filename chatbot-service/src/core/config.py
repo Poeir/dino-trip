@@ -102,11 +102,22 @@ RATE_LIMIT_CHAT_PER_HOUR = int(os.environ.get("RATE_LIMIT_CHAT_PER_HOUR", "200")
 RATE_LIMIT_TRIP_PER_10_MIN = int(os.environ.get("RATE_LIMIT_TRIP_PER_10_MIN", "5"))
 RATE_LIMIT_TRIP_PER_HOUR = int(os.environ.get("RATE_LIMIT_TRIP_PER_HOUR", "20"))
 
+# Ceiling across ALL clients combined (per-IP limits can't stop many IPs). Sized
+# well above normal traffic so it only trips under abuse; tune to your quota.
+RATE_LIMIT_CHAT_GLOBAL_PER_MINUTE = int(os.environ.get("RATE_LIMIT_CHAT_GLOBAL_PER_MINUTE", "120"))
+RATE_LIMIT_CHAT_GLOBAL_PER_HOUR = int(os.environ.get("RATE_LIMIT_CHAT_GLOBAL_PER_HOUR", "3000"))
+RATE_LIMIT_TRIP_GLOBAL_PER_10_MIN = int(os.environ.get("RATE_LIMIT_TRIP_GLOBAL_PER_10_MIN", "30"))
+RATE_LIMIT_TRIP_GLOBAL_PER_HOUR = int(os.environ.get("RATE_LIMIT_TRIP_GLOBAL_PER_HOUR", "200"))
+
 # Comma-separated list of origins allowed to call this service from a browser,
-# e.g. "https://app.example.com,http://localhost:5173". Unset keeps the old
-# open "*" behaviour so local dev works; set it in production -- this service
-# has no auth of its own, so CORS is the only thing limiting browser callers.
-CORS_ORIGINS = [o.strip().rstrip("/") for o in os.environ.get("CORS_ORIGINS", "*").split(",") if o.strip()]
+# e.g. "https://app.example.com,http://localhost:5173". Unset defaults to the
+# local Vite dev origins only (not "*": with allow_credentials Starlette echoes
+# any Origin back). Production is same-origin behind Caddy, so it needs none.
+CORS_ORIGINS = [
+    o.strip().rstrip("/")
+    for o in os.environ.get("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",")
+    if o.strip()
+]
 
 # Set by deploy/deploy.sh (from the repo-root VERSION file and git); "dev" when
 # running from a checkout. Shown on /docs and returned by /version.

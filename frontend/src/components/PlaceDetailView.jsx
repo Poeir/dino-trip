@@ -100,7 +100,7 @@ export default function PlaceDetailView({ place: p, imageHeight = 460 }) {
             <ChecklistIcon />
             <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1B5E20', margin: 0 }}>สิ่งอำนวยความสะดวก</h3>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '14px 20px', marginBottom: 28 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '14px 20px', marginBottom: 28 }}>
             {groupAmenities(p.amenities || []).map(({ group, items }) => (
               <div key={group}>
                 <div style={{ fontSize: 11.5, fontWeight: 700, color: '#5f6a63', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 7 }}>{group}</div>

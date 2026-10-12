@@ -67,7 +67,7 @@ export default function EventsListPage() {
       {!paged.loading && !paged.error && paged.rows.length === 0 && (
         <EmptyState mascot={MASCOT.sad} tone="green" style={{ padding: '56px 20px' }} title="ไม่พบกิจกรรมที่ตรงกับการค้นหา" desc="ลองค้นหาด้วยคำอื่น" />
       )}
-      <div data-role="card-grid" style={{ display: paged.error ? 'none' : 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: 24 }}>
+      <div data-role="card-grid" style={{ display: paged.error ? 'none' : 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(min(280px,100%),1fr))', gap: 24 }}>
         {paged.rows.map((event) => (
           <div key={event.id} onClick={() => actions.openEvent(event.id)} style={{ display: 'flex', flexDirection: 'column', height: 320, background: '#fff', border: '1px solid #E7E3D2', borderRadius: 16, overflow: 'hidden', cursor: 'pointer', transition: 'transform 0.22s ease,box-shadow 0.22s ease', animation: 'dc-fade-up 0.4s ease both' }}>
             <ImageSlot src={event.img} shape="rect" style={{ width: '100%', height: 170, flexShrink: 0 }} placeholder="ภาพงาน" icon={EVENT_ICON} />
@@ -81,7 +81,7 @@ export default function EventsListPage() {
                 )}
               </div>
               <div style={{ fontWeight: 400, fontSize: 16, color: '#1f2a24', marginBottom: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{event.name}</div>
-              <div style={{ fontWeight: 300, fontSize: 13, color: '#5f6a63', marginBottom: 8, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{event.dateRange}</div>
+              <div style={{ fontWeight: 300, fontSize: 13, color: '#5f6a63', marginBottom: 8, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{event.dateLabel || event.dateRange}</div>
               <div style={{ fontWeight: 300, fontSize: 12.5, color: '#626863', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{event.venueName}</div>
               {event.suitableFor?.length > 0 && (
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10, maxHeight: 24, overflow: 'hidden' }}>

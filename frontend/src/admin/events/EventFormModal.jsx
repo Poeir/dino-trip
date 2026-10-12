@@ -7,7 +7,7 @@ import PlacePhotoGallery, { MAX_PHOTOS } from '../../components/PlacePhotoGaller
 import PlacePicker from '../../components/PlacePicker.jsx'
 import EventDateComposer from '../../components/EventDateComposer.jsx'
 import { createEvent, updateEvent, fetchEventPhotos, uploadEventPhoto, deleteEventPhoto, createPlace, fetchPlaceNames } from '../../lib/apiClient.js'
-import { EVENT_CATEGORY_OPTIONS, SUITABLE_FOR_OPTIONS, formatDateRange, inferDateMode } from '../../data/eventForm.js'
+import { EVENT_CATEGORY_OPTIONS, SUITABLE_FOR_OPTIONS, formatDateRange, inferDateMode, isPlainDateText } from '../../data/eventForm.js'
 import { useDirtyGuard } from '../hooks/useDirtyGuard.js'
 import { usePhotoQueue } from '../hooks/usePhotoQueue.js'
 import FormSection, { FormActions, FormGrid, FormGroup } from '../ui/FormSection.jsx'
@@ -88,7 +88,7 @@ export default function EventFormModal({ onChanged }) {
     const start = extracted.eventStartDate || ''
     const end = extracted.eventEndDate || ''
     if (start) {
-      const plain = !extracted.dateRange || extracted.dateRange === formatDateRange(start, end)
+      const plain = isPlainDateText(extracted.dateRange, start, end || start)
       const mode = plain ? inferDateMode({ eventStartDate: start, eventEndDate: end }) : 'custom'
       setDateMode(mode)
       applyDateRange(start, end, mode)

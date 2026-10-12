@@ -20,7 +20,7 @@ export default function AdminLoginPage() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg,#d7ede0,#eaf6ee)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+    <div className="dc-vh-full" style={{ background: 'linear-gradient(135deg,#d7ede0,#eaf6ee)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
       <form onSubmit={onSubmit} style={{ background: '#fff', borderRadius: 16, padding: 36, width: 'min(360px, 100%)', boxShadow: '0 16px 40px rgba(0,0,0,0.1)', textAlign: 'center' }}>
         <h1 style={{ fontSize: 20, fontWeight: 800, color: '#1B5E20', margin: '0 0 2px' }}>Dino Admin Portal</h1>
         <div style={{ fontSize: 12.5, color: '#5f6a63', marginBottom: 22 }}>สำหรับผู้ดูแลระบบ</div>

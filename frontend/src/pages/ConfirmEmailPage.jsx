@@ -24,8 +24,8 @@ export default function ConfirmEmailPage() {
   }, [])
 
   return (
-    <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg,#d7ede0,#eaf6ee)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ background: '#fff', borderRadius: 16, padding: 36, width: 360, boxShadow: '0 16px 40px rgba(0,0,0,0.1)', textAlign: 'center' }}>
+    <div className="dc-vh-full" style={{ background: 'linear-gradient(135deg,#d7ede0,#eaf6ee)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div style={{ background: '#fff', borderRadius: 16, padding: 36, width: 'min(360px, 100%)', boxSizing: 'border-box', boxShadow: '0 16px 40px rgba(0,0,0,0.1)', textAlign: 'center' }}>
         {status === 'working' ? (
           <div style={{ color: '#5f6a63', fontSize: 14 }}>กำลังยืนยันอีเมล...</div>
         ) : (

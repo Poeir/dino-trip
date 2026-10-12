@@ -22,7 +22,7 @@ export default function EventDetailPage() {
 
   useSeo(foundEvent ? {
     title: foundEvent.name,
-    description: foundEvent.desc || [foundEvent.dateRange, foundEvent.venueName].filter(Boolean).join(' · '),
+    description: foundEvent.desc || [foundEvent.dateLabel || foundEvent.dateRange, foundEvent.venueName].filter(Boolean).join(' · '),
     image: foundEvent.img,
     path: `/events/${foundEvent.id}`,
   } : {})

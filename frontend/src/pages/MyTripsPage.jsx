@@ -89,7 +89,7 @@ export default function MyTripsPage() {
           action={!paged.query && !onlyFavorites && <button onClick={actions.goTripForm} style={{ background: 'linear-gradient(135deg,#66BB6A,#2E7D32)', color: '#fff', border: 'none', padding: '10px 22px', borderRadius: 20, fontWeight: 800, fontSize: 14, cursor: 'pointer' }}>วางแผนทริป</button>} />
       )}
 
-      <div style={{ display: paged.error ? 'none' : 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))', gap: 22, opacity: paged.loading && paged.rows.length ? 0.6 : 1, transition: 'opacity 0.15s ease' }}>
+      <div style={{ display: paged.error ? 'none' : 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(min(300px,100%),1fr))', gap: 22, opacity: paged.loading && paged.rows.length ? 0.6 : 1, transition: 'opacity 0.15s ease' }}>
         {paged.rows.map((t) => (
           <div key={t.id} style={{ display: 'flex', flexDirection: 'column', background: '#fff', border: '1px solid #E7E3D2', borderRadius: 16, overflow: 'hidden', animation: 'dc-fade-up 0.4s ease both' }}>
             <div onClick={() => navigate(`/trip/${t.id}`)} style={{ position: 'relative', cursor: 'pointer' }}>

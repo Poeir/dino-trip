@@ -1,6 +1,6 @@
 import { CalendarDays, MapPin, Send, X } from 'lucide-react'
 import { StarGlyph } from './Icons.jsx'
-import { Fragment, useEffect, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useApp } from '../context/AppContext.jsx'
 import AiNotice from './AiNotice.jsx'
@@ -109,6 +109,17 @@ export default function ChatWidget() {
   const { state, actions, derived } = useApp()
   const [bubbleVisible, setBubbleVisible] = useState(false)
   const [bubbleIndex, setBubbleIndex] = useState(0)
+  const scrollRef = useRef(null)
+  const stickToBottomRef = useRef(true)
+
+  // Follow the newest message (and streaming text), unless the user scrolled up to read history.
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const last = derived.chatMessagesView[derived.chatMessagesView.length - 1]
+    if (last && last.from !== 'bot') stickToBottomRef.current = true // the user just sent something
+    if (stickToBottomRef.current) el.scrollTop = el.scrollHeight
+  }, [derived.chatMessagesView, state.chatTyping, state.chatOpen])
 
   useEffect(() => {
     if (state.chatOpen) { setBubbleVisible(false); return }
@@ -133,7 +144,7 @@ export default function ChatWidget() {
   return (
     <div data-role="chat-widget" style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 60, display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
       {state.chatOpen && (
-        <div style={{ width: 'min(390px, calc(100vw - 32px))', height: 'min(580px, calc(100vh - 130px))', background: '#fff', borderRadius: 24, boxShadow: '0 24px 60px rgba(27,94,32,0.30), 0 0 0 1px rgba(46,125,50,0.08)', display: 'flex', flexDirection: 'column', overflow: 'hidden', marginBottom: 14, animation: 'dc-pop 0.28s ease both' }}>
+        <div style={{ width: 'min(390px, calc(100vw - 32px))', height: 'min(580px, calc(100dvh - 130px))', background: '#fff', borderRadius: 24, boxShadow: '0 24px 60px rgba(27,94,32,0.30), 0 0 0 1px rgba(46,125,50,0.08)', display: 'flex', flexDirection: 'column', overflow: 'hidden', marginBottom: 14, animation: 'dc-pop 0.28s ease both' }}>
           <div style={{ position: 'relative', overflow: 'hidden', background: 'linear-gradient(135deg,#66BB6A,#2E7D32 60%,#1B5E20)', padding: '16px 16px 14px' }}>
             {sparkles.map((s, i) => (
               <span key={i} style={{ position: 'absolute', left: s.left, top: s.top, width: s.size, height: s.size, borderRadius: '50%', background: '#FBC02D', animation: `dc-particle-float ${s.duration} ease-in-out infinite`, animationDelay: s.delay, pointerEvents: 'none' }}></span>
@@ -155,7 +166,13 @@ export default function ChatWidget() {
               <button onClick={actions.toggleChat} style={{ background: 'rgba(255,255,255,0.16)', border: 'none', color: '#fff', fontSize: 16, width: 26, height: 26, borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}><X size={16} /></button>
             </div>
           </div>
-          <div style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 14, background: 'linear-gradient(180deg,#F6F8F1,#FBFAF3 40%)' }}>
+          <div
+            ref={scrollRef}
+            onScroll={(e) => {
+              const el = e.currentTarget
+              stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+            }}
+            style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 14, background: 'linear-gradient(180deg,#F6F8F1,#FBFAF3 40%)' }}>
             <AiNotice variant="compact" />
             {derived.chatMessagesView.map((msg, i) => (
               // sendChat appends an empty bot message as the streaming target; the typing dots cover that gap.
@@ -204,7 +221,7 @@ export default function ChatWidget() {
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#5f6a63', minWidth: 0 }}>
                           <CalendarDays size={12} color="#2E7D32" aria-hidden="true" style={{ flexShrink: 0 }} />
-                          <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.dateRange || 'ไม่มีข้อมูลวันที่'}</span>
+                          <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{state.events.find((x) => x.id === e.id)?.dateLabel || e.dateRange || 'ไม่มีข้อมูลวันที่'}</span>
                         </div>
                       </div>
                     ))}
@@ -246,6 +263,7 @@ export default function ChatWidget() {
           <div style={{ display: 'flex', gap: 8, padding: '12px 14px', borderTop: '1px solid #E7E3D2', background: '#fff' }}>
             <input
               value={state.chatInput}
+              maxLength={500}
               onChange={actions.onChatInputChange}
               onKeyDown={(e) => { if (e.key === 'Enter') actions.sendChat() }}
               placeholder="พิมพ์คำถามของคุณ..."

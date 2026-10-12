@@ -7,14 +7,48 @@ const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || 'http://localhost:5173'
 
 let transporter
 
+// Two ways to send:
+//  - SMTP_HOST set  -> any SMTP provider (Resend/Brevo/Zoho/...), login via
+//    SMTP_USER/SMTP_PASSWORD. Lets mail come from a domain address.
+//  - otherwise      -> Gmail with GMAIL_USER/GMAIL_APP_PASSWORD (legacy).
+// MAIL_FROM / MAIL_FROM_NAME control what recipients see as the sender, so the
+// personal login account is never exposed. With plain Gmail, MAIL_FROM only
+// takes effect if it is a verified "Send mail as" alias of that account;
+// otherwise Gmail silently rewrites it back to GMAIL_USER.
 function getTransporter() {
   if (!transporter) {
-    transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: { user: process.env.GMAIL_USER, pass: process.env.GMAIL_APP_PASSWORD },
-    })
+    if (process.env.SMTP_HOST) {
+      const port = Number(process.env.SMTP_PORT) || 587
+      transporter = nodemailer.createTransport({
+        host: process.env.SMTP_HOST,
+        port,
+        secure: port === 465,
+        auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD },
+      })
+    } else {
+      transporter = nodemailer.createTransport({
+        service: 'gmail',
+        auth: { user: process.env.GMAIL_USER, pass: process.env.GMAIL_APP_PASSWORD },
+      })
+    }
   }
   return transporter
+}
+
+function fromAddress() {
+  const name = process.env.MAIL_FROM_NAME || 'Dino'
+  const address = process.env.MAIL_FROM || process.env.GMAIL_USER
+  return { name, address }
+}
+
+function sendMail(message) {
+  const { address } = fromAddress()
+  return getTransporter().sendMail({
+    from: fromAddress(),
+    // Replies go to the same visible address, not the login account.
+    replyTo: address,
+    ...message,
+  })
 }
 
 // Table-based layout + inline styles throughout -- Gmail/Outlook strip
@@ -69,8 +103,7 @@ function emailCardHtml({ heading, bodyText, buttonText, link, footerText }) {
             ${footerText}
           </p>
           <p style="color:#c2cac4;font-size:10.5px;line-height:1.6;text-align:center;margin:14px 0 0;">
-            ศูนย์ข้อมูลท่องเที่ยวขอนแก่น<br>
-            การท่องเที่ยวแห่งประเทศไทย (ททท.) สำนักงานขอนแก่น
+            Dino — ผู้ช่วยนำเที่ยวขอนแก่น
           </p>
         </td>
       </tr>
@@ -100,22 +133,20 @@ function passwordResetEmailHtml(link) {
 }
 
 export async function sendVerificationEmail(to, link) {
-  await getTransporter().sendMail({
-    from: `"Dino" <${process.env.GMAIL_USER}>`,
+  await sendMail({
     to,
     subject: 'ยืนยันอีเมลของคุณ - Dino',
     html: verificationEmailHtml(link),
-    text: `ยืนยันอีเมลของคุณ - Dino\n\nกรุณาเปิดลิงก์นี้เพื่อยืนยันบัญชี Dino ของคุณ:\n${link}\n\nลิงก์นี้จะหมดอายุใน 24 ชั่วโมง หากคุณไม่ได้เป็นผู้สมัครสมาชิก สามารถละเว้นอีเมลฉบับนี้ได้เลย\n\n--\nศูนย์ข้อมูลท่องเที่ยวขอนแก่น\nการท่องเที่ยวแห่งประเทศไทย (ททท.) สำนักงานขอนแก่น`,
+    text: `ยืนยันอีเมลของคุณ - Dino\n\nกรุณาเปิดลิงก์นี้เพื่อยืนยันบัญชี Dino ของคุณ:\n${link}\n\nลิงก์นี้จะหมดอายุใน 24 ชั่วโมง หากคุณไม่ได้เป็นผู้สมัครสมาชิก สามารถละเว้นอีเมลฉบับนี้ได้เลย\n\n--\nDino — ผู้ช่วยนำเที่ยวขอนแก่น`,
   })
 }
 
 export async function sendPasswordResetEmail(to, link) {
-  await getTransporter().sendMail({
-    from: `"Dino" <${process.env.GMAIL_USER}>`,
+  await sendMail({
     to,
     subject: 'รีเซ็ตรหัสผ่านของคุณ - Dino',
     html: passwordResetEmailHtml(link),
-    text: `รีเซ็ตรหัสผ่านของคุณ - Dino\n\nกรุณาเปิดลิงก์นี้เพื่อตั้งรหัสผ่านใหม่:\n${link}\n\nลิงก์นี้จะหมดอายุใน 1 ชั่วโมง หากคุณไม่ได้เป็นผู้ขอรีเซ็ตรหัสผ่าน สามารถละเว้นอีเมลนี้ได้เลย\n\n--\nศูนย์ข้อมูลท่องเที่ยวขอนแก่น\nการท่องเที่ยวแห่งประเทศไทย (ททท.) สำนักงานขอนแก่น`,
+    text: `รีเซ็ตรหัสผ่านของคุณ - Dino\n\nกรุณาเปิดลิงก์นี้เพื่อตั้งรหัสผ่านใหม่:\n${link}\n\nลิงก์นี้จะหมดอายุใน 1 ชั่วโมง หากคุณไม่ได้เป็นผู้ขอรีเซ็ตรหัสผ่าน สามารถละเว้นอีเมลนี้ได้เลย\n\n--\nDino — ผู้ช่วยนำเที่ยวขอนแก่น`,
   })
 }
 
@@ -130,12 +161,11 @@ function emailChangeEmailHtml(link) {
 }
 
 export async function sendEmailChangeEmail(to, link) {
-  await getTransporter().sendMail({
-    from: `"Dino" <${process.env.GMAIL_USER}>`,
+  await sendMail({
     to,
     subject: 'ยืนยันอีเมลใหม่ของคุณ - Dino',
     html: emailChangeEmailHtml(link),
-    text: `ยืนยันอีเมลใหม่ของคุณ - Dino\n\nกรุณาเปิดลิงก์นี้เพื่อยืนยันการเปลี่ยนอีเมลของบัญชี Dino:\n${link}\n\nลิงก์นี้จะหมดอายุใน 24 ชั่วโมง หากคุณไม่ได้เป็นผู้ขอเปลี่ยนอีเมล สามารถละเว้นอีเมลฉบับนี้ได้เลย\n\n--\nศูนย์ข้อมูลท่องเที่ยวขอนแก่น\nการท่องเที่ยวแห่งประเทศไทย (ททท.) สำนักงานขอนแก่น`,
+    text: `ยืนยันอีเมลใหม่ของคุณ - Dino\n\nกรุณาเปิดลิงก์นี้เพื่อยืนยันการเปลี่ยนอีเมลของบัญชี Dino:\n${link}\n\nลิงก์นี้จะหมดอายุใน 24 ชั่วโมง หากคุณไม่ได้เป็นผู้ขอเปลี่ยนอีเมล สามารถละเว้นอีเมลฉบับนี้ได้เลย\n\n--\nDino — ผู้ช่วยนำเที่ยวขอนแก่น`,
   })
 }
 
@@ -149,8 +179,7 @@ export async function sendEmailChangeNotice(to, newEmail, resetLink) {
     link: resetLink,
     footerText: 'หากเป็นคุณที่ขอเปลี่ยนอีเมล สามารถละเว้นอีเมลฉบับนี้ได้',
   })
-  await getTransporter().sendMail({
-    from: `"Dino" <${process.env.GMAIL_USER}>`,
+  await sendMail({
     to,
     subject: 'มีคำขอเปลี่ยนอีเมลของบัญชีคุณ - Dino',
     html,

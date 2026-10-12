@@ -5,5 +5,12 @@ __pycache__/
 .env
 .pytest_cache/
 
+# GCP service-account keys (Vertex AI) -- never commit
+*service-account*.json
+*service_account*.json
+*credentials*.json
+application_default_credentials.json
+gcp-key*.json
+
 # usage tracker output (src/core/usage.py)
 logs/

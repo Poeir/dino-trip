@@ -17,8 +17,8 @@ export default function ResetPasswordPage() {
   const token = searchParams.get('token')
 
   return (
-    <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg,#d7ede0,#eaf6ee)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '32px 16px' }}>
-      <div style={{ background: '#fff', borderRadius: 16, padding: 36, width: 380, boxShadow: '0 16px 40px rgba(0,0,0,0.1)' }}>
+    <div className="dc-vh-full" style={{ background: 'linear-gradient(135deg,#d7ede0,#eaf6ee)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '32px 16px' }}>
+      <div style={{ background: '#fff', borderRadius: 16, padding: 36, width: 'min(380px, 100%)', boxSizing: 'border-box', boxShadow: '0 16px 40px rgba(0,0,0,0.1)' }}>
         <h1 data-font="culture" style={{ fontSize: 19, fontWeight: 800, color: '#1B5E20', margin: '0 0 20px', textAlign: 'center' }}>ตั้งรหัสผ่านใหม่</h1>
         {!token ? (
           <>

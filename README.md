@@ -92,6 +92,8 @@ python scripts/embed_content.py
 | | `CHATBOT_SERVICE_URL` | ให้ backend proxy คำสั่ง admin (reindex, สกัดกิจกรรม) ไปที่ chatbot-service |
 | | `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | เก็บรูปสถานที่/กิจกรรม/รางวัล |
 | | `GMAIL_USER`, `GMAIL_APP_PASSWORD` | ส่งอีเมลยืนยัน/รีเซ็ตรหัสผ่าน (ต้องเป็น App Password) |
+| | `MAIL_FROM`, `MAIL_FROM_NAME` | (ไม่บังคับ) ที่อยู่/ชื่อผู้ส่งที่ผู้รับเห็น เช่น `noreply@dinokhonkaen.app` — ถ้าไม่ตั้งจะใช้ `GMAIL_USER` |
+| | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` | (ไม่บังคับ) ใช้ SMTP ของผู้ให้บริการอื่นแทน Gmail (ต้องยืนยันโดเมน SPF/DKIM กับผู้ให้บริการก่อน) |
 | | `GOOGLE_PLACES_API_KEY` | ใช้ซิงก์/นำเข้าสถานที่ (ต้องเปิด Places API (New) + ผูก billing; คิดเงินต่อสถานที่) |
 | | `PORT` | พอร์ตของ backend API (default `4000`) |
 | `chatbot-service/.env` | `KKU_API_KEY` | KKU LLM gateway (OpenAI-compatible) |

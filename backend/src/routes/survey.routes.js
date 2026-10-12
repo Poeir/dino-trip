@@ -58,7 +58,7 @@ adminSurveyRouter.use(requireAdmin)
 const DEMOGRAPHIC_COLUMNS = [...DEMOGRAPHICS, ...EXPERIENCE].map((d) => d.column)
 
 adminSurveyRouter.get('/summary', asyncHandler(async (req, res) => {
-  const rows = await db('survey_responses').select(QUESTION_COLUMNS, DEMOGRAPHIC_COLUMNS)
+  const rows = await db('survey_responses').select(...QUESTION_COLUMNS, ...DEMOGRAPHIC_COLUMNS)
   const withComments = await db('survey_responses')
     .whereRaw("(coalesce(btrim(strengths), '') <> '' or coalesce(btrim(improvements), '') <> '')")
     .count('id as c').first()
@@ -78,7 +78,7 @@ adminSurveyRouter.get('/responses', asyncHandler(async (req, res) => {
   }
   const { c } = await filtered().count('id as c').first()
   const rows = await filtered()
-    .select('id', 'strengths', 'improvements', 'created_at', 'age', 'occupation_other', QUESTION_COLUMNS, DEMOGRAPHIC_COLUMNS)
+    .select('id', 'strengths', 'improvements', 'created_at', 'age', 'occupation_other', ...QUESTION_COLUMNS, ...DEMOGRAPHIC_COLUMNS)
     .orderBy('created_at', 'desc').limit(pageSize).offset((page - 1) * pageSize)
   const total = Number(c)
   res.json({
@@ -114,7 +114,7 @@ const csvCell = (v) => {
 
 adminSurveyRouter.get('/export', asyncHandler(async (req, res) => {
   const rows = await db('survey_responses')
-    .select('id', 'created_at', 'gender', 'age', 'age_group', 'occupation', 'occupation_other', ...EXPERIENCE.map((d) => d.column), QUESTION_COLUMNS, 'strengths', 'improvements', 'app_version')
+    .select('id', 'created_at', 'gender', 'age', 'age_group', 'occupation', 'occupation_other', ...EXPERIENCE.map((d) => d.column), ...QUESTION_COLUMNS, 'strengths', 'improvements', 'app_version')
     .orderBy('created_at', 'asc')
   const header = ['id', 'submitted_at', 'gender', 'age', 'age_group', 'occupation', 'occupation_other', ...EXPERIENCE.map((d) => d.column), ...QUESTION_COLUMNS.map((c) => c.toUpperCase()), 'strengths', 'improvements', 'app_version']
   const lines = [header.join(',')]

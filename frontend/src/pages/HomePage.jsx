@@ -113,14 +113,14 @@ export default function HomePage() {
             <a href="#" onClick={(e) => { e.preventDefault(); actions.goEvents() }} style={{ fontSize: 13.5, fontWeight: 700, color: '#2E7D32' }}>ดูทั้งหมด <ArrowRight size={14} strokeWidth={2.4} style={{ verticalAlign: '-2px' }} /></a>
           </div>
           {state.dataLoading && <LoadingSpinner size={32} label="กำลังโหลดกิจกรรม..." />}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(320px,1fr))', gap: 22 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(min(320px,100%),1fr))', gap: 22 }}>
             {!state.dataLoading && derived.homeEvents.map((event) => (
               <div key={event.id} onClick={event.onOpen} style={{ display: 'flex', gap: 16, background: '#fff', border: '1px solid #E7E3D2', borderRadius: 16, overflow: 'hidden', cursor: 'pointer', transition: 'transform 0.22s ease,box-shadow 0.22s ease', animation: 'dc-fade-up 0.45s ease both' }}>
                 <ImageSlot src={event.img} shape="rect" style={{ width: 130, alignSelf: 'stretch', flexShrink: 0 }} placeholder="ภาพงาน" icon={EVENT_ICON} />
                 <div style={{ padding: '14px 14px 14px 0', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                   <span style={{ fontSize: 11, fontWeight: 700, color: '#9b5527', marginBottom: 12 }}>{event.category}</span>
                   <div style={{ fontWeight: 400, fontSize: 15, color: '#1f2a24', marginBottom: 6, lineHeight: 1.35 }}>{event.name}</div>
-                  <div style={{ fontWeight: 300, fontSize: 12.5, color: '#5f6a63' }}>{event.dateRange} · {event.venueName}</div>
+                  <div style={{ fontWeight: 300, fontSize: 12.5, color: '#5f6a63' }}>{event.dateLabel || event.dateRange} · {event.venueName}</div>
                 </div>
               </div>
             ))}
@@ -147,7 +147,7 @@ export default function HomePage() {
             <a href="#" onClick={(e) => { e.preventDefault(); actions.goPlaces() }} style={{ fontSize: 13.5, fontWeight: 700, color: '#2E7D32' }}>ดูสถานที่ทั้งหมด <ArrowRight size={14} strokeWidth={2.4} style={{ verticalAlign: '-2px' }} /></a>
           </div>
           {placesLoading && <LoadingSpinner size={32} label="กำลังโหลดสถานที่แนะนำ..." />}
-          <div data-role="card-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: 24 }}>
+          <div data-role="card-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(min(280px,100%),1fr))', gap: 24 }}>
             {!placesLoading && homePlaces.map((place) => (
               <div key={place.id} onClick={place.onOpen} style={{ background: '#fff', border: '1px solid #E7E3D2', borderRadius: 16, overflow: 'hidden', cursor: 'pointer', transition: 'transform 0.22s ease,box-shadow 0.22s ease', animation: 'dc-fade-up 0.45s ease both' }}>
                 <ImageSlot src={place.img} shape="rect" style={{ width: '100%', height: 160 }} placeholder="ภาพสถานที่" icon={placeCategoryIcon(place.category)} />

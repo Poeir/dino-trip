@@ -6,8 +6,12 @@ from src.core.config import (
     APP_VERSION,
     GIT_SHA,
     CORS_ORIGINS,
+    RATE_LIMIT_CHAT_GLOBAL_PER_HOUR,
+    RATE_LIMIT_CHAT_GLOBAL_PER_MINUTE,
     RATE_LIMIT_CHAT_PER_HOUR,
     RATE_LIMIT_CHAT_PER_MINUTE,
+    RATE_LIMIT_TRIP_GLOBAL_PER_10_MIN,
+    RATE_LIMIT_TRIP_GLOBAL_PER_HOUR,
     RATE_LIMIT_TRIP_PER_10_MIN,
     RATE_LIMIT_TRIP_PER_HOUR,
 )
@@ -32,6 +36,10 @@ app.add_middleware(
     limits={
         "/chat/": SlidingWindowLimiter([(60, RATE_LIMIT_CHAT_PER_MINUTE), (3600, RATE_LIMIT_CHAT_PER_HOUR)]),
         "/trip/": SlidingWindowLimiter([(600, RATE_LIMIT_TRIP_PER_10_MIN), (3600, RATE_LIMIT_TRIP_PER_HOUR)]),
+    },
+    global_limits={
+        "/chat/": SlidingWindowLimiter([(60, RATE_LIMIT_CHAT_GLOBAL_PER_MINUTE), (3600, RATE_LIMIT_CHAT_GLOBAL_PER_HOUR)]),
+        "/trip/": SlidingWindowLimiter([(600, RATE_LIMIT_TRIP_GLOBAL_PER_10_MIN), (3600, RATE_LIMIT_TRIP_GLOBAL_PER_HOUR)]),
     },
 )
 

@@ -2,6 +2,7 @@
 // to live in frontend/src/context/AppContext.jsx -- moved server-side so the
 // API is the single place that knows about the DB column shape.
 import { httpError } from '../middleware/errorHandler.js'
+import { eventDateLabel, formatDateRange, isPlainDateText } from './eventDate.js'
 
 export function rowToPlace(row) {
   return {
@@ -71,6 +72,9 @@ export function rowToEvent(row) {
   return {
     timeStatus: eventTimeStatus(row),
     id: row.id, name: row.name, category: row.category, dateRange: row.date_range, venueName: row.venue_name,
+    // dateRange stays the raw stored text (the admin form round-trips it); dateLabel is the
+    // canonical text every display surface should show.
+    dateLabel: eventDateLabel(row),
     admission: row.admission, organizer: row.organizer, suitableFor: row.suitable_for || [], desc: row.description,
     status: row.status,
     // row.uploadedPhotoUrls is attached by events.routes.js's
@@ -174,8 +178,14 @@ export function eventPayload(body) {
   if (body.eventStartDate && body.eventEndDate && body.eventEndDate < body.eventStartDate) {
     throw httpError(400, 'วันที่สิ้นสุดต้องไม่มาก่อนวันที่เริ่มงาน')
   }
+  // Store one spelling for plain dates ("4-8 พ.ย. 2569", never "4-8 พฤศจิกายน 2569"); text that
+  // says more than the dates (a schedule like "ทุกวันเสาร์") is kept as typed.
+  const start = body.eventStartDate ? String(body.eventStartDate).slice(0, 10) : ''
+  const end = body.eventEndDate ? String(body.eventEndDate).slice(0, 10) : ''
+  const rawRange = typeof body.dateRange === 'string' ? body.dateRange.trim() : body.dateRange
+  const dateRange = rawRange && start && isPlainDateText(rawRange, start, end) ? formatDateRange(start, end) : body.dateRange
   return {
-    name, category: body.category, date_range: body.dateRange, venue_name: body.venueName,
+    name, category: body.category, date_range: dateRange, venue_name: body.venueName,
     admission: body.admission, organizer: body.organizer, suitable_for: splitList(body.suitableFor),
     description: body.desc, status: body.status || 'upcoming',
     event_start_date: body.eventStartDate || null, event_end_date: body.eventEndDate || null,

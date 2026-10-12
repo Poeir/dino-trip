@@ -1,10 +1,11 @@
-import { ArrowRight } from 'lucide-react'
+import { ArrowRight, Sparkles } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { usePagedList } from '../lib/usePagedList.js'
 import {
   fetchMyEventRequests, submitEventRequest, updateEventRequest, cancelEventRequest,
   fetchEventRequestPhotos, uploadEventRequestPhoto, deleteEventRequestPhoto, fetchPlaceNames,
+  extractEventRequestFromText,
 } from '../lib/apiClient.js'
 import LoadingSpinner from '../components/LoadingSpinner.jsx'
 import LoadError from '../components/LoadError.jsx'
@@ -20,13 +21,15 @@ import PlacePicker from '../components/PlacePicker.jsx'
 import EventDateComposer from '../components/EventDateComposer.jsx'
 import { MASCOT, EVENT_ICON } from '../data/categoryImages.js'
 import { EVENT_REQUEST_STATUS } from '../data/eventRequests.js'
-import { EVENT_CATEGORY_OPTIONS, SUITABLE_FOR_OPTIONS, formatDateRange, inferDateMode } from '../data/eventForm.js'
+import { EVENT_CATEGORY_OPTIONS, SUITABLE_FOR_OPTIONS, formatDateRange, inferDateMode, isPlainDateText } from '../data/eventForm.js'
 import { Card, Notice, primaryBtn } from './ui.jsx'
 
 // Same fields (and look) as the admin form in admin/events/EventFormModal.jsx -- minus the
 // Facebook paste/extract box and the cancelled status, which are admin-only.
 const inputStyle = { width: '100%', border: '1px solid #DCD8C6', borderRadius: 8, padding: 9, fontSize: 14 }
 const EMPTY = { name: '', category: '', dateRange: '', eventStartDate: '', eventEndDate: '', placeId: '', venueName: '', admission: '', organizer: '', suitableFor: '', desc: '' }
+const EXTRACT_FIELDS = ['name', 'category', 'dateRange', 'venueName', 'admission', 'organizer', 'suitableFor', 'desc']
+const MAX_EXTRACT_CHARS = 5000
 const MAX_PHOTO_BYTES = 2 * 1024 * 1024
 const ACCEPTED_PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
 const FILTERS = [{ value: undefined, label: 'ทั้งหมด' }, { value: 'pending', label: 'รออนุมัติ' }, { value: 'approved', label: 'อนุมัติแล้ว' }, { value: 'rejected', label: 'ไม่อนุมัติ' }]
@@ -48,6 +51,9 @@ function RequestModal({ open, request, onClose, onSaved }) {
   const [removingPhotoId, setRemovingPhotoId] = useState(null)
   const [galleryBusy, setGalleryBusy] = useState(false)
   const [galleryBusyText, setGalleryBusyText] = useState('')
+  const [pasteText, setPasteText] = useState('')
+  const [extracting, setExtracting] = useState(false)
+  const [extractError, setExtractError] = useState('')
   const initialRef = useRef('')
   const set = (key) => (e) => setF((prev) => ({ ...prev, [key]: e.target.value }))
   const setField = (key, value) => setF((prev) => ({ ...prev, [key]: value }))
@@ -67,6 +73,8 @@ function RequestModal({ open, request, onClose, onSaved }) {
     setErrors({})
     setSaveError('')
     setPhotoError('')
+    setPasteText('')
+    setExtractError('')
     setPendingFiles([])
     setExistingPhotos([])
     if (request) {
@@ -90,6 +98,33 @@ function RequestModal({ open, request, onClose, onSaved }) {
     setDateMode(mode)
     if (mode === 'single') applyDateRange(f.eventStartDate, f.eventStartDate, mode)
     else if (mode === 'range') applyDateRange(f.eventStartDate, f.eventEndDate, mode)
+  }
+
+  // Fills only what the AI found, so anything the user already typed (or a field the post doesn't
+  // mention) is left alone. `custom` date mode keeps the LLM's own text for irregular schedules.
+  const handleExtract = async () => {
+    if (!pasteText.trim()) return
+    setExtracting(true)
+    setExtractError('')
+    try {
+      const x = await extractEventRequestFromText(pasteText)
+      const next = {}
+      EXTRACT_FIELDS.forEach((k) => { if (x[k]) next[k] = x[k] })
+      let mode = dateMode
+      if (x.eventStartDate) {
+        next.eventStartDate = x.eventStartDate
+        next.eventEndDate = x.eventEndDate || x.eventStartDate
+        const plain = isPlainDateText(x.dateRange, next.eventStartDate, next.eventEndDate)
+        mode = plain ? inferDateMode({ eventStartDate: next.eventStartDate, eventEndDate: next.eventEndDate }) : 'custom'
+        if (plain) next.dateRange = formatDateRange(next.eventStartDate, next.eventEndDate) || next.dateRange
+      }
+      setDateMode(mode)
+      setF((prev) => ({ ...prev, ...next }))
+    } catch (err) {
+      setExtractError(err.status === undefined ? 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาตรวจสอบอินเทอร์เน็ต' : err.message)
+    } finally {
+      setExtracting(false)
+    }
   }
 
   const isDirty = () => JSON.stringify(f) !== initialRef.current || pendingFiles.length > 0
@@ -172,6 +207,33 @@ function RequestModal({ open, request, onClose, onSaved }) {
     <Modal open={open} onClose={handleClose} title={request ? 'แก้ไขคำขอกิจกรรม' : 'ส่งกิจกรรมของคุณ'} maxWidth={700}>
       <div style={{ background: '#F1F8F2', border: '1px solid #CFE8D2', borderRadius: 10, padding: 12, marginBottom: 16, fontSize: 12.5, color: '#2E7D32' }}>
         ทีมงานจะตรวจสอบก่อนเผยแพร่ กิจกรรมจะแสดงบนเว็บไซต์เมื่อได้รับการอนุมัติ และคุณจะเห็นสถานะที่หน้านี้
+      </div>
+
+      <div style={{ background: '#FAF8EE', border: '1px solid #E7E3D2', borderRadius: 10, padding: 12, marginBottom: 16 }}>
+        <label htmlFor="event-request-paste" style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#2E7D32', marginBottom: 6 }}>
+          วางข้อความจากโพสต์ Facebook ให้ AI ช่วยกรอกฟอร์ม (ไม่บังคับ)
+        </label>
+        <textarea
+          id="event-request-paste"
+          value={pasteText}
+          onChange={(e) => setPasteText(e.target.value)}
+          maxLength={MAX_EXTRACT_CHARS}
+          placeholder="ก็อปข้อความจากโพสต์เพจ Facebook มาวางที่นี่ แล้วกด “ดึงข้อมูลอัตโนมัติ” เพื่อให้ AI ช่วยเติมฟอร์มด้านล่าง"
+          style={{ ...inputStyle, minHeight: 80, marginBottom: 8 }}
+        />
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={handleExtract}
+            disabled={extracting || !pasteText.trim()}
+            style={{ ...smallBtn, display: 'inline-flex', alignItems: 'center', gap: 6, opacity: extracting || !pasteText.trim() ? 0.6 : 1, cursor: extracting || !pasteText.trim() ? 'default' : 'pointer' }}
+          >
+            <Sparkles size={14} aria-hidden="true" />
+            {extracting ? 'กำลังดึงข้อมูล...' : 'ดึงข้อมูลอัตโนมัติ'}
+          </button>
+          <span style={{ fontSize: 11.5, color: '#626863' }}>AI อาจผิดพลาดได้ กรุณาตรวจสอบข้อมูลด้านล่างก่อนส่ง</span>
+        </div>
+        {extractError && <div role="alert" style={{ color: '#a33232', fontSize: 12, marginTop: 6 }}>ดึงข้อมูลไม่สำเร็จ: {extractError}</div>}
       </div>
 
       <SectionHeading first>ข้อมูลพื้นฐาน</SectionHeading>

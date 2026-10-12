@@ -34,10 +34,10 @@ export default function EventDetailView({ event: ev, place, imageHeight = 460 })
         </div>
         <div>
           <p style={{ fontSize: 15, lineHeight: 1.75, color: '#3c463f', margin: '0 0 24px' }}>{ev.desc}</p>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 16, marginBottom: 20 }}>
             <div style={{ border: '1px solid #E7E3D2', borderRadius: 12, padding: 16 }}>
               <div style={{ fontWeight: 300, fontSize: 12.5, color: '#626863', marginBottom: 4 }}>วันจัดงาน</div>
-              <div style={{ fontWeight: 400, fontSize: 14.5 }}>{ev.dateRange}</div>
+              <div style={{ fontWeight: 400, fontSize: 14.5 }}>{ev.dateLabel || ev.dateRange}</div>
             </div>
             <div style={{ border: '1px solid #E7E3D2', borderRadius: 12, padding: 16 }}>
               <div style={{ fontWeight: 300, fontSize: 12.5, color: '#626863', marginBottom: 4 }}>สถานที่จัดงาน</div>

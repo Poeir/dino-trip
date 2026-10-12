@@ -246,6 +246,9 @@ export const resolveAdminEventReports = (body) => apiPost('/api/admin/event-repo
 // Event requests: a signed-in user asks for their own event to be listed; an
 // admin approves (-> becomes a public event) or rejects with a reason.
 export const submitEventRequest = (payload) => apiPost('/api/event-requests', payload)
+// LLM-extracts the request form's fields from a pasted Facebook post (login
+// required, rate-limited -- see backend/src/routes/eventRequests.routes.js).
+export const extractEventRequestFromText = (text) => apiPost('/api/event-requests/extract', { text })
 export const fetchMyEventRequests = (params) => apiGet('/api/event-requests/mine', params)
 export const updateEventRequest = (id, payload) => apiPut(`/api/event-requests/${id}`, payload)
 export const cancelEventRequest = (id) => apiDelete(`/api/event-requests/${id}`)

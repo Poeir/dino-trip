@@ -32,7 +32,7 @@ Required: `KKU_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`.
 
 In production also set `MODEL_NAME` and `TRIP_PLANNER_MODEL_NAME` (the KKU
 gateway rejects the code's defaults with `401 Invalid model`) and
-`CORS_ORIGINS` (comma-separated, no trailing slash; defaults to `*`).
+`CORS_ORIGINS` (comma-separated, no trailing slash; defaults to the local Vite dev origins `http://localhost:5173,http://127.0.0.1:5173`).
 
 Optional (defaults in `src/core/config.py`): `LLM_BASE_URL`,
 `DESCRIPTION_MODEL_NAME`, `EMBEDDING_MODEL_NAME` (changing it needs a
