@@ -114,7 +114,7 @@ export default function PlacesListPage() {
       {!paged.loading && !paged.error && placesView.length === 0 && (
         <EmptyState mascot={MASCOT.sad} tone="green" style={{ padding: '56px 20px' }} title="ไม่พบสถานที่ในหมวดนี้" desc={'ลองเลือกหมวดหมู่อื่น หรือกลับไปดู "ทั้งหมด"'} />
       )}
-      <div data-role="card-grid" style={{ display: paged.error ? 'none' : 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: 24 }}>
+      <div data-role="card-grid" style={{ display: paged.error ? 'none' : 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(min(280px,100%),1fr))', gap: 24 }}>
         {placesView.map((place) => (
           <div key={place.id} onClick={place.onOpen} style={{ position: 'relative', display: 'flex', flexDirection: 'column', height: 320, background: '#fff', border: '1px solid #E7E3D2', borderRadius: 16, overflow: 'hidden', cursor: 'pointer', transition: 'transform 0.22s ease,box-shadow 0.22s ease', animation: 'dc-fade-up 0.4s ease both' }}>
             {place.badge.label && (

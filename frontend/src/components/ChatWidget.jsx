@@ -133,7 +133,7 @@ export default function ChatWidget() {
   return (
     <div data-role="chat-widget" style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 60, display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
       {state.chatOpen && (
-        <div style={{ width: 'min(390px, calc(100vw - 32px))', height: 'min(580px, calc(100vh - 130px))', background: '#fff', borderRadius: 24, boxShadow: '0 24px 60px rgba(27,94,32,0.30), 0 0 0 1px rgba(46,125,50,0.08)', display: 'flex', flexDirection: 'column', overflow: 'hidden', marginBottom: 14, animation: 'dc-pop 0.28s ease both' }}>
+        <div style={{ width: 'min(390px, calc(100vw - 32px))', height: 'min(580px, calc(100dvh - 130px))', background: '#fff', borderRadius: 24, boxShadow: '0 24px 60px rgba(27,94,32,0.30), 0 0 0 1px rgba(46,125,50,0.08)', display: 'flex', flexDirection: 'column', overflow: 'hidden', marginBottom: 14, animation: 'dc-pop 0.28s ease both' }}>
           <div style={{ position: 'relative', overflow: 'hidden', background: 'linear-gradient(135deg,#66BB6A,#2E7D32 60%,#1B5E20)', padding: '16px 16px 14px' }}>
             {sparkles.map((s, i) => (
               <span key={i} style={{ position: 'absolute', left: s.left, top: s.top, width: s.size, height: s.size, borderRadius: '50%', background: '#FBC02D', animation: `dc-particle-float ${s.duration} ease-in-out infinite`, animationDelay: s.delay, pointerEvents: 'none' }}></span>

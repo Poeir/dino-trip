@@ -38,7 +38,7 @@ const AdminDashboardPage = lazyPage(() => import('./pages/AdminDashboardPage.jsx
 
 function PublicLayout() {
   return (
-    <div data-role="public-layout" style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+    <div data-role="public-layout" className="dc-vh-full" style={{ display: 'flex', flexDirection: 'column' }}>
       <Header />
       <WelcomeModal />
       {/* Public pages call showToast() too ("link copied", "please log in", ...);
@@ -85,7 +85,7 @@ function RedirectIfAuthed({ children }) {
 
 function Shell() {
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#FFFDF6', backgroundImage: "url('/assets/background1.webp')", backgroundSize: 'cover', backgroundPosition: 'top center', backgroundRepeat: 'no-repeat', backgroundAttachment: 'fixed' }}>
+    <div className="dc-shell">
       <ScrollToTop />
       <Suspense fallback={<LoadingSpinner size={36} label="กำลังโหลด..." />}>
       <Routes>

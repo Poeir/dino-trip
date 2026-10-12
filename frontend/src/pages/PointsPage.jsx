@@ -57,7 +57,7 @@ function PointsIntro({ places, placesLoading, rewards, onSignup, onLogin }) {
             ) : stamps.length === 0 ? (
               <div style={{ textAlign: 'center', color: '#626863', fontSize: 13.5, padding: '24px 0' }}>เร็วๆ นี้จะมีสถานที่ให้สะสมพอยท์</div>
             ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px 10px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '16px 10px' }}>
                 {stamps.map((p, i) => (
                   <div key={p.id} style={{ textAlign: 'center', minWidth: 0 }}>
                     <div style={{

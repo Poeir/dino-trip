@@ -141,6 +141,12 @@ body {
 a { color: #2E7D32; text-decoration: none; }
 a:hover { color: #1B5E20; }
 input, textarea, select, button { font-family: inherit; }
+/* iOS Safari zooms the whole page when a field under 16px gets focus and never zooms
+   back, which pushes the layout off the right edge. Keep touch-device fields at 16px.
+   !important because most inputs carry inline font sizes. */
+@media (hover: none) and (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), textarea, select { font-size: 16px !important; }
+}
 
 @keyframes dc-spin { to { transform: rotate(360deg); } }
 @keyframes dc-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
@@ -271,7 +277,26 @@ input, textarea, select, button { font-family: inherit; }
   footer { padding-left: 16px !important; padding-right: 16px !important; }
   [data-role="detail-card"] { padding: 16px !important; border-radius: 16px !important; }
 }
+/* Small laptops / tablets in landscape: desktop layout is still active (> 880px) but tight. */
+@media (min-width: 881px) and (max-width: 1100px) {
+  :root { --page-gutter: 24px; }
+  header { padding: 0 20px !important; }
+  [data-role="desktop-nav"] { gap: 18px !important; }
+  [data-role="desktop-nav"] a { font-size: 14px !important; }
+  [data-role="place-detail-grid"], [data-role="event-detail-grid"] { grid-template-columns: minmax(0, 340px) minmax(0, 1fr) !important; gap: 24px !important; }
+  [data-role="place-detail-grid"] > *, [data-role="event-detail-grid"] > * { min-width: 0; }
+}
 *:focus-visible { outline: 2.5px solid #2E7D32; outline-offset: 2px; }
+
+/* Full-height wrappers: 100vh is taller than the visible area on mobile browsers while
+   their toolbar is showing; dvh tracks it. Two declarations so old browsers keep vh. */
+.dc-vh-full { min-height: 100vh; min-height: 100dvh; }
+.dc-shell { position: relative; isolation: isolate; min-height: 100vh; min-height: 100dvh; background-color: #FFFDF6; }
+/* background-attachment: fixed is ignored/janky on iOS Safari, so pin the image with a fixed layer. */
+.dc-shell::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none; background: url('/assets/background1.webp') top center / cover no-repeat; }
+@supports (height: 1dvh) {
+  [role="dialog"][aria-modal="true"] { max-height: 90dvh !important; }
+}
 
 /* Category-bar scroll arrows: mobile only (styled and revealed in the media query above). */
 .dc-filter-prev, .dc-filter-next { display: none; }
