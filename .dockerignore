@@ -1,0 +1,8 @@
+# Used by deploy/Dockerfile.web, whose build context is the repo root.
+**/node_modules
+**/dist
+**/.env
+**/.env.*
+.git
+chatbot-service
+backend

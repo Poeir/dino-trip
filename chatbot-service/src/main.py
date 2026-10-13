@@ -2,20 +2,50 @@ import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from src.core.config import (
+    APP_VERSION,
+    GIT_SHA,
+    CORS_ORIGINS,
+    RATE_LIMIT_CHAT_GLOBAL_PER_HOUR,
+    RATE_LIMIT_CHAT_GLOBAL_PER_MINUTE,
+    RATE_LIMIT_CHAT_PER_HOUR,
+    RATE_LIMIT_CHAT_PER_MINUTE,
+    RATE_LIMIT_TRIP_GLOBAL_PER_10_MIN,
+    RATE_LIMIT_TRIP_GLOBAL_PER_HOUR,
+    RATE_LIMIT_TRIP_PER_10_MIN,
+    RATE_LIMIT_TRIP_PER_HOUR,
+)
+from src.core.rate_limit import RateLimitMiddleware, SlidingWindowLimiter
 from src.api.routes_chatbot import router as chatbot_router
 from src.api.routes_tripplanner import router as tripplanner_router
 from src.api.routes_events import router as events_router
+from src.api.routes_admin import router as admin_router
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
 
-app = FastAPI(title="Khon Kaen AI Trip Planner")
+app = FastAPI(title="Khon Kaen AI Trip Planner", version=APP_VERSION)
+
+# Added BEFORE CORSMiddleware on purpose: the last middleware added is the
+# outermost, and a 429 has to pass back through CORS to get its headers --
+# otherwise the browser reports a CORS error instead of "too many requests".
+app.add_middleware(
+    RateLimitMiddleware,
+    limits={
+        "/chat/": SlidingWindowLimiter([(60, RATE_LIMIT_CHAT_PER_MINUTE), (3600, RATE_LIMIT_CHAT_PER_HOUR)]),
+        "/trip/": SlidingWindowLimiter([(600, RATE_LIMIT_TRIP_PER_10_MIN), (3600, RATE_LIMIT_TRIP_PER_HOUR)]),
+    },
+    global_limits={
+        "/chat/": SlidingWindowLimiter([(60, RATE_LIMIT_CHAT_GLOBAL_PER_MINUTE), (3600, RATE_LIMIT_CHAT_GLOBAL_PER_HOUR)]),
+        "/trip/": SlidingWindowLimiter([(600, RATE_LIMIT_TRIP_GLOBAL_PER_10_MIN), (3600, RATE_LIMIT_TRIP_GLOBAL_PER_HOUR)]),
+    },
+)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -24,6 +54,21 @@ app.add_middleware(
 app.include_router(chatbot_router)
 app.include_router(tripplanner_router)
 app.include_router(events_router)
+app.include_router(admin_router)
+
+
+@app.get("/health")
+def health():
+    # Deliberately cheap (no DB / model call) so frequent uptime pings
+    # keep the container awake without costing LLM or DB quota.
+    return {"status": "ok"}
+
+
+@app.get("/version")
+def version():
+    # Not routed by Caddy (only /health, /chat and /trip/llm are), so it is
+    # reachable from the backend's admin system card but not from the internet.
+    return {"version": APP_VERSION, "sha": GIT_SHA}
 
 
 @app.get("/")

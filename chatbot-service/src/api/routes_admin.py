@@ -1,0 +1,91 @@
+import logging
+from typing import List, Optional
+
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
+
+from src.core.db import supabase
+from src.core.llm_client import make_llm_client
+from src.services.place_description import ModelChain, generate_description
+from src.services.rag import embedder
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/admin", tags=["Admin"])
+client = make_llm_client()
+
+# Not auth-gated here -- the Node backend's proxies (see
+# backend/src/routes/reindex.routes.js and places.routes.js's /describe) are
+# what enforce requireAdmin before ever reaching this service. These endpoints
+# aren't meant to be called directly from the browser.
+
+
+@router.post("/reindex")
+def trigger_reindex():
+    started = embedder.start_reindex(only_pending=True)
+    if not started:
+        raise HTTPException(status_code=409, detail="กำลังรัน embedding อยู่แล้ว รอให้เสร็จก่อน")
+    return embedder.get_status()
+
+
+@router.get("/reindex/status")
+def reindex_status():
+    return embedder.get_status()
+
+
+@router.get("/reindex/pending")
+def reindex_pending():
+    return embedder.get_pending_items()
+
+
+class DescribePlaceRequest(BaseModel):
+    # Form values win over the DB row's: the admin may have edited the name,
+    # tags or amenities without saving yet. `placeId` only adds what the form
+    # doesn't have (Google reviews, rating, district).
+    placeId: Optional[str] = None
+    name: str = Field(max_length=200)
+    category: str = Field(max_length=100)
+    district: Optional[str] = Field(default=None, max_length=100)
+    tags: List[str] = Field(default_factory=list, max_length=30)
+    amenities: List[str] = Field(default_factory=list, max_length=50)
+
+
+@router.post("/places/describe")
+def describe_place(req: DescribePlaceRequest):
+    name, category = req.name.strip(), req.category.strip()
+    if not name or not category:
+        raise HTTPException(status_code=400, detail="ต้องมีชื่อและหมวดหมู่สถานที่")
+
+    place = {
+        "name": name,
+        "category": category,
+        "district": (req.district or "").strip() or None,
+        "tags": [t.strip() for t in req.tags if t.strip()],
+        "amenities": [a.strip() for a in req.amenities if a.strip()],
+        "rating": None,
+        "review_count": 0,
+        "reviews": [],
+    }
+
+    if req.placeId:
+        try:
+            rows = (
+                supabase.table("places")
+                .select("district, rating, review_count, reviews")
+                .eq("id", req.placeId)
+                .limit(1)
+                .execute()
+                .data
+            )
+        except Exception as e:
+            logger.error("describe: loading place %s failed: %s", req.placeId, e)
+            raise HTTPException(status_code=502, detail="โหลดข้อมูลสถานที่ไม่สำเร็จ")
+        if rows:
+            row = rows[0]
+            place["district"] = place["district"] or row.get("district")
+            place["rating"] = row.get("rating")
+            place["review_count"] = row.get("review_count") or 0
+            place["reviews"] = row.get("reviews") or []
+
+    # Fresh chain per request: a daily-limit fallback must not outlive the day.
+    return generate_description(client, place, ModelChain())

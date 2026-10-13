@@ -1,6 +1,6 @@
 from __future__ import annotations
-from typing import List, Optional, Any, Dict
-from pydantic import BaseModel
+from typing import Annotated, List, Optional, Any, Dict
+from pydantic import BaseModel, Field
 
 
 class Place(BaseModel):
@@ -18,6 +18,13 @@ class Place(BaseModel):
     district: Optional[str] = None  # Google administrative_area_level_2, e.g. "เมืองขอนแก่น" (see import-places.js's mapDistrict())
     hours: Optional[str] = None
     hours_periods: Optional[List[Dict[str, Any]]] = None
+    # Google's operating status: OPERATIONAL / CLOSED_TEMPORARILY /
+    # CLOSED_PERMANENTLY (see backend's 20260728000006_add_business_status.sql
+    # migration) -- route_scheduler.check_is_open()/find_anchor_window()
+    # treat CLOSED_TEMPORARILY/CLOSED_PERMANENTLY as closed regardless of
+    # hours_periods, since a place that's shut down doesn't become open again
+    # just because its scraped weekly hours still say otherwise.
+    business_status: Optional[str] = None
     phone: Optional[str] = None
     website: Optional[str] = None
     maps_url: Optional[str] = None
@@ -48,16 +55,29 @@ class Place(BaseModel):
 
 
 class TripInput(BaseModel):
-    trip_duration_days: int
-    start_date: str
-    accommodation_name: str
-    must_go: List[str] = []
-    interests: List[str] = []
-    trip_pace: str = "relaxed"  # relaxed | standard | packed
-    budget_level: str = "ปานกลาง"  # ประหยัด | ปานกลาง | หรูหรา -- matches the frontend's budgetList directly
-    area_scope: str = "ทั่วขอนแก่น"  # เมือง | ทั่วขอนแก่น -- matches the frontend's areaScopeList directly
-    start_time: str = "09:00"
-    end_time: str = "18:00"
+    # Field caps exist because this endpoint is public and these values are
+    # interpolated into the LLM prompt (billed per token). The frontend already
+    # limits trips to 7 days; the server cap is looser so it never rejects a
+    # legitimate request, only abuse.
+    trip_duration_days: int = Field(ge=1, le=14)
+    start_date: str = Field(max_length=10)
+    accommodation_name: str = Field(max_length=200)
+    # Real coordinates from the frontend's Google Maps search (LocationPicker)
+    # or the browser's geolocation -- when present, orchestrator.py prefers
+    # these over find_place_by_name()'s name-matching against the curated
+    # `places` table, which real accommodations (not tourist attractions)
+    # almost never match, silently falling back to a hardcoded city-center
+    # point. None for both (old clients, or nothing picked) keeps that old
+    # fallback behavior unchanged.
+    accommodation_lat: Optional[float] = None
+    accommodation_lng: Optional[float] = None
+    must_go: List[Annotated[str, Field(max_length=200)]] = Field(default_factory=list, max_length=30)
+    interests: List[Annotated[str, Field(max_length=100)]] = Field(default_factory=list, max_length=30)
+    trip_pace: str = Field(default="relaxed", max_length=30)  # relaxed | standard | packed
+    budget_level: str = Field(default="ปานกลาง", max_length=30)  # ประหยัด | ปานกลาง | หรูหรา -- matches the frontend's budgetList directly
+    area_scope: str = Field(default="ทั่วขอนแก่น", max_length=30)  # เมือง | ทั่วขอนแก่น -- matches the frontend's areaScopeList directly
+    start_time: str = Field(default="09:00", max_length=10)
+    end_time: str = Field(default="18:00", max_length=10)
 
 
 class TimeSlot(BaseModel):
@@ -68,6 +88,8 @@ class TimeSlot(BaseModel):
     distance_km: float
     status: str = "Open"  # Open, Closed, Waiting, Free Time, End of Day...
     wait_time_min: int = 0
+    is_anchor: bool = False  # place had a narrow real opening window that day and anchored the schedule around it
+    meal_role: Optional[str] = None  # "lunch" | "dinner" | None, for ร้านอาหาร category places
 
 
 class DailyItinerary(BaseModel):
@@ -100,6 +122,7 @@ class TripResponse(BaseModel):
     note: str
     summary: Optional[TripSummary] = None
     planning_rationale: str = ""  # judge's user-facing explanation, "" hides the frontend block
+    usage: Optional[dict] = None  # LLM token/cost totals for this trip (src/core/usage.py)
 
 
 class JudgeVerdict(BaseModel):
@@ -112,3 +135,10 @@ class JudgeVerdict(BaseModel):
     issues: List[str] = []
     feedback: str = ""        # re-injected verbatim into the next generation prompt (model-facing)
     rationale: str = ""       # short Thai, user-facing explanation of the plan's logic (human-facing)
+    # True only when evaluate() never got a real verdict from the judge LLM
+    # (call/parse exception) and fell back to an unconditional pass. `passed`
+    # stays True either way (see judge.py's fail-open rationale), but this
+    # flag lets a caller -- or an experiment collecting score/pass-rate data
+    # -- tell "the judge said yes" apart from "the judge never actually ran".
+    # Conflating the two silently corrupts any pass-rate/score metric.
+    judge_call_failed: bool = False

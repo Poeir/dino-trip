@@ -1,8 +1,11 @@
 import datetime
+import itertools
 import logging
 import time
-from openai import OpenAI
-from src.core.config import API_KEY, BASE_URL, MODEL_NAME
+from openai import BadRequestError
+from src.core.llm_client import make_llm_client
+from src.core.config import MODEL_NAME
+from src.core.usage import UsageTracker
 from src.services.rag.retriever import PlaceRetriever
 
 logger = logging.getLogger(__name__)
@@ -13,112 +16,189 @@ FALLBACK_MESSAGE = "(น้องไดโน) ไม่มีข้อมูล
 # can detect a no-match answer deterministically (instead of string-matching
 # the LLM's prose against FALLBACK_MESSAGE, which breaks the moment the model
 # paraphrases its refusal instead of repeating it verbatim), and separately
-# so `places` cards are only attached when the answer actually drew on the
-# `places` table -- a knowledge_base-only answer (history/culture/transport)
+# so `places`/`events` cards are only attached when the answer actually drew
+# on that table -- a knowledge_base-only answer (history/culture/transport)
 # was otherwise still shipping the top-3 retrieved *places* as source cards,
 # even though the reply never mentioned them (confirmed by testing).
+SOURCE_PLACES = "PLACES"
+SOURCE_KB = "KB"
+SOURCE_EVENTS = "EVENTS"
+_SOURCES = (SOURCE_PLACES, SOURCE_KB, SOURCE_EVENTS)
+
 MATCH_PLACES_TAG = "[MATCH:PLACES]"
 MATCH_KB_TAG = "[MATCH:KB]"
-MATCH_BOTH_TAG = "[MATCH:BOTH]"
+MATCH_EVENTS_TAG = "[MATCH:EVENTS]"
 NO_MATCH_TAG = "[NO_MATCH]"
-ALL_TAGS = (MATCH_PLACES_TAG, MATCH_KB_TAG, MATCH_BOTH_TAG, NO_MATCH_TAG)
-PLACE_CARD_TAGS = (MATCH_PLACES_TAG, MATCH_BOTH_TAG)
 
-# Skip the query-rewrite LLM round-trip for messages already long enough to
-# likely be self-contained -- Thai has no word-spacing, so this is a
-# character count, not a word count. Short referential follow-ups like
-# "มีสาขาอื่นมั้ย" (~13 chars) still get rewritten; longer already-complete
-# questions don't pay for a wasted extra LLM call.
-SELF_CONTAINED_LENGTH_THRESHOLD = 30
+# Every way the model could plausibly write a multi-source tag: any
+# non-empty subset of {PLACES, KB, EVENTS}, in any order. The prompt asks
+# for one canonical order (PLACES, KB, EVENTS) for readability, but this
+# accepts every permutation too -- a model that writes "[MATCH:EVENTS+PLACES]"
+# instead of "[MATCH:PLACES+EVENTS]" still matches cleanly instead of
+# leaking the raw tag into the visible reply (see chat_stream's
+# prefix-buffering, which falls through to "not a tag" if nothing here matches).
+MATCH_TAGS = tuple(
+    f"[MATCH:{'+'.join(combo)}]"
+    for r in range(1, len(_SOURCES) + 1)
+    for combo in itertools.permutations(_SOURCES, r)
+)
+ALL_TAGS = (*MATCH_TAGS, NO_MATCH_TAG)
+
+
+def match_tag(*sources: str) -> str:
+    """Builds a [MATCH:...] tag from source names, e.g.
+    match_tag(SOURCE_PLACES, SOURCE_EVENTS) -> "[MATCH:PLACES+EVENTS]"."""
+    return f"[MATCH:{'+'.join(sources)}]"
+
+
+# Multi-turn: the client owns the conversation and resends it each request
+# (stateless server). Only the tail is kept and each turn is capped so a long
+# chat can't blow up the prompt. History only exists to resolve references
+# ("ร้านนั้น", "ที่สอง"), and the two roles need very different budgets:
+# measured real user questions in this app top out around ~50 chars, while a
+# 3-place recommendation reply routinely runs 1,000-1,400 chars (one bullet
+# list per place). A single MAX_HISTORY_CHARS=600 was truncating mid-name on
+# the 2nd place and dropping the 3rd entirely -- silently breaking "ร้านที่สอง
+# ล่ะ"/"ร้านที่สามอยู่ไหน" follow-ups, since clean_history runs before the
+# rewrite step even sees the history. User turns get a small cap (guards
+# against someone pasting a wall of text); assistant turns get enough room to
+# keep a typical 3-item list intact.
+MAX_HISTORY_MESSAGES = 4
+MAX_USER_HISTORY_CHARS = 300
+MAX_ASSISTANT_HISTORY_CHARS = 1400
+MAX_REWRITE_CHARS = 300
+
+# A hung gateway used to block a request for minutes (the SDK default is 600s
+# with 2 retries). The rewrite is optional, so it gets a short leash and falls
+# back to the raw message; the answer call gets one retry.
+LLM_TIMEOUT_S = 25
+LLM_MAX_RETRIES = 1
+REWRITE_TIMEOUT_S = 8
+_HISTORY_ROLES = ("user", "assistant")
+
+# Gemini 3 Flash "thinks" by default even for a one-line query rewrite --
+# measured via usage.jsonl: reasoning_tokens alone hit 600-900 (more than the
+# visible output), adding 3-15s of *variable* latency on top of a pipeline
+# that already makes two sequential LLM calls (rewrite, then answer) on every
+# turn past the first -- this is the real reason turns 2+ feel much slower
+# than turn 1, more than history size ever was. reasoning_effort="low" cut a
+# measured rewrite call from ~8.5s to ~3s with no change in output quality;
+# "minimal" is rejected outright by this model ("THINKING_LEVEL_MINIMAL
+# unsupported"). Deliberately NOT applied to the answer call too: tried that
+# and it broke the live golden-set tests hard (10/33 failing -- event
+# matching, sushi retrieval, multi-turn referent resolution), because the
+# [MATCH]/[NO_MATCH] tag decision and source-citation rules actually need the
+# reasoning budget, unlike the mechanical rewrite task. Some gateways may
+# reject the param entirely -- probed once per process (see _create) and
+# skipped afterwards rather than retried every call once we know it doesn't work.
+REASONING_EFFORT = "low"
+
+REWRITE_PROMPT = """คุณเขียนคำถามล่าสุดของผู้ใช้ใหม่ให้เป็นประโยคที่เข้าใจได้ด้วยตัวเอง โดยไม่ต้องอ่านบทสนทนาก่อนหน้า
+- แทนคำอ้างอิงอย่าง "ร้านนั้น" "งานนั้น" "แล้วที่สองล่ะ" ด้วยชื่อจริงจากบทสนทนา
+- ถ้าคำถามล่าสุดเปลี่ยนหัวข้อใหม่หรือเข้าใจได้ด้วยตัวเองอยู่แล้ว ให้ตอบคำถามเดิมทุกตัวอักษร ห้ามเอาหัวข้อเก่ามาปน
+- ห้ามตอบคำถามเอง ห้ามเพิ่มข้อมูลที่ไม่มีในบทสนทนา
+- ตอบเฉพาะคำถามที่เขียนใหม่ บรรทัดเดียว ไม่มีคำอธิบายอื่น"""
+
+
+def clean_history(history) -> list[dict]:
+    """Sanitizes client-supplied history: only user/assistant turns (a client-
+    sent "system" turn would be a prompt-injection channel), non-empty string
+    content, each turn truncated, and only the most recent turns kept."""
+    cleaned = []
+    for m in history or []:
+        role = m.get("role") if isinstance(m, dict) else None
+        content = m.get("content") if isinstance(m, dict) else None
+        if role not in _HISTORY_ROLES or not isinstance(content, str):
+            continue
+        limit = MAX_USER_HISTORY_CHARS if role == "user" else MAX_ASSISTANT_HISTORY_CHARS
+        content = content.strip()[:limit]
+        if content:
+            cleaned.append({"role": role, "content": content})
+    return cleaned[-MAX_HISTORY_MESSAGES:]
+
+
+def _tag_sources(tag: str) -> set[str]:
+    """Which of PLACES/KB/EVENTS a [MATCH:...] tag cites -- order-independent."""
+    if not tag or tag == NO_MATCH_TAG:
+        return set()
+    return set(tag[len("[MATCH:"):-1].split("+"))
 
 
 class RAGChatbotService:
     def __init__(self):
         self.retriever = PlaceRetriever()
-        self.client = OpenAI(api_key=API_KEY, base_url=BASE_URL)
+        self.client = make_llm_client(timeout=LLM_TIMEOUT_S, max_retries=LLM_MAX_RETRIES)
         self.model_name = MODEL_NAME
+        self._reasoning_effort_supported = True
 
-    def _rewrite_query_for_retrieval(self, user_message: str, history: list[dict]) -> str | None:
-        """Ask the LLM to fold conversation context into a standalone search
-        query, e.g. history=[...place X...], "มีสาขาอื่นมั้ย" -> "สาขาอื่นของ
-        [place X] มีมั้ย". More robust than blindly concatenating the last
-        turn (the previous approach) since it actually resolves what "it"/
-        "there" refers to instead of just hoping the raw text overlaps
-        enough for the embedding to still land close to the right rows.
+    def _create(self, **kwargs):
+        """chat.completions.create with REASONING_EFFORT applied, falling
+        back to the plain call (and remembering not to retry) if the gateway
+        rejects the parameter outright instead of paying a failed attempt on
+        every single call."""
+        if self._reasoning_effort_supported:
+            try:
+                return self.client.chat.completions.create(reasoning_effort=REASONING_EFFORT, **kwargs)
+            except BadRequestError:
+                logger.warning("gateway rejected reasoning_effort=%s; disabling it for this process", REASONING_EFFORT)
+                self._reasoning_effort_supported = False
+        return self.client.chat.completions.create(**kwargs)
 
-        Returns None if the output doesn't look trustworthy (caller falls
-        back to the simpler concat heuristic)."""
-        convo = "\n".join(f"{m['role']}: {m['content']}" for m in history[-4:])
-        rewrite_prompt = f"""คุณคือระบบเขียนคำค้นหาใหม่ (query rewriter) ให้ระบบค้นข้อมูลสถานที่ท่องเที่ยว/ร้านอาหาร/ความรู้ทั่วไปในขอนแก่น
-
-จากบทสนทนาด้านล่าง ให้เขียน [คำถามล่าสุด] ใหม่ให้เป็นประโยคค้นหาที่สมบูรณ์ในตัวเอง ไม่ต้องพึ่งบริบทก่อนหน้าอีก (เช่น แทนคำอย่าง "ที่นั่น"/"สาขาอื่น"/"ร้านนั้น" ด้วยชื่อจริงจากบทสนทนา) โดยคงความหมายเดิมไว้ครบ
-
-กฎ:
-- ตอบเป็นคำค้นหาที่เขียนใหม่เท่านั้น ห้ามมีคำอธิบายหรือข้อความอื่นใดๆ ห้ามใส่เครื่องหมายคำพูด
-- ถ้า [คำถามล่าสุด] สมบูรณ์ในตัวเองอยู่แล้ว ไม่ได้พึ่งบริบทก่อนหน้า ให้ตอบข้อความเดิมกลับมาเลย
-
-[บทสนทนา]
-{convo}
-
-[คำถามล่าสุด]
-{user_message}"""
-
-        response = self.client.chat.completions.create(
-            model=self.model_name,
-            messages=[{"role": "user", "content": rewrite_prompt}],
-            temperature=0.1,
-            max_tokens=120,
-        )
-        rewritten = response.choices[0].message.content.strip()
-        if not rewritten:
-            return None
-        # A real rewrite stays a short standalone query -- if it's
-        # dramatically longer than the input, the model likely answered
-        # the question instead of just rewriting it.
-        if len(rewritten) > max(len(user_message) * 4, 100):
-            logger.warning("query rewrite output looked like an answer, not a rewrite (%r), falling back", rewritten)
-            return None
-        return rewritten
-
-    def _build_retrieval_query(self, user_message: str, history: list[dict]) -> str:
-        """Follow-up questions ("มีสาขาอื่นมั้ย" / "are there other
-        branches?") often don't restate the subject, so embedding
-        user_message alone can retrieve nothing even though the DB has the
-        answer -- confirmed live: a second branch of a place existed, but
-        the bare follow-up retrieved zero rows and the bot wrongly claimed
-        there wasn't one. Skipped entirely on the (common) first turn of a
-        conversation, and on messages already long enough to likely be
-        self-contained -- nothing to resolve yet, and it would just be a
-        wasted LLM round-trip."""
+    def _rewrite_query(self, user_message: str, history: list[dict], usage: UsageTracker | None = None) -> str:
+        """Turns a follow-up ("แล้วร้านนั้นเปิดกี่โมง") into a standalone
+        query for retrieval -- searching on the raw follow-up finds nothing
+        because the referent only exists in the history. Skipped on the first
+        turn (no extra LLM call). Any failure falls back to the raw message so
+        a rewrite hiccup never breaks the chat."""
         if not history:
             return user_message
-        concat_fallback = f"{history[-1]['content']}\n{user_message}"
-        if len(user_message) >= SELF_CONTAINED_LENGTH_THRESHOLD:
-            return user_message
+        transcript = "\n".join(
+            f"{'ผู้ใช้' if m['role'] == 'user' else 'น้องไดโน'}: {m['content']}" for m in history
+        )
         try:
-            rewritten = self._rewrite_query_for_retrieval(user_message, history)
-            return rewritten or concat_fallback
-        except Exception:
-            logger.exception("query rewrite failed, falling back to raw concat")
-            return concat_fallback
+            response = self._create(
+                model=self.model_name,
+                messages=[
+                    {"role": "system", "content": REWRITE_PROMPT},
+                    {"role": "user", "content": f"[บทสนทนาก่อนหน้า]\n{transcript}\n\n[คำถามล่าสุด]\n{user_message}"},
+                ],
+                temperature=0,
+                timeout=REWRITE_TIMEOUT_S,
+            )
+            if usage:
+                usage.record_response("rewrite", self.model_name, response)
+            rewritten = (response.choices[0].message.content or "").strip().splitlines()
+            rewritten = rewritten[0].strip()[:MAX_REWRITE_CHARS] if rewritten else ""
+        except Exception as e:
+            logger.warning("query rewrite failed, using raw message: %s", e)
+            return user_message
+        return rewritten or user_message
 
-    def _prepare(self, user_message: str, history: list[dict]) -> tuple[list[dict], list[dict], dict]:
-        # Retrieve from both places and knowledge_base -- unlike the old
-        # project, which only ever searched places.
+    def _prepare(self, user_message: str, history=None, usage: UsageTracker | None = None) -> tuple[list[dict], list[dict], list[dict], dict]:
+        history = clean_history(history)
         t0 = time.time()
-        retrieval_query = self._build_retrieval_query(user_message, history)
+        search_query = self._rewrite_query(user_message, history, usage)
         rewrite_ms = (time.time() - t0) * 1000
 
+        # Retrieve from places, knowledge_base, and events -- unlike the old
+        # project, which only ever searched places.
         t0 = time.time()
-        places = self.retriever.search_and_expand(query=retrieval_query, limit=3)
-        kb_entries = self.retriever.search_knowledge_base(query=retrieval_query, limit=3)
+        # Sequential on purpose: the shared Supabase client talks HTTP/2 over
+        # one connection, and firing these from threads made requests fail with
+        # httpx.ReadError (WinError 10035) in most runs. The embedding is
+        # cached, so the three searches only encode the query once.
+        places = self.retriever.search_and_expand(query=search_query, limit=3)
+        kb_entries = self.retriever.search_knowledge_base(query=search_query, limit=3)
+        events = self.retriever.search_events(query=search_query, limit=3)
         retrieve_ms = (time.time() - t0) * 1000
 
         logger.info(
-            "chat retrieval query=%r place_ids=%s kb_ids=%s rewrite_ms=%.0f retrieve_ms=%.0f",
-            retrieval_query,
+            "chat retrieval query=%r search_query=%r place_ids=%s kb_ids=%s event_ids=%s rewrite_ms=%.0f retrieve_ms=%.0f",
+            user_message,
+            search_query,
             [p["id"] for p in places],
             [k["id"] for k in kb_entries],
+            [e["id"] for e in events],
             rewrite_ms,
             retrieve_ms,
         )
@@ -133,6 +213,18 @@ class RAGChatbotService:
                 "image_url": p.get("img"),
             }
             for p in places
+        ]
+        source_events = [
+            {
+                "id": e["id"],
+                "name": e["name"],
+                "category": e.get("category"),
+                "venueName": e.get("venue_name"),
+                "dateRange": e.get("date_range"),
+                "admission": e.get("admission"),
+                "image_url": e.get("img"),
+            }
+            for e in events
         ]
 
         place_context = "\n---\n".join(
@@ -149,40 +241,56 @@ class RAGChatbotService:
         kb_context = "\n---\n".join(
             f"หัวข้อ: {k['title']}\nเนื้อหา: {k.get('content', '')}" for k in kb_entries
         )
-        context_str = "\n---\n".join(filter(None, [place_context, kb_context])) or "ไม่มีข้อมูลที่ตรงกับคำถามในฐานข้อมูล"
+        event_context = "\n---\n".join(
+            f"ชื่องาน: {e['name']}\n"
+            f"ประเภท: {e.get('category') or '-'}\n"
+            f"สถานที่จัดงาน: {e.get('venue_name') or '-'}\n"
+            f"วันที่จัดงาน: {e.get('date_range') or 'ไม่มีข้อมูลวันที่'}\n"
+            f"ค่าเข้างาน: {e.get('admission') or 'ไม่มีข้อมูลค่าเข้างาน'}\n"
+            f"เหมาะสำหรับ: {', '.join(e.get('suitable_for') or []) or 'ไม่มีข้อมูล'}\n"
+            f"รายละเอียด: {e.get('description') or '-'}"
+            for e in events
+        )
+        context_str = "\n---\n".join(filter(None, [place_context, kb_context, event_context])) or "ไม่มีข้อมูลที่ตรงกับคำถามในฐานข้อมูล"
 
         current_time_info = datetime.datetime.now().strftime("%A เวลา %H:%M น.")
 
         system_prompt = f"""
         คุณคือ 'น้องไดโน' ผู้ช่วยส่วนตัวสำหรับการท่องเที่ยวในจังหวัดขอนแก่น เป็นมิตรและสุภาพ
-        ขณะนี้คือวัน {current_time_info} (ใช้ข้อมูลนี้ตัดสินว่าสถานที่เปิดหรือปิด)
+        ขณะนี้คือวัน {current_time_info} (ใช้ข้อมูลนี้ตัดสินว่าสถานที่เปิดหรือปิด และงานไหนยังไม่ผ่านไป)
 
         [กฎเหล็ก]
-        1. ขึ้นต้นคำตอบทุกครั้งด้วยแท็กใดแท็กหนึ่งต่อไปนี้เป็นอันดับแรกเสมอ (ห้ามมีข้อความอื่นนำหน้าแท็ก) [ข้อมูลบริบท] ด้านล่างมี 2 ส่วนคือ "รายการสถานที่" (ร้าน/คาเฟ่/ที่เที่ยว) และ "ความรู้ทั่วไป" (ประวัติศาสตร์/วัฒนธรรม/การเดินทาง ฯลฯ):
-           - {MATCH_PLACES_TAG} ตามด้วยคำตอบ หากคำตอบอ้างอิงเฉพาะ "รายการสถานที่"
-           - {MATCH_KB_TAG} ตามด้วยคำตอบ หากคำตอบอ้างอิงเฉพาะ "ความรู้ทั่วไป" ไม่ได้พูดถึงสถานที่รายการใดใน [ข้อมูลบริบท] เลย
-           - {MATCH_BOTH_TAG} ตามด้วยคำตอบ หากคำตอบอ้างอิงทั้งสองส่วน
-           - ใช้แท็ก MATCH ที่ตรงกับสิ่งที่ตอบจริง แม้จะตอบได้แค่บางส่วนของคำถามที่ถามหลายอย่างพร้อมกัน โดยที่แต่ละส่วนต้องตรงกับที่ผู้ใช้ถามจริงๆ (เช่น ผู้ใช้ถามทั้งร้านกาแฟและร้านอาหาร แต่บริบทมีแต่ร้านกาแฟ ก็ให้ใช้ {MATCH_PLACES_TAG} แนะนำร้านกาแฟที่มี แล้วบอกตรงๆ ว่าไม่มีข้อมูลร้านอาหารในส่วนที่เหลือ)
-           - ใช้ {NO_MATCH_TAG} ถ้าไม่มีรายการใดใน [ข้อมูลบริบท] ตรงกับสิ่งที่ผู้ใช้ถามหาจริงๆ แม้แต่รายการเดียว -- ห้ามใช้ MATCH แค่เพราะบริบทมีสถานที่ประเภทอื่นที่ "ใกล้เคียง" หรืออยู่ในขอนแก่นเหมือนกัน (เช่น ผู้ใช้ถามหา "น้ำตก" แต่บริบทมีแต่สะพานกับสวนน้ำ ซึ่งไม่ใช่น้ำตก เลยไม่นับว่าตรง ต้องใช้ {NO_MATCH_TAG} ห้ามหยิบสะพาน/สวนน้ำมาแนะนำแทน) ตามด้วยอะไรก็ได้สั้นๆ (ข้อความส่วนนี้จะไม่ถูกแสดงให้ผู้ใช้เห็น ระบบจะแสดงข้อความมาตรฐานแทน)
+        1. ขึ้นต้นคำตอบทุกครั้งด้วยแท็ก [MATCH:...] เป็นอันดับแรกเสมอ (ห้ามมีข้อความอื่นนำหน้าแท็ก) [ข้อมูลบริบท] ด้านล่างมี 3 ส่วนคือ "รายการสถานที่" (ร้าน/คาเฟ่/ที่เที่ยว), "ความรู้ทั่วไป" (ประวัติศาสตร์/วัฒนธรรม/การเดินทาง ฯลฯ), และ "รายการอีเวนท์" (งาน/เทศกาล/กิจกรรม):
+           - ใส่ชื่อแหล่งข้อมูลที่คำตอบ "อ้างอิงจริง" ในแท็ก คั่นด้วยเครื่องหมาย + ตามลำดับ PLACES, KB, EVENTS เท่านั้น -- ใช้ได้แค่คำว่า {SOURCE_PLACES} (รายการสถานที่), {SOURCE_KB} (ความรู้ทั่วไป), {SOURCE_EVENTS} (รายการอีเวนท์) เช่น {MATCH_PLACES_TAG}, {MATCH_EVENTS_TAG}, {match_tag(SOURCE_PLACES, SOURCE_EVENTS)}, {match_tag(SOURCE_PLACES, SOURCE_KB, SOURCE_EVENTS)}
+           - ใช้แหล่งข้อมูลที่ตรงกับสิ่งที่ตอบจริงเท่านั้น แม้จะตอบได้แค่บางส่วนของคำถามที่ถามหลายอย่างพร้อมกัน โดยที่แต่ละส่วนต้องตรงกับที่ผู้ใช้ถามจริงๆ (เช่น ผู้ใช้ถามทั้งร้านกาแฟและงานเทศกาล แต่บริบทมีแต่ร้านกาแฟ ก็ให้ใช้ {MATCH_PLACES_TAG} แนะนำร้านกาแฟที่มี แล้วบอกตรงๆ ว่าไม่มีข้อมูลงานเทศกาลในส่วนที่เหลือ)
+           - ใช้ {NO_MATCH_TAG} ถ้าไม่มีรายการใดใน [ข้อมูลบริบท] ตรงกับสิ่งที่ผู้ใช้ถามหาจริงๆ แม้แต่รายการเดียว -- ห้ามใช้ MATCH แค่เพราะบริบทมีรายการประเภทอื่นที่ "ใกล้เคียง" หรืออยู่ในขอนแก่นเหมือนกัน (เช่น ผู้ใช้ถามหา "น้ำตก" แต่บริบทมีแต่สะพานกับสวนน้ำ ซึ่งไม่ใช่น้ำตก เลยไม่นับว่าตรง ต้องใช้ {NO_MATCH_TAG} ห้ามหยิบสะพาน/สวนน้ำมาแนะนำแทน) แต่ถ้าผู้ใช้ถามหาเมนูหรือชนิดอาหารเฉพาะ (เช่น ซูชิ, เนื้อย่าง) และบริบทมีร้านที่เป็นประเภทอาหารนั้นตามชื่อ/ประเภท/แท็ก (เช่น ร้านอาหารญี่ปุ่นสำหรับซูชิ) ให้นับว่าตรง ใช้ MATCH แนะนำร้านนั้นได้ โดยบอกตรงๆ ว่าไม่มีข้อมูลเมนูเฉพาะรายการ ตามด้วยอะไรก็ได้สั้นๆ (ข้อความส่วนนี้จะไม่ถูกแสดงให้ผู้ใช้เห็น ระบบจะแสดงข้อความมาตรฐานแทน)
         2. กรุณาตอบคำถามของผู้ใช้โดยอ้างอิงจาก [ข้อมูลบริบท] ด้านล่างนี้เท่านั้น
         3. หากมีข้อมูลในบริบท ให้สรุปและตอบอย่างเป็นธรรมชาติ
-        4. ห้ามแต่งเติม หรือเดาข้อมูลสถานที่ขึ้นมาเองเด็ดขาด รวมถึงคุณสมบัติที่ไม่มีระบุใน [ข้อมูลบริบท] เช่น ที่จอดรถ, wifi, การเดินทาง/ระยะห่างจากจุดอื่น -- ถ้าไม่มีข้อมูลด้านนี้ ให้บอกตรงๆ ว่าไม่มีข้อมูล ห้ามอนุมานจากที่อยู่หรือชื่อสถานที่เอง
+        4. ห้ามแต่งเติม หรือเดาข้อมูลสถานที่/งานขึ้นมาเองเด็ดขาด รวมถึงคุณสมบัติที่ไม่มีระบุใน [ข้อมูลบริบท] เช่น ที่จอดรถ, wifi, การเดินทาง/ระยะห่างจากจุดอื่น, วันที่จัดงานที่ไม่ได้ระบุไว้ -- ถ้าไม่มีข้อมูลด้านนี้ ให้บอกตรงๆ ว่าไม่มีข้อมูล ห้ามอนุมานจากที่อยู่หรือชื่อสถานที่/งานเอง
+        5. ห้ามแนะนำอีเวนท์ที่ไม่ได้อยู่ใน [ข้อมูลบริบท] -- ระบบกรองอีเวนท์ที่จบไปแล้วหรือถูกยกเลิกออกให้แล้ว รายการอีเวนท์ที่เห็นในบริบทคือรายการที่ยังใช้ได้ทั้งหมด
+        6. หากมีประวัติการสนทนาก่อนหน้า ให้ใช้เพื่อเข้าใจคำอ้างอิงในคำถามล่าสุดเท่านั้น (เช่น "ร้านนั้น") ห้ามใช้ประวัติเป็นแหล่งข้อมูลข้อเท็จจริง ข้อเท็จจริงต้องมาจาก [ข้อมูลบริบท] เสมอ และประวัติของคำตอบก่อนหน้าไม่มีแท็ก แต่คำตอบใหม่ของคุณต้องขึ้นต้นด้วยแท็กตามกฎข้อ 1 ทุกครั้ง
 
         [ข้อมูลบริบท]
         {context_str}
         """
 
-        messages = [{"role": "system", "content": system_prompt}]
-        messages.extend(history[-4:])
-        messages.append({"role": "user", "content": user_message})
-        return messages, source_places, {"rewrite_ms": rewrite_ms, "retrieve_ms": retrieve_ms}
+        messages = [
+            {"role": "system", "content": system_prompt},
+            *history,
+            {"role": "user", "content": user_message},
+        ]
+        return messages, source_places, source_events, {"retrieve_ms": retrieve_ms, "rewrite_ms": rewrite_ms}
 
-    def chat(self, user_message: str, history: list[dict] | None = None) -> dict:
-        history = history or []
+    def chat(self, user_message: str, history=None) -> dict:
         t_total0 = time.time()
-        messages, source_places, timings = self._prepare(user_message, history)
+        usage = UsageTracker("chat", turn=len(history or []) // 2 + 1)
+        messages, source_places, source_events, timings = self._prepare(user_message, history, usage)
 
         t0 = time.time()
+        # Not routed through _create: the answer call needs its full
+        # reasoning budget for the [MATCH]/[NO_MATCH] decision (see
+        # REASONING_EFFORT's comment -- reasoning_effort="low" here broke
+        # 10/33 live golden-set tests).
         response = self.client.chat.completions.create(
             model=self.model_name,
             messages=messages,
@@ -192,6 +300,7 @@ class RAGChatbotService:
             # requests during testing.
             temperature=0.1,
         )
+        usage.record_response("answer", self.model_name, response)
         raw_reply = response.choices[0].message.content
         llm_ms = (time.time() - t0) * 1000
 
@@ -200,34 +309,38 @@ class RAGChatbotService:
         if is_fallback:
             bot_reply = FALLBACK_MESSAGE
             source_places = []
+            source_events = []
         elif matched_tag:
             bot_reply = raw_reply[len(matched_tag):].strip()
-            if matched_tag not in PLACE_CARD_TAGS:
+            matched_sources = _tag_sources(matched_tag)
+            if SOURCE_PLACES not in matched_sources:
                 source_places = []
+            if SOURCE_EVENTS not in matched_sources:
+                source_events = []
         else:
             # Model didn't follow the tag instruction -- treat as a match
             # rather than silently dropping the answer.
             bot_reply = raw_reply
         total_ms = (time.time() - t_total0) * 1000
         logger.info(
-            "chat done tag=%s rewrite_ms=%.0f retrieve_ms=%.0f llm_ms=%.0f total_ms=%.0f",
-            matched_tag, timings["rewrite_ms"], timings["retrieve_ms"], llm_ms, total_ms,
+            "chat done tag=%s retrieve_ms=%.0f llm_ms=%.0f total_ms=%.0f",
+            matched_tag, timings["retrieve_ms"], llm_ms, total_ms,
         )
 
-        return {"reply": bot_reply, "places": source_places}
+        return {"reply": bot_reply, "places": source_places, "events": source_events, "usage": usage.finish()}
 
-    def chat_stream(self, user_message: str, history: list[dict] | None = None):
+    def chat_stream(self, user_message: str, history=None):
         """Generator yielding {"type": "token", "text": ...} chunks as the LLM
-        streams its answer, then a final {"type": "done", "reply", "places"}.
-        `places` is only known once the leading [MATCH]/[NO_MATCH] tag has
-        been read from the stream, so it's withheld until the last event
-        rather than sent up front."""
-        history = history or []
+        streams its answer, then a final {"type": "done", "reply", "places",
+        "events"}. `places`/`events` are only known once the leading
+        [MATCH]/[NO_MATCH] tag has been read from the stream, so they're
+        withheld until the last event rather than sent up front."""
         t_total0 = time.time()
-        messages, source_places, timings = self._prepare(user_message, history)
+        usage = UsageTracker("chat", turn=len(history or []) // 2 + 1)
+        messages, source_places, source_events, timings = self._prepare(user_message, history, usage)
 
         t0 = time.time()
-        stream = self.client.chat.completions.create(
+        stream_kwargs = dict(
             model=self.model_name,
             messages=messages,
             # Low temperature: the [MATCH]/[NO_MATCH] decision at the start of
@@ -237,12 +350,26 @@ class RAGChatbotService:
             temperature=0.1,
             stream=True,
         )
+        # Not given REASONING_EFFORT, same reason as the non-streamed answer
+        # call above: this is the call that makes the [MATCH]/[NO_MATCH]
+        # decision, and cutting its reasoning budget broke live tests.
+        try:
+            # include_usage makes the gateway append a final chunk carrying
+            # token counts (with empty `choices`).
+            stream = self.client.chat.completions.create(**stream_kwargs, stream_options={"include_usage": True})
+        except BadRequestError:
+            # Gateway rejects stream_options: chat still works, this turn's
+            # answer call is just recorded as usage_missing.
+            logger.warning("gateway rejected stream_options; answer usage unavailable for streamed chat")
+            stream = self.client.chat.completions.create(**stream_kwargs)
+        stream_usage = None
 
         full_text = ""
         tag_buffer = ""
         tag_resolved = False
         is_fallback = False
         include_places = False
+        include_events = False
         # Whitespace right after the tag (typically one space before the
         # real reply starts) needs skipping, but it can arrive in its own
         # chunk separately from the tag -- a plain one-shot .lstrip() at the
@@ -251,6 +378,10 @@ class RAGChatbotService:
         # skip survive across chunk boundaries instead.
         skip_leading_ws = False
         for chunk in stream:
+            if getattr(chunk, "usage", None):
+                stream_usage = chunk.usage
+            if not chunk.choices:
+                continue
             delta = chunk.choices[0].delta.content
             if not delta:
                 continue
@@ -272,7 +403,9 @@ class RAGChatbotService:
                         full_text = FALLBACK_MESSAGE
                         yield {"type": "token", "text": FALLBACK_MESSAGE}
                     else:
-                        include_places = matched_tag in PLACE_CARD_TAGS
+                        matched_sources = _tag_sources(matched_tag)
+                        include_places = SOURCE_PLACES in matched_sources
+                        include_events = SOURCE_EVENTS in matched_sources
                         remainder = tag_buffer[len(matched_tag):].lstrip()
                         if remainder:
                             full_text += remainder
@@ -285,6 +418,7 @@ class RAGChatbotService:
                     # normal (matched) reply rather than dropping it.
                     tag_resolved = True
                     include_places = True
+                    include_events = True
                     full_text += tag_buffer
                     yield {"type": "token", "text": tag_buffer}
                 # else: still an ambiguous prefix of one of the tags, keep buffering
@@ -305,10 +439,12 @@ class RAGChatbotService:
         llm_ms = (time.time() - t0) * 1000
         final_reply = FALLBACK_MESSAGE if is_fallback else full_text
         final_places = source_places if include_places else []
+        final_events = source_events if include_events else []
         total_ms = (time.time() - t_total0) * 1000
         logger.info(
-            "chat_stream done fallback=%s include_places=%s rewrite_ms=%.0f retrieve_ms=%.0f llm_ms=%.0f total_ms=%.0f",
-            is_fallback, include_places, timings["rewrite_ms"], timings["retrieve_ms"], llm_ms, total_ms,
+            "chat_stream done fallback=%s include_places=%s include_events=%s retrieve_ms=%.0f llm_ms=%.0f total_ms=%.0f",
+            is_fallback, include_places, include_events, timings["retrieve_ms"], llm_ms, total_ms,
         )
 
-        yield {"type": "done", "reply": final_reply, "places": final_places}
+        usage.record("answer", self.model_name, stream_usage)
+        yield {"type": "done", "reply": final_reply, "places": final_places, "events": final_events, "usage": usage.finish()}

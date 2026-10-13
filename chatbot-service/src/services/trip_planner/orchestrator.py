@@ -1,8 +1,10 @@
-from datetime import datetime
+import math
+from datetime import datetime, timedelta
 from itertools import zip_longest
 from src.core.db import find_place_by_name
 from src.services.rag.retriever import PlaceRetriever
 from .models import Place, TripInput, TripSummary, DaySummary
+from . import route_scheduler
 
 # Khon Kaen city center -- fallback location if the named accommodation isn't
 # found in `places` at all (same fallback the old project used).
@@ -15,6 +17,16 @@ BUDGET_PRICE_RANGES = {
     "ประหยัด": [0, 1],
     "ปานกลาง": [0, 1, 2],
     "หรูหรา": [2, 3, 4],
+}
+
+# Categories kept out of the RAG candidate pool for a budget tier. The price
+# filter above can't do this on its own: price_level is null for 38 of the 40
+# "ตลาด" rows in the live `places` table (and nothing at all is rated 3-4), so
+# a หรูหรา trip kept every night market -- both as an LLM pick (the prompt
+# carries no price) and as a backfill/gap-filler stop, since those draw from
+# this same pool. Must-go places are exempt, same as the price filter.
+BUDGET_EXCLUDED_CATEGORIES = {
+    "หรูหรา": {"ตลาด"},
 }
 
 # Google's administrative_area_level_2 name for Khon Kaen's city district
@@ -37,18 +49,35 @@ class TripBuilderService:
         self.retriever = PlaceRetriever()
 
     def build_candidate_list(self, user_input: TripInput):
-        accommodation_row = find_place_by_name(user_input.accommodation_name)
-        if accommodation_row:
-            accommodation = Place(**accommodation_row)
-        else:
+        # Real coordinates from the frontend's map picker/geolocation take
+        # priority over name-matching -- find_place_by_name() only searches
+        # the curated `places` table (tourist attractions/cafes/restaurants),
+        # which a real accommodation's name almost never matches, so that
+        # path was silently falling back to a hardcoded city-center point
+        # for most users. Only reached when the request didn't supply
+        # coordinates at all (old clients, or nothing picked).
+        if user_input.accommodation_lat is not None and user_input.accommodation_lng is not None:
             accommodation = Place(
                 id="hotel_dummy",
-                name=user_input.accommodation_name,
+                name=user_input.accommodation_name or "ที่พัก",
                 category="ที่พัก",
                 rating=4.5,
-                lat=DEFAULT_HOTEL_LOCATION["lat"],
-                lng=DEFAULT_HOTEL_LOCATION["lng"],
+                lat=user_input.accommodation_lat,
+                lng=user_input.accommodation_lng,
             )
+        else:
+            accommodation_row = find_place_by_name(user_input.accommodation_name)
+            if accommodation_row:
+                accommodation = Place(**accommodation_row)
+            else:
+                accommodation = Place(
+                    id="hotel_dummy",
+                    name=user_input.accommodation_name,
+                    category="ที่พัก",
+                    rating=4.5,
+                    lat=DEFAULT_HOTEL_LOCATION["lat"],
+                    lng=DEFAULT_HOTEL_LOCATION["lng"],
+                )
 
         must_go_list = []
         missing_must_go = []
@@ -61,17 +90,38 @@ class TripBuilderService:
 
         start_dt = datetime.strptime(user_input.start_time, "%H:%M")
         end_dt = datetime.strptime(user_input.end_time, "%H:%M")
-        total_trip_hours = (end_dt - start_dt).seconds / 3600
 
-        if user_input.trip_pace == "relaxed":
-            places_per_day = max(3, int(total_trip_hours / 2.5))
-        elif user_input.trip_pace == "packed":
-            places_per_day = max(5, int(total_trip_hours / 1.5))
-        else:
-            places_per_day = max(4, int(total_trip_hours / 2.0))
+        # Per-day slots: the pace's attraction max for this window (see
+        # route_scheduler.pace_stop_range -- the same range llm_extractor
+        # enforces afterwards), plus room for the day's restaurants, which
+        # don't count toward that range. Rounded up on purpose: undercounting
+        # here is what previously starved the LLM's candidate pool below what
+        # a full day needs.
+        _, max_attractions = route_scheduler.pace_stop_range(
+            user_input.trip_pace, start_dt.time(), end_dt.time(),
+        )
+        places_per_day = max_attractions + 2
 
         total_slots = places_per_day * user_input.trip_duration_days
         remaining_slots = total_slots - len(must_go_list)
+
+        # Extra selection surplus beyond what the day slots strictly need.
+        # Without it, self.candidates ends up sized almost exactly to
+        # total_slots, so once the LLM assigns most of them to days,
+        # llm_extractor.py's backfill_pool (built from whatever candidates
+        # the LLM *didn't* pick) has nothing spare left -- confirmed live: a
+        # relaxed-pace day with a 3h26m gap fell back to a "☕ free time"
+        # placeholder in materialize_day_schedule instead of a real nearby
+        # place, purely because the candidate pool had already been used up.
+        # 50% surplus keeps the LLM's day-assignment choices the same size
+        # (it still only picks what a day needs) while leaving real
+        # candidates on the table for route_scheduler's deterministic
+        # backfill/gap-filler layers to draw from.
+        candidate_pool_target = math.ceil(remaining_slots * 1.5)
+
+        existing_ids = {p.id for p in must_go_list}
+        allowed_prices = BUDGET_PRICE_RANGES.get(user_input.budget_level, [0, 1, 2])
+        excluded_categories = BUDGET_EXCLUDED_CATEGORIES.get(user_input.budget_level, set())
 
         interest_list = []
         if remaining_slots > 0:
@@ -89,7 +139,7 @@ class TripBuilderService:
                 # before any single interest's larger result count crowds out
                 # the rest.
                 per_interest_results = [
-                    self.retriever.search_and_expand(query=interest, limit=remaining_slots * 5)
+                    self.retriever.search_and_expand(query=interest, limit=candidate_pool_target * 5)
                     for interest in user_input.interests
                 ]
                 rag_results = [
@@ -97,11 +147,8 @@ class TripBuilderService:
                 ]
             else:
                 rag_results = self.retriever.search_and_expand(
-                    query="สถานที่ท่องเที่ยวยอดนิยม ขอนแก่น", limit=remaining_slots * 5
+                    query="สถานที่ท่องเที่ยวยอดนิยม ขอนแก่น", limit=candidate_pool_target * 5
                 )
-
-            existing_ids = {p.id for p in must_go_list}
-            allowed_prices = BUDGET_PRICE_RANGES.get(user_input.budget_level, [0, 1, 2])
 
             for row in rag_results:
                 place_id = row.get("id")
@@ -113,7 +160,7 @@ class TripBuilderService:
                 # excluding it, or budget filtering would return almost nothing.
                 if place.price_level is not None and place.price_level not in allowed_prices:
                     continue
-                if place.category == "ที่พัก":
+                if place.category == "ที่พัก" or place.category in excluded_categories:
                     continue
                 # Only applies to RAG-sourced candidates, same as the budget
                 # filter above -- must_go places are honored regardless of
@@ -124,26 +171,125 @@ class TripBuilderService:
                     continue
                 interest_list.append(place)
                 existing_ids.add(place_id)
-                if len(interest_list) >= remaining_slots:
+                if len(interest_list) >= candidate_pool_target:
                     break
 
-        return accommodation, must_go_list + interest_list, missing_must_go
+        # --- Meal reserve -------------------------------------------------
+        # A day with no meal isn't a reasonable itinerary regardless of what
+        # interests were stated, so llm_extractor.py guarantees at least one
+        # restaurant per day from this pool -- which only works if the pool
+        # holds restaurants that can really be visited on this trip:
+        #   1. open during the trip's daily window (route_scheduler.open_for_meal),
+        #   2. enough LUNCH-capable ones for the number of days, when the
+        #      window covers lunch (evening-only restaurants alone leave
+        #      every midday without a meal).
+        # Interest retrieval ranks by relevance, not by either.
+        # (Tried and removed: also reserving restaurants near each outlying
+        # cluster of places. Replaying stored LLM picks, it moved a Phu Wiang
+        # day's meal from an in-town lunch on the way to a 15:13 meal at a
+        # nearby restaurant, because the scheduler weighs distance far above
+        # meal timing -- a net loss, with no measurable gain.)
+        start_min = start_dt.hour * 60 + start_dt.minute
+        end_min = end_dt.hour * 60 + end_dt.minute
+        trip_start = datetime.strptime(user_input.start_date, "%Y-%m-%d").date()
+        trip_dates = [trip_start + timedelta(days=i) for i in range(user_input.trip_duration_days)]
+        needs_lunch = bool(route_scheduler.meal_probe_minutes(start_min, end_min, route_scheduler.MEAL_LUNCH_WINDOW))
+
+        def usable(p):
+            return route_scheduler.open_for_meal(p, trip_dates, start_min, end_min)
+
+        def lunch_capable(p):
+            return route_scheduler.open_for_meal(p, trip_dates, start_min, end_min, route_scheduler.MEAL_LUNCH_WINDOW)
+
+        # Restaurants that can never be visited within the window only waste
+        # a slot and invite the LLM to pick a meal the scheduler must drop.
+        # Must-go restaurants are exempt: the user asked for them by name.
+        interest_list = [p for p in interest_list if p.category != "ร้านอาหาร" or usable(p)]
+        existing_ids = {p.id for p in must_go_list + interest_list}
+
+        def meal_counts():
+            restaurants = [p for p in must_go_list + interest_list if p.category == "ร้านอาหาร" and usable(p)]
+            return len(restaurants), sum(1 for p in restaurants if lunch_capable(p))
+
+        meal_reserve_needed = user_input.trip_duration_days * 2
+        lunch_needed = user_input.trip_duration_days if needs_lunch else 0
+
+        def acceptable_meal(row, require_lunch=False):
+            place_id = row.get("id")
+            if not place_id or place_id in existing_ids:
+                return None
+            place = Place(**row)
+            if place.category != "ร้านอาหาร":
+                return None
+            if place.price_level is not None and place.price_level not in allowed_prices:
+                return None
+            if user_input.area_scope == "เมือง" and not _is_mueang_district(place.district):
+                return None
+            if not usable(place) or (require_lunch and not lunch_capable(place)):
+                return None
+            return place
+
+        def add_meal(place):
+            interest_list.append(place)
+            existing_ids.add(place.id)
+
+        def by_rating(rows):
+            return sorted(rows, key=lambda r: (-(r.get("rating") or 0.0), -(r.get("review_count") or 0)))
+
+        have, have_lunch = meal_counts()
+        if have < meal_reserve_needed or have_lunch < lunch_needed:
+            # Relevance-ranked first (the old behaviour), over a wider net
+            # than before since many top results can be unusable.
+            for row in self.retriever.search_and_expand(
+                query="ร้านอาหารแนะนำ ขอนแก่น", limit=meal_reserve_needed * 10,
+            ):
+                if have >= meal_reserve_needed and have_lunch >= lunch_needed:
+                    break
+                place = acceptable_meal(row, require_lunch=have >= meal_reserve_needed)
+                if place:
+                    add_meal(place)
+                    have, have_lunch = have + 1, have_lunch + (1 if lunch_capable(place) else 0)
+
+            # Still short (e.g. the ranked results were all evening-only):
+            # fall back to the full restaurant list, best-rated first.
+            if have < meal_reserve_needed or have_lunch < lunch_needed:
+                for row in by_rating(self.retriever.list_restaurants()):
+                    if have >= meal_reserve_needed and have_lunch >= lunch_needed:
+                        break
+                    place = acceptable_meal(row, require_lunch=have >= meal_reserve_needed)
+                    if place:
+                        add_meal(place)
+                        have, have_lunch = have + 1, have_lunch + (1 if lunch_capable(place) else 0)
+
+        return accommodation, must_go_list + interest_list, missing_must_go, {p.id for p in must_go_list}
 
     def get_dynamic_instructions(self, user_input: TripInput):
+        start = datetime.strptime(user_input.start_time, "%H:%M").time()
+        end = datetime.strptime(user_input.end_time, "%H:%M").time()
+        lo, hi = route_scheduler.pace_stop_range(user_input.trip_pace, start, end)
+        count = f"{lo}" if lo == hi else f"{lo}-{hi}"
         pace_instruction = {
-            "relaxed": "- PACE (Relaxed): Schedule a slow-paced trip. Leave plenty of free time between activities. If there is a time gap > 45 mins, explicitly add '☕ พักผ่อนตามอัธยาศัย'. Do NOT pack too many places into one day.",
-            "packed": "- PACE (Packed): Schedule a fast-paced trip. Maximize the number of places visited. Minimize idle time and schedule activities back-to-back.",
+            "relaxed": "- PACE (Relaxed): Schedule a slow-paced trip. Leave plenty of free time between activities. If there is a time gap > 45 mins, explicitly add '☕ พักผ่อนตามอัธยาศัย'.",
+            "packed": "- PACE (Packed): Schedule a fast-paced trip. Minimize idle time and schedule activities back-to-back.",
         }.get(
             user_input.trip_pace,
             "- PACE (Standard): Balance activity time and rest. A moderate schedule is fine.",
         )
+        pace_instruction += (
+            f" Plan {count} attractions per day (cafes count, restaurants do not) -- "
+            f"never more than {hi}."
+        )
 
+        # These only guide WHICH places to pick -- a deterministic scheduler
+        # (route_scheduler.py) owns geographic ordering for every trip
+        # regardless of budget tier, so these no longer instruct the LLM
+        # about driving distance/fuel cost trade-offs at all.
         budget_instruction = {
-            "ประหยัด": "- BUDGET (Economy): STRICTLY group places that are in the same area/zone together to minimize driving distance and save fuel costs. Prioritize free or cheap places.",
-            "หรูหรา": "- BUDGET (Luxury): IGNORE travel distance and fuel costs entirely. Focus ONLY on providing the most premium, high-end, and exclusive experiences, even if they are far apart.",
+            "ประหยัด": "- BUDGET (Economy): Prioritize free or cheap places.",
+            "หรูหรา": "- BUDGET (Luxury): Focus ONLY on providing the most premium, high-end, and exclusive experiences.",
         }.get(
             user_input.budget_level,
-            "- BUDGET (Standard): Balance the driving distance and the quality of the places. A moderate amount of driving is acceptable.",
+            "- BUDGET (Standard): Balance cost and the quality of the places.",
         )
 
         return pace_instruction, budget_instruction

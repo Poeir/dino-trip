@@ -76,6 +76,7 @@ class TestEvaluate:
 
         assert verdict.passed is True
         assert verdict.rationale == ""
+        assert verdict.judge_call_failed is True
         assert any("fail" in r.message.lower() for r in caplog.records)
 
     def test_malformed_json_fails_open(self, judge, caplog):
@@ -87,6 +88,15 @@ class TestEvaluate:
             verdict = judge.evaluate(make_user_input(), make_itinerary())
 
         assert verdict.passed is True
+        assert verdict.judge_call_failed is True
+
+    def test_genuine_pass_does_not_set_judge_call_failed(self, judge):
+        judge._call_llm_for_verdict = lambda prompt: {
+            "score": 0.9, "pacing_ok": True, "intent_match_ok": True,
+            "issues": [], "feedback": "", "rationale": "จัดได้ดี",
+        }
+        verdict = judge.evaluate(make_user_input(), make_itinerary())
+        assert verdict.judge_call_failed is False
 
 
 class TestGenerateJudgePrompt:

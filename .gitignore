@@ -9,6 +9,13 @@ npm-debug.log*
 .env.*.local
 .env.production
 
+# Cloud credentials (GCP service-account keys etc.) -- never commit
+*service-account*.json
+*service_account*.json
+*credentials*.json
+application_default_credentials.json
+gcp-key*.json
+
 .DS_Store
 Thumbs.db
 

@@ -1,7 +1,16 @@
-import { Navigate } from 'react-router-dom'
+import { StarGlyph } from '../components/Icons.jsx'
+import { useEffect, useState } from 'react'
+import { Link, Navigate, useParams } from 'react-router-dom'
 import { useApp } from '../context/AppContext.jsx'
+import LoadingSpinner from '../components/LoadingSpinner.jsx'
 import ImageSlot from '../components/ImageSlot.jsx'
-import { CalendarIcon, WalletIcon, RouteIcon, GiftIcon, PencilIcon, PinIcon } from '../components/Icons.jsx'
+import { placeCategoryIcon, MASCOT } from '../data/categoryImages.js'
+import DayRouteMap from '../components/DayRouteMap.jsx'
+import Modal from '../components/Modal.jsx'
+import PlaceDetailView from '../components/PlaceDetailView.jsx'
+import { CalendarIcon, RouteIcon, GiftIcon, PinIcon } from '../components/Icons.jsx'
+import { fetchPlace, fetchPlaces } from '../lib/apiClient.js'
+import { dayDirectionsUrls } from '../utils/mapsLink.js'
 
 const sparkles = [
   { left: '6%', top: '20%', size: 7, duration: '3.2s', delay: '0s' },
@@ -10,6 +19,15 @@ const sparkles = [
   { left: '85%', top: '60%', size: 8, duration: '3s', delay: '0.2s' },
   { left: '45%', top: '10%', size: 5, duration: '2.8s', delay: '1s' },
 ]
+
+function SummaryRow({ label, value }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+      <span style={{ color: '#626863', flexShrink: 0 }}>{label}</span>
+      <span style={{ color: '#3c463f', fontWeight: 700, textAlign: 'right' }}>{value}</span>
+    </div>
+  )
+}
 
 function StatCard({ icon, value, label, accent }) {
   return (
@@ -25,13 +43,71 @@ function StatCard({ icon, value, label, accent }) {
 
 export default function TripResultPage() {
   const { state, actions, derived } = useApp()
+  const [selectedPlaceId, setSelectedPlaceId] = useState(null)
+  const [selectedPlace, setSelectedPlace] = useState(null)
+  const [summaryOpen, setSummaryOpen] = useState(false)
+  // /trip/:id opens a saved plan (refresh-safe, shareable within the same
+  // browser/account); /trip/result is the unsaved fallback.
+  const { id } = useParams()
+
+  useEffect(() => {
+    if (id && state.tripId !== id) actions.loadTrip(id)
+    // Only re-run when the URL id or the loaded plan changes -- `actions` is a
+    // fresh object every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, state.tripId])
+
+  useEffect(() => {
+    if (!selectedPlaceId) { setSelectedPlace(null); return }
+    let cancelled = false
+    fetchPlace(selectedPlaceId).then((p) => { if (!cancelled) setSelectedPlace(p) }).catch(() => { if (!cancelled) setSelectedPlace(null) })
+    return () => { cancelled = true }
+  }, [selectedPlaceId])
+
+  // The plan's places carry no Google place id, but the "open in Google Maps"
+  // links need it to land on the real Maps listing -- one batched lookup per plan.
+  const [googleIds, setGoogleIds] = useState({})
+  const planPlaceIds = [...new Set((state.tripPlan?.days || []).flatMap((d) => d.items.map((i) => i.place?.id)).filter((v) => v && !/^(hotel_dummy|free_time_dummy|removed_)/.test(v)))]
+  const planPlaceIdsKey = planPlaceIds.join(',')
+  useEffect(() => {
+    if (!planPlaceIdsKey) return undefined
+    let cancelled = false
+    fetchPlaces({ ids: planPlaceIdsKey })
+      .then((r) => {
+        if (cancelled) return
+        const rows = Array.isArray(r) ? r : r.data || []
+        setGoogleIds(Object.fromEntries(rows.filter((p) => p.googlePlaceId).map((p) => [p.id, p.googlePlaceId])))
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [planPlaceIdsKey])
+
+  if (id && state.tripId !== id) {
+    if (state.tripLoadError) {
+      return (
+        <main style={{ maxWidth: 520, margin: '0 auto', padding: 'var(--page-pv-center) var(--page-gutter)', textAlign: 'center' }}>
+          <p style={{ fontSize: 15, color: '#3c463f', marginBottom: 18 }}>{state.tripLoadError}</p>
+          <Link to="/trip" style={{ fontWeight: 800, color: '#2E7D32' }}>สร้างแผนใหม่</Link>
+        </main>
+      )
+    }
+    return <LoadingSpinner size={36} label="กำลังโหลดแผนทริป..." />
+  }
   if (!state.tripPlan) return <Navigate to="/trip" replace />
   const plan = derived.tripPlan
+  const selectedPlaceView = selectedPlace
+    ? { ...selectedPlace, isFavorite: state.favoriteIds.includes(selectedPlace.id), onToggleFavorite: () => actions.toggleFavorite(selectedPlace.id) }
+    : null
   return (
-    <main style={{ maxWidth: 1200, margin: '0 auto', padding: '28px 24px 70px' }}>
+    <main style={{ maxWidth: 1200, margin: '0 auto', padding: 'var(--page-pt) var(--page-gutter) var(--page-pb)' }}>
       <div data-role="trip-result-grid" style={{ display: 'grid', gridTemplateColumns: '340px 1fr', gap: 28, alignItems: 'start' }}>
 
         <div data-role="trip-result-summary" style={{ position: 'sticky', top: 88, display: 'flex', flexDirection: 'column', gap: 20 }}>
+          {!id && state.authChecked && !state.loggedIn && (
+            <div style={{ background: '#FFF8E1', border: '1px solid #FBC02D', borderRadius: 14, padding: '11px 14px', fontSize: 12.5, color: '#6d5f2a', lineHeight: 1.5 }}>
+              แผนนี้จะหายเมื่อปิดหน้านี้ <Link to="/login" style={{ fontWeight: 800, color: '#8a6d00' }}>เข้าสู่ระบบ</Link> ก่อนสร้างแผน เพื่อบันทึกไว้ในเมนู “ทริปของฉัน”
+            </div>
+          )}
           <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 26, background: 'linear-gradient(135deg,#66BB6A,#2E7D32 65%,#1B5E20)', padding: '30px 24px', boxShadow: '0 20px 48px rgba(27,94,32,0.28)', animation: 'dc-fade-up 0.45s ease both' }}>
             <div style={{ position: 'absolute', width: 180, height: 180, borderRadius: '50%', background: 'rgba(255,255,255,0.10)', top: -80, right: -60, filter: 'blur(2px)' }}></div>
             <div style={{ position: 'absolute', width: 120, height: 120, borderRadius: '50%', background: 'rgba(251,192,45,0.18)', bottom: -50, left: -40, filter: 'blur(2px)' }}></div>
@@ -39,17 +115,37 @@ export default function TripResultPage() {
               <span key={i} style={{ position: 'absolute', left: s.left, top: s.top, width: s.size, height: s.size, borderRadius: '50%', background: '#FBC02D', animation: `dc-particle-float ${s.duration} ease-in-out infinite`, animationDelay: s.delay, pointerEvents: 'none' }}></span>
             ))}
             <div style={{ position: 'relative' }}>
-              <img src="./assets/dino-mascot-front.png" alt="" style={{ width: 64, height: 'auto', animation: 'dc-float 3.4s ease-in-out infinite', filter: 'drop-shadow(0 8px 14px rgba(0,0,0,0.2))', marginBottom: 10 }} onError={(e) => { e.currentTarget.style.display = 'none' }} />
+              <img src={MASCOT.celebrate} alt="" width={96} height={96} style={{ width: 96, height: 'auto', animation: 'dc-float 3.4s ease-in-out infinite', filter: 'drop-shadow(0 8px 14px rgba(0,0,0,0.2))', marginBottom: 10 }} />
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(251,192,45,0.22)', border: '1px solid rgba(251,192,45,0.5)', color: '#FFF3C4', fontSize: 11, fontWeight: 800, padding: '4px 11px', borderRadius: 20, marginBottom: 10 }}>✦ AI จัดให้แบบเอ็กซ์คลูซีฟ</div>
               <h1 data-font="culture" style={{ color: '#fff', fontSize: 22, fontWeight: 900, margin: '0 0 6px' }}>ทริปของคุณพร้อมแล้ว!</h1>
               <p style={{ color: '#E8F5E9', fontSize: 13, margin: '0 0 20px' }}>น้องไดโนจัดเส้นทางตามความสนใจของคุณเรียบร้อย พร้อมออกเดินทางได้เลย</p>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
                 <StatCard icon={<CalendarIcon size={15} color="#fff" box={false} />} value={plan.days.length} label="วันเดินทาง" />
-                <StatCard icon={<WalletIcon size={15} color="#fff" box={false} />} value={`฿${plan.totalBudget}`} label="งบประมาณ" />
                 <StatCard icon={<RouteIcon size={15} color="#fff" box={false} />} value={`${plan.totalDistance} กม.`} label="ระยะทางรวม" />
                 <StatCard icon={<GiftIcon size={15} color="#FBC02D" box={false} />} value={`+${plan.totalPoints}`} label="พอยท์ที่จะได้" accent="#FBC02D" />
               </div>
             </div>
+          </div>
+
+          <div style={{ background: '#fff', border: '1px solid #E7E3D2', borderRadius: 16, animation: 'dc-fade-up 0.45s ease 0.05s both' }}>
+            <div onClick={() => setSummaryOpen((v) => !v)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '13px 16px', cursor: 'pointer' }}>
+              <span style={{ fontWeight: 800, fontSize: 13, color: '#1B5E20' }}>เงื่อนไขที่เลือกไว้</span>
+              <span style={{ fontSize: 11, color: '#626863', fontWeight: 700 }}>{summaryOpen ? 'ซ่อน ▾' : 'ดู ▸'}</span>
+            </div>
+            {summaryOpen && (
+              <div style={{ padding: '0 16px 16px', display: 'grid', gap: 8, fontSize: 12.5 }}>
+                <SummaryRow label="วันที่" value={derived.tripFormSummaryView.dateRangeLabel} />
+                <SummaryRow label="ช่วงเวลาต่อวัน" value={`${derived.tripFormSummaryView.dailyStart} - ${derived.tripFormSummaryView.dailyEnd}`} />
+                <SummaryRow label="ที่พัก" value={derived.tripFormSummaryView.accommodationLabel || 'ไม่ได้ระบุ (ใช้ใจกลางเมือง)'} />
+                <SummaryRow label="ความสนใจ" value={derived.tripFormSummaryView.interests.length ? derived.tripFormSummaryView.interests.join(', ') : 'ไม่ได้เลือก'} />
+                <SummaryRow label="งบประมาณ" value={derived.tripFormSummaryView.budget} />
+                <SummaryRow label="จังหวะการเที่ยว" value={derived.tripFormSummaryView.paceLabel} />
+                <SummaryRow label="ขอบเขตพื้นที่" value={derived.tripFormSummaryView.areaScope} />
+                {derived.tripFormSummaryView.mustGo.length > 0 && (
+                  <SummaryRow label="ต้องไปแน่ๆ" value={derived.tripFormSummaryView.mustGo.join(', ')} />
+                )}
+              </div>
+            )}
           </div>
 
           {state.tripPlanRationale && (
@@ -59,18 +155,8 @@ export default function TripResultPage() {
             </div>
           )}
 
-          <div style={{ background: 'linear-gradient(135deg,#F1F8E9,#E8F5E9)', border: '1px solid #C8E6C9', borderRadius: 20, padding: 22 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-              <PencilIcon size={17} />
-              <span style={{ fontWeight: 800, fontSize: 14, color: '#1B5E20' }}>อยากปรับตรงไหนของแผนไหมครับ</span>
-            </div>
-            <textarea value={state.feedbackText} onChange={actions.onFeedbackChange} placeholder="เช่น ตารางแน่นเกินไป อยากได้เวลาพักมากกว่านี้..." style={{ width: '100%', minHeight: 70, border: '1px solid #DCD8C6', borderRadius: 12, padding: 11, fontSize: 13.5, resize: 'vertical', marginBottom: 12, background: '#fff' }}></textarea>
-            <button onClick={actions.regeneratePlan} style={{ width: '100%', background: 'linear-gradient(135deg,#66BB6A,#2E7D32)', color: '#fff', border: 'none', padding: 13, borderRadius: 20, fontWeight: 800, fontSize: 13.5, cursor: 'pointer', boxShadow: '0 10px 22px rgba(46,125,50,0.25)' }}>ปรับแผนการเดินทางอีกครั้ง</button>
-          </div>
-
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <a href="#" style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, fontWeight: 700, color: '#6d7a72' }}><PinIcon box={false} color="#6d7a72" />เปิดใน Google Maps</a>
-            <a href="#" onClick={(e) => { e.preventDefault(); actions.goTripForm() }} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, fontWeight: 700, color: '#6d7a72' }}><RouteIcon size={15} color="#6d7a72" box={false} />สร้างแผนใหม่</a>
+            <a href="#" onClick={(e) => { e.preventDefault(); actions.goTripForm() }} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, fontWeight: 700, color: '#5f6a63' }}><RouteIcon size={15} color="#5f6a63" box={false} />สร้างแผนใหม่</a>
           </div>
         </div>
 
@@ -82,41 +168,43 @@ export default function TripResultPage() {
                   <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 0.5 }}>DAY</span>
                   <span style={{ fontSize: 17, fontWeight: 800 }}>{day.dayNum}</span>
                 </div>
-                <div>
+                <div style={{ minWidth: 0, flex: 1 }}>
                   <div style={{ fontSize: 15, fontWeight: 800, color: '#1B5E20' }}>วันที่ {day.dayNum}</div>
-                  <div style={{ fontSize: 12.5, color: '#8a938c' }}>{day.date}</div>
+                  <div style={{ fontSize: 12.5, color: '#626863' }}>{day.date}</div>
+                </div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                  {dayDirectionsUrls(day.items, googleIds).map((url, i, all) => (
+                    <a key={url} href={url} target="_blank" rel="noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, fontWeight: 700, color: '#2E7D32', background: '#E8F5E9', border: '1px solid #C8E6C9', borderRadius: 14, padding: '6px 12px', whiteSpace: 'nowrap' }}>
+                      <PinIcon box={false} color="#2E7D32" />เปิดใน Google Maps{all.length > 1 ? ` (${i + 1}/${all.length})` : ''}
+                    </a>
+                  ))}
                 </div>
               </div>
+
+              <DayRouteMap items={day.items} onSelectPlace={setSelectedPlaceId} />
+
               <div style={{ position: 'relative', paddingLeft: 22 }}>
                 <div style={{ position: 'absolute', left: 21, top: 8, bottom: 30, width: 2, background: 'linear-gradient(180deg,#66BB6A,#C8E6C9)', transformOrigin: 'top', animation: 'dc-grow 0.6s ease both' }}></div>
                 {day.items.map((item) => (
                   <div key={item.placeId + item.time} style={{ position: 'relative', marginBottom: 14, animation: 'dc-slide-in 0.45s ease both' }}>
                     {item.distanceFromPrev != null && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#8a938c', marginLeft: 26, marginBottom: 8 }}>
-                        <RouteIcon size={12} color="#8a938c" box={false} />เดินทางต่อ {item.distanceFromPrev} กม.
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#626863', marginLeft: 26, marginBottom: 8 }}>
+                        <RouteIcon size={12} color="#626863" box={false} />เดินทางต่อ {item.distanceFromPrev} กม.
                       </div>
                     )}
-                    <div style={{ display: 'flex', gap: 16, alignItems: 'center', border: '1px solid #EFEBDB', borderRadius: 16, padding: 12, transition: 'transform 0.2s ease, box-shadow 0.2s ease' }}>
+                    <div onClick={() => setSelectedPlaceId(item.placeId)} style={{ display: 'flex', gap: 16, alignItems: 'center', border: '1px solid #EFEBDB', borderRadius: 16, padding: 12, transition: 'transform 0.2s ease, box-shadow 0.2s ease', cursor: 'pointer' }}>
                       <div style={{ position: 'absolute', left: -6, top: '50%', marginTop: -7, width: 14, height: 14, borderRadius: '50%', background: '#fff', border: '3px solid #2E7D32' }}></div>
-                      <div style={{ width: 54, flexShrink: 0, textAlign: 'center' }}>
-                        <div style={{ fontWeight: 800, fontSize: 14, color: '#2E7D32' }}>{item.time}</div>
+                      <div style={{ width: 68, flexShrink: 0, textAlign: 'center' }}>
+                        <div style={{ fontWeight: 800, fontSize: 13, color: '#2E7D32', lineHeight: 1.3 }}>{item.timeRangeLabel}</div>
+                        {item.durationLabel && (
+                          <div style={{ fontSize: 10, color: '#626863', marginTop: 3 }}>{item.durationLabel}</div>
+                        )}
                       </div>
-                      <ImageSlot src={item.place.img} shape="rounded" radius={12} style={{ width: 84, height: 84, flexShrink: 0 }} placeholder="ภาพ" />
+                      <ImageSlot src={item.place.img} shape="rounded" radius={12} style={{ width: 84, height: 84, flexShrink: 0 }} placeholder="ภาพ" icon={placeCategoryIcon(item.place.category)} />
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <span style={{ fontSize: 10.5, fontWeight: 700, color: '#2E7D32', background: '#E8F5E9', padding: '2px 9px', borderRadius: 10 }}>{item.place.category}</span>
                         <div style={{ fontWeight: 700, fontSize: 15.5, color: '#1f2a24', margin: '5px 0 3px' }}>{item.place.name}</div>
-                        <div style={{ fontSize: 12.5, color: '#6d7a72', marginBottom: 9, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>★ {item.place.rating} · {item.place.address}</div>
-                        <div style={{ display: 'flex', gap: 8 }}>
-                          <button onClick={item.onLike} style={{ display: 'flex', alignItems: 'center', gap: 5, border: `1px solid ${item.likeBorder}`, background: item.likeBg, color: item.likeColor, borderRadius: 12, padding: '4px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
-                            <span style={{ width: 0, height: 0, borderLeft: '5px solid transparent', borderRight: '5px solid transparent', borderBottom: `7px solid ${item.likeColor}` }}></span>ถูกใจ
-                          </button>
-                          <button onClick={item.onDislike} style={{ display: 'flex', alignItems: 'center', gap: 5, border: `1px solid ${item.dislikeBorder}`, background: item.dislikeBg, color: item.dislikeColor, borderRadius: 12, padding: '4px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
-                            <span style={{ width: 0, height: 0, borderLeft: '5px solid transparent', borderRight: '5px solid transparent', borderTop: `7px solid ${item.dislikeColor}` }}></span>ไม่ถูกใจ
-                          </button>
-                          <button onClick={item.onSwap} style={{ display: 'flex', alignItems: 'center', gap: 5, border: '1px solid #DCD8C6', background: '#fff', color: '#6d7a72', borderRadius: 12, padding: '4px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
-                            <RouteIcon size={12} color="#6d7a72" box={false} />สลับที่นี่
-                          </button>
-                        </div>
+                        <div style={{ fontSize: 12.5, color: '#5f6a63', marginBottom: 9, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}><StarGlyph /> {item.place.rating} · {item.place.address}</div>
                       </div>
                     </div>
                   </div>
@@ -126,7 +214,19 @@ export default function TripResultPage() {
           ))}
         </div>
 
+        <div style={{ marginTop: 28, padding: '18px 20px', borderRadius: 16, background: '#E8F5E9', border: '1px solid #C8E6C9', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', justifyContent: 'space-between' }}>
+          <div style={{ flex: '1 1 260px' }}>
+            <div style={{ fontWeight: 800, fontSize: 15, color: '#1B5E20' }}>แผนเที่ยวนี้เป็นอย่างไรบ้าง?</div>
+            <div style={{ fontSize: 13, color: '#3d4a41', marginTop: 3 }}>ช่วยทำแบบประเมินความพึงพอใจสั้น ๆ ใช้เวลาประมาณ 3 นาที เพื่อนำไปพัฒนาระบบ</div>
+          </div>
+          <Link to="/survey" style={{ background: '#2E7D32', color: '#fff', fontWeight: 700, fontSize: 14, padding: '10px 20px', borderRadius: 12, textDecoration: 'none', whiteSpace: 'nowrap' }}>ทำแบบประเมิน</Link>
+        </div>
+
       </div>
+
+      <Modal open={!!selectedPlaceView} onClose={() => setSelectedPlaceId(null)} title={selectedPlaceView ? selectedPlaceView.name : ''} maxWidth={1100}>
+        {selectedPlaceView && <PlaceDetailView place={selectedPlaceView} imageHeight={320} />}
+      </Modal>
     </main>
   )
 }

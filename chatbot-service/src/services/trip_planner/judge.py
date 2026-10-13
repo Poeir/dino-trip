@@ -1,11 +1,12 @@
 import json
 import logging
 import time
-from typing import List
+from typing import List, Optional
 
-from openai import OpenAI
 
-from src.core.config import API_KEY, BASE_URL, TRIP_PLANNER_MODEL_NAME
+from src.core.llm_client import make_llm_client
+from src.core.config import TRIP_PLANNER_MODEL_NAME
+from src.core.usage import UsageTracker
 from .json_utils import clean_json_string
 from .models import DailyItinerary, JudgeVerdict, TripInput
 
@@ -20,14 +21,21 @@ logger = logging.getLogger(__name__)
 # regardless of quality.
 # NOT re-calibrated for TRIP_PLANNER_MODEL_NAME's current value -- different
 # models score with different generosity, so re-run the live test battery
-# before trusting this number again after a model switch.
+# before trusting this number again after a model switch. Also not
+# re-validated since the judge's own evaluation criteria changed to exclude
+# ordering/timing (route_scheduler now guarantees those deterministically) --
+# a judge scoring a narrower, easier-to-satisfy rubric may score more
+# generously than this threshold assumes.
 PASS_SCORE_THRESHOLD = 0.45
 
 
 class TripItineraryJudge:
     def __init__(self):
-        self.client = OpenAI(api_key=API_KEY, base_url=BASE_URL)
+        self.client = make_llm_client()
         self.default_model = TRIP_PLANNER_MODEL_NAME
+        # Shared with LLMTripPlanner, which assigns its own tracker here so
+        # generate + judge calls land in one per-trip total.
+        self.usage: Optional[UsageTracker] = None
 
     def _format_itinerary_for_judge(self, itinerary: List[DailyItinerary]) -> str:
         # Dummy slots ("Free Time"/"End of Day (Return to Hotel)") are
@@ -70,10 +78,17 @@ class TripItineraryJudge:
         3. Overall quality score from 0.0 (bad) to 1.0 (excellent).
 
         [WHAT NOT TO EVALUATE]
-        Do NOT flag opening-hours violations or arrivals at/after the trip's end
-        time -- those are already guaranteed by a separate deterministic step
-        after generation, so re-flagging them here wastes a regeneration attempt
-        on something this plan's generator cannot even fix.
+        Do NOT flag opening-hours violations, arrivals at/after the trip's end
+        time, geographic ordering/travel-distance sensibility (e.g. "this route
+        zig-zags"), or meal/visit timing within a day (e.g. "lunch is too late").
+        All of that is guaranteed by a separate deterministic scheduler that runs
+        after generation and owns ordering and timing entirely -- the generator
+        you're evaluating only chose WHICH places go on WHICH day (and, for
+        restaurants, lunch vs dinner). Re-flagging anything from that list wastes
+        a regeneration attempt on something this generator cannot fix; focus your
+        evaluation and feedback on place selection instead: category mix and
+        narrative variety, and whether the day-level choices reflect the user's
+        interests/must-go/budget level.
 
         [RATIONALE - IMPORTANT]
         Separately from your evaluation, write a short (1-2 sentence), Thai,
@@ -110,6 +125,8 @@ class TripItineraryJudge:
             temperature=0.0,
             response_format={"type": "json_object"},
         )
+        if self.usage:
+            self.usage.record_response("judge", self.default_model, response)
         content = response.choices[0].message.content
         return json.loads(clean_json_string(content))
 
@@ -122,10 +139,12 @@ class TripItineraryJudge:
             # Fail OPEN: a judge failure is cheap by design (one logged
             # warning, nothing else) -- unlike generation, it gets no
             # technical retry, and it must never itself block a request.
+            # judge_call_failed=True marks this as an unconditional pass, not
+            # a real evaluation -- see the field's docstring in models.py.
             logger.warning("trip planner judge call/parse failed, failing open: %s", e)
             return JudgeVerdict(
                 passed=True, score=0.0, pacing_ok=True, intent_match_ok=True,
-                issues=[], feedback="", rationale="",
+                issues=[], feedback="", rationale="", judge_call_failed=True,
             )
 
         score = float(data.get("score", 0.0))

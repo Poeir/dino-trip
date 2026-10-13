@@ -1,7 +1,9 @@
 import { crudRouter } from '../lib/crudRouter.js'
+import { requireAdmin } from '../middleware/requireAdmin.js'
 import { rowToKb, kbPayload } from '../lib/mappers.js'
 
-const KB_COLUMNS = 'id, title, category, content, is_pinned, is_active'
+// Includes `embedding` so rowToKb() can report isEmbedded (same as events.routes.js).
+const KB_COLUMNS = 'id, title, category, content, is_pinned, is_active, embedding'
 
 export const knowledgeBaseRouter = crudRouter({
   table: 'knowledge_base',
@@ -9,4 +11,11 @@ export const knowledgeBaseRouter = crudRouter({
   order: { column: 'created_at' },
   toRow: kbPayload,
   toResponse: rowToKb,
+  mutateAuth: [requireAdmin],
+  // title/category/content feed the RAG embedding text (see places.routes.js).
+  invalidateColumns: ['embedding'],
+  // ?search= (KnowledgeTab's search box).
+  searchColumns: ['title', 'content'],
+  // KnowledgeTab's sort dropdown (title/category).
+  sortable: ['title', 'category'],
 })

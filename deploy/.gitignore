@@ -1,0 +1,10 @@
+chatbot.env
+backend.env
+.env
+
+# Real credentials and local-only compose overrides (Vertex service-account key
+# is bind-mounted from ./secrets). Backups of env files contain live keys too.
+secrets/
+*.env.bak*
+*.bak*
+docker-compose.override.yml

@@ -1,0 +1,36 @@
+{
+  "version": "0.2",
+  "language": "en",
+  "ignorePaths": [
+    "node_modules/**",
+    "dist/**",
+    "build/**",
+    "coverage/**",
+    "package-lock.json",
+    "*.min.js"
+  ],
+  "ignoreRegExpList": [
+    "/\\b\\w+_\\w+(_\\w+)*\\b/"
+  ],
+  "words": [
+    "bcryptjs",
+    "cloudinary",
+    "dotenv",
+    "khon",
+    "kaen",
+    "knex",
+    "morgan",
+    "multer",
+    "nodemailer",
+    "playwright",
+    "postgres",
+    "postgresql",
+    "supabase",
+    "webp",
+    "jsonb",
+    "timestamptz",
+    "uuid",
+    "rls",
+    "pgvector"
+  ]
+}

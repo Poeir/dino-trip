@@ -4,6 +4,9 @@ __pycache__/
 *.pyc
 .env
 .pytest_cache/
+*service-account*.json
+*service_account*.json
+*credentials*.json
 tests/
 scripts/
 howtouse.txt

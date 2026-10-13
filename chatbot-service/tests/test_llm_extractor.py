@@ -1,15 +1,15 @@
-"""Unit tests for the deterministic (non-LLM) arithmetic in llm_extractor.py --
-distance, visit duration, and opening-hours checks. These don't touch the
-network (no KKU/Supabase calls); LLMTripPlanner is only instantiated to reach
-its methods, `candidates=[]` is enough since none of the tested methods read
-`self.candidates`.
+"""Unit tests for llm_extractor.py -- prompt construction, the LLM-output ->
+real-itinerary pipeline (_build_itinerary_from_llm_days), and the judge
+generate/regenerate loop. No network (mocks out _call_llm_for_itinerary);
+the deterministic geographic ordering/time-window logic itself is tested in
+test_route_scheduler.py, not re-derived here -- these tests only check that
+llm_extractor correctly wires the LLM's day-assignment output into that
+scheduler (parsing, dedup, day-reassignment, meal_role passthrough).
 """
-from datetime import datetime
-
 import pytest
 
 from src.services.trip_planner.llm_extractor import MAX_JUDGE_ATTEMPTS, LLMTripPlanner
-from src.services.trip_planner.models import JudgeVerdict, Place, TripInput
+from src.services.trip_planner.models import DailyItinerary, JudgeVerdict, Place, TimeSlot, TripInput
 
 
 @pytest.fixture
@@ -26,193 +26,68 @@ def make_place(**overrides):
     return Place(**defaults)
 
 
-class TestCalculateDistance:
-    def test_same_point_is_zero(self, planner):
-        p = make_place()
-        assert planner.calculate_distance(p, p) == pytest.approx(0.0, abs=1e-9)
-
-    def test_khon_kaen_to_bangkok_matches_known_distance(self, planner):
-        # Great-circle (haversine) distance between Khon Kaen and Bangkok
-        # centers, independently verified at ~389.8km (not the ~450km driving
-        # distance, which isn't what this straight-line formula computes).
-        khon_kaen = make_place(lat=16.4419, lng=102.8360)
-        bangkok = make_place(lat=13.7563, lng=100.5018)
-        dist = planner.calculate_distance(khon_kaen, bangkok)
-        assert dist == pytest.approx(389.8, abs=5)
-
-    def test_symmetric(self, planner):
-        a = make_place(lat=16.44, lng=102.83)
-        b = make_place(lat=16.46, lng=102.85)
-        assert planner.calculate_distance(a, b) == pytest.approx(planner.calculate_distance(b, a))
+HOTEL = make_place(id="hotel", name="Hotel", category="ที่พัก", lat=16.44, lng=102.84)
 
 
-class TestGetVisitDuration:
-    @pytest.mark.parametrize("category,expected", [
-        ("พิพิธภัณฑ์", 90), ("วัด", 45), ("สวนสาธารณะ", 60),
-        ("ตลาด", 120), ("ร้านอาหาร", 60), ("คาเฟ่", 45), ("สถานที่ท่องเที่ยว", 60),
-    ])
-    def test_base_duration_by_category_standard_pace(self, planner, category, expected):
-        p = make_place(category=category, name="Some Place")
-        assert planner.get_visit_duration(p, "standard") == expected
+class TestGeneratePrompt:
+    def _prompt(self, planner, **overrides):
+        user_input = TripInput(
+            trip_duration_days=1, start_date="2026-08-03", accommodation_name="Hotel",
+            **overrides,
+        )
+        return planner.generate_prompt(user_input, "PACE", "BUDGET")
 
-    def test_unknown_category_defaults_to_60(self, planner):
-        p = make_place(category="ไม่รู้จัก", name="Mystery Place")
-        assert planner.get_visit_duration(p, "standard") == 60
+    def test_does_not_ask_for_arrival_or_departure_time(self, planner):
+        # The LLM only picks which places go on which day now -- ordering
+        # and timing are entirely route_scheduler's job.
+        prompt = self._prompt(planner)
+        assert "arrival_time" not in prompt
+        assert "departure_time" not in prompt
 
-    def test_relaxed_pace_adds_30(self, planner):
-        p = make_place(category="คาเฟ่", name="Cafe")
-        assert planner.get_visit_duration(p, "relaxed") == 45 + 30
+    def test_includes_district_but_not_coordinates(self, planner):
+        candidate = make_place(id="c1", name="Candidate", district="เมืองขอนแก่น")
+        p = LLMTripPlanner(candidates=[candidate])
+        prompt = self._prompt(p)
+        assert "District: เมืองขอนแก่น" in prompt
+        assert "lat" not in prompt.lower()
+        assert "lng" not in prompt.lower()
 
-    def test_packed_pace_subtracts_15_but_floors_at_30(self, planner):
-        p = make_place(category="วัด", name="Temple")  # base 45 -> 30
-        assert planner.get_visit_duration(p, "packed") == 30
-        p2 = make_place(category="คาเฟ่", name="Cafe")  # base 45 -> 30
-        assert planner.get_visit_duration(p2, "packed") == 30
+    def test_mentions_meal_role_and_uniqueness_rules(self, planner):
+        prompt = self._prompt(planner)
+        assert "meal_role" in prompt
+        assert "AT MOST ONCE" in prompt
 
-    def test_buffet_keyword_overrides_category(self, planner):
-        # A "ร้านอาหาร" (normally 60 min) that's actually a buffet place should
-        # get the longer 120-min slot regardless of pace.
-        p = make_place(category="ร้านอาหาร", name="หมูกระทะเด็ด")
-        assert planner.get_visit_duration(p, "standard") == 120
-        assert planner.get_visit_duration(p, "packed") == 120
-
-
-class TestIsEveningPlace:
-    def test_buffet_name_is_evening(self, planner):
-        assert planner.is_evening_place(make_place(name="ตี๋น้อย หมูกระทะ")) is True
-
-    def test_regular_cafe_is_not_evening(self, planner):
-        assert planner.is_evening_place(make_place(name="Aimmes Cafe")) is False
-
-
-class TestCheckIsOpen:
-    def _periods_every_day(self, open_h=9, open_m=0, close_h=18, close_m=0):
-        return [
-            {"open": {"day": d, "hour": open_h, "minute": open_m}, "close": {"day": d, "hour": close_h, "minute": close_m}}
-            for d in range(7)
-        ]
-
-    def test_no_hours_data_assumes_open(self, planner):
-        p = make_place(hours_periods=None)
-        result = planner.check_is_open(p, datetime(2026, 7, 27, 12, 0))
-        assert result == {"is_open": True, "wait_min": 0, "status": "Open (No Data)"}
-
-    def test_arrival_within_hours_is_open(self, planner):
-        p = make_place(hours_periods=self._periods_every_day())
-        # 2026-07-27 is a Monday; arriving at noon, well within 09:00-18:00.
-        result = planner.check_is_open(p, datetime(2026, 7, 27, 12, 0))
-        assert result["is_open"] is True
-        assert result["status"] == "Open"
-        assert result["wait_min"] == 0
-
-    def test_arrival_before_opening_is_waiting(self, planner):
-        p = make_place(hours_periods=self._periods_every_day(open_h=9))
-        result = planner.check_is_open(p, datetime(2026, 7, 27, 8, 30))
-        assert result["status"] == "Waiting"
-        assert result["wait_min"] == 30
-
-    def test_arrival_after_closing_is_closed(self, planner):
-        p = make_place(hours_periods=self._periods_every_day(close_h=18))
-        result = planner.check_is_open(p, datetime(2026, 7, 27, 19, 0))
-        assert result["is_open"] is False
-        assert result["status"] == "Closed"
-
-    def test_closed_on_that_day_entirely(self, planner):
-        # Only open Sunday (Google day=0); a Monday arrival has no matching period.
-        p = make_place(hours_periods=[
-            {"open": {"day": 0, "hour": 9, "minute": 0}, "close": {"day": 0, "hour": 18, "minute": 0}},
-        ])
-        result = planner.check_is_open(p, datetime(2026, 7, 27, 12, 0))  # Monday
-        assert result == {"is_open": False, "wait_min": 0, "status": "Closed Today"}
-
-    def _overnight_periods_every_day(self, open_h=11, open_m=0, close_h=0, close_m=0):
-        # Google represents overnight hours (e.g. 11:00-00:00) as close.day
-        # being the day AFTER open.day -- distinct from the same-day-close
-        # shape _periods_every_day() builds.
-        return [
-            {
-                "open": {"day": d, "hour": open_h, "minute": open_m},
-                "close": {"day": (d + 1) % 7, "hour": close_h, "minute": close_m},
-            }
-            for d in range(7)
-        ]
-
-    def test_overnight_hours_arrival_before_open_is_waiting(self, planner):
-        # Regression: arriving 5 min before an overnight-hours place opens
-        # used to fall through to the generic "Closed" at the end of the
-        # function instead of "Waiting" -- the arrival-before-opening branch
-        # only existed inside the same-day-close case.
-        p = make_place(hours_periods=self._overnight_periods_every_day(open_h=11))
-        result = planner.check_is_open(p, datetime(2026, 7, 27, 10, 55))  # Monday
-        assert result == {"is_open": False, "wait_min": 5, "status": "Waiting"}
-
-    def test_overnight_hours_arrival_after_open_is_open(self, planner):
-        p = make_place(hours_periods=self._overnight_periods_every_day(open_h=11))
-        result = planner.check_is_open(p, datetime(2026, 7, 27, 15, 0))  # Monday
-        assert result == {"is_open": True, "wait_min": 0, "status": "Open"}
+    def test_example_output_uses_places_schema(self, planner):
+        prompt = self._prompt(planner)
+        assert '"places"' in prompt
 
 
 def force_passing_judge(planner):
     """Forces the judge to pass on the first round, so tests that only care
-    about deterministic-backstop behavior don't also have to model judge
-    interaction. Mirrors _call_llm_for_itinerary's direct-lambda-assignment
-    mocking idiom."""
+    about the day-assignment -> itinerary pipeline don't also have to model
+    judge interaction."""
     planner.judge.evaluate = lambda user_input, itinerary: JudgeVerdict(
         passed=True, score=1.0, pacing_ok=True, intent_match_ok=True, rationale="looks good",
     )
 
 
-class TestSolveRouteWithLLMBackstops:
-    """solve_route_with_llm() trusts the LLM for place selection/ordering but
-    is supposed to deterministically enforce two things it isn't reliable
-    about on its own: never start a place after the user's end_time, and
-    never keep a place that's provably closed in the final schedule. These
-    mock out _call_llm_for_itinerary() (network call) to feed a controlled
-    proposed schedule into the real post-processing loop, and force the judge
-    to pass so these tests exercise the full solve_route_with_llm path
-    end-to-end without also modeling judge rejection."""
+class TestBuildItineraryFromLLMDays:
+    """solve_route_with_llm() trusts the LLM only for which places go on
+    which day -- everything else (ordering, timing, opening-hours
+    enforcement, dedup, day-of-week correction, return-to-hotel) is
+    route_scheduler's job. These mock out _call_llm_for_itinerary() to feed
+    a controlled day-assignment into the real pipeline."""
 
-    HOTEL = make_place(id="hotel", name="Hotel", category="ที่พัก", lat=16.44, lng=102.84)
-
-    def test_end_time_cutoff_drops_stops_that_would_start_late(self):
-        # Same location as the hotel (distance/travel_min = 0) so only visit
-        # duration (120 min for "ตลาด") drives the clock forward.
-        stops = [
-            make_place(id=f"m{i}", name=f"Market{i}", category="ตลาด", lat=16.44, lng=102.84, hours_periods=None)
-            for i in range(1, 4)
-        ]
-        planner = LLMTripPlanner(candidates=stops, start_point=self.HOTEL)
-        force_passing_judge(planner)
-        planner._call_llm_for_itinerary = lambda prompt: {"itinerary": [{"day": 1, "schedule": [
-            {"place_id": "m1", "arrival_time": "09:00", "departure_time": "11:00"},
-            {"place_id": "m2", "arrival_time": "11:00", "departure_time": "13:00"},
-            {"place_id": "m3", "arrival_time": "13:00", "departure_time": "15:00"},
-        ]}]}
-
-        user_input = TripInput(
-            trip_duration_days=1, start_date="2026-08-03", accommodation_name="Hotel",
-            start_time="09:00", end_time="12:15",
-        )
-        result, rationale = planner.solve_route_with_llm(user_input, "", "")
-        names = [s.place.name for s in result[0].schedule]
-
-        # Market1 (09:00-11:00) starts before the 12:15 cutoff, and so does
-        # Market2 (starts 11:00, before the cutoff, even though it runs past
-        # it) -- only Market3 would *start* after the cutoff and gets dropped.
-        assert names == ["Market1", "Market2"]
-        assert rationale == "looks good"
-
-    def test_drops_a_place_thats_closed_that_day(self):
-        open_place = make_place(id="open1", name="OpenPlace", category="คาเฟ่", lat=16.44, lng=102.84, hours_periods=None)
+    def test_drops_a_place_thats_closed_every_day_of_the_trip(self):
         closed_place = make_place(
             id="closed1", name="ClosedPlace", category="คาเฟ่", lat=16.44, lng=102.84,
             hours_periods=[{"open": {"day": 0, "hour": 9, "minute": 0}, "close": {"day": 0, "hour": 18, "minute": 0}}],  # Sunday only
         )
-        planner = LLMTripPlanner(candidates=[closed_place, open_place], start_point=self.HOTEL)
+        open_place = make_place(id="open1", name="OpenPlace", category="คาเฟ่", lat=16.44, lng=102.84, hours_periods=None)
+        planner = LLMTripPlanner(candidates=[closed_place, open_place], start_point=HOTEL)
         force_passing_judge(planner)
-        planner._call_llm_for_itinerary = lambda prompt: {"itinerary": [{"day": 1, "schedule": [
-            {"place_id": "closed1", "arrival_time": "10:00", "departure_time": "10:30"},
-            {"place_id": "open1", "arrival_time": "11:00", "departure_time": "11:30"},
+        planner._call_llm_for_itinerary = lambda prompt: {"itinerary": [{"day": 1, "places": [
+            {"place_id": "closed1"}, {"place_id": "open1"},
         ]}]}
 
         user_input = TripInput(
@@ -221,26 +96,23 @@ class TestSolveRouteWithLLMBackstops:
         )
         result, _ = planner.solve_route_with_llm(user_input, "", "")
         names = [s.place.name for s in result[0].schedule]
-
         assert "ClosedPlace" not in names
         assert "OpenPlace" in names
 
-    def test_multi_day_trip_uses_the_real_weekday_per_day(self):
-        # Regression: every day of a multi-day trip used to be checked
-        # against Monday's hours (datetime.strptime(start_time, "%H:%M")
-        # defaults to 1900-01-01, a Monday) regardless of start_date.
-        # Open only Tuesday (Google day=2); day 2 of a trip starting Monday
-        # 2026-08-03 is Tuesday 2026-08-04, so it should be open there but
-        # not on day 1.
+    def test_place_closed_on_assigned_day_is_moved_to_a_day_its_open_on(self):
+        # Reassignment happens automatically now regardless of which day the
+        # LLM picked -- it's not a "hope the LLM got it right" backstop
+        # anymore, the correct day is deterministically found.
         tuesday_only = make_place(
             id="p1", name="TuesdayOnly", category="คาเฟ่", lat=16.44, lng=102.84,
             hours_periods=[{"open": {"day": 2, "hour": 9, "minute": 0}, "close": {"day": 2, "hour": 18, "minute": 0}}],
         )
-        planner = LLMTripPlanner(candidates=[tuesday_only], start_point=self.HOTEL)
+        planner = LLMTripPlanner(candidates=[tuesday_only], start_point=HOTEL)
         force_passing_judge(planner)
+        # LLM (wrongly) assigns it to day 1 (Monday).
         planner._call_llm_for_itinerary = lambda prompt: {"itinerary": [
-            {"day": 1, "schedule": [{"place_id": "p1", "arrival_time": "10:00", "departure_time": "10:30"}]},
-            {"day": 2, "schedule": [{"place_id": "p1", "arrival_time": "10:00", "departure_time": "10:30"}]},
+            {"day": 1, "places": [{"place_id": "p1"}]},
+            {"day": 2, "places": []},
         ]}
 
         user_input = TripInput(
@@ -256,88 +128,192 @@ class TestSolveRouteWithLLMBackstops:
         assert result[0].date == "2026-08-03"
         assert result[1].date == "2026-08-04"
 
-
-class TestApplyDeterministicBackstops:
-    """Re-runs the same scenarios as TestSolveRouteWithLLMBackstops but calls
-    _apply_deterministic_backstops directly, proving the extraction out of
-    solve_route_with_llm preserved behavior byte-for-byte."""
-
-    HOTEL = make_place(id="hotel", name="Hotel", category="ที่พัก", lat=16.44, lng=102.84)
-
-    def test_end_time_cutoff_drops_stops_that_would_start_late(self):
-        stops = [
-            make_place(id=f"m{i}", name=f"Market{i}", category="ตลาด", lat=16.44, lng=102.84, hours_periods=None)
-            for i in range(1, 4)
-        ]
-        planner = LLMTripPlanner(candidates=stops, start_point=self.HOTEL)
-        data = {"itinerary": [{"day": 1, "schedule": [
-            {"place_id": "m1", "arrival_time": "09:00", "departure_time": "11:00"},
-            {"place_id": "m2", "arrival_time": "11:00", "departure_time": "13:00"},
-            {"place_id": "m3", "arrival_time": "13:00", "departure_time": "15:00"},
-        ]}]}
-
-        user_input = TripInput(
-            trip_duration_days=1, start_date="2026-08-03", accommodation_name="Hotel",
-            start_time="09:00", end_time="12:15",
-        )
-        result = planner._apply_deterministic_backstops(data, user_input)
-        names = [s.place.name for s in result[0].schedule]
-        assert names == ["Market1", "Market2"]
-
-    def test_drops_a_place_thats_closed_that_day(self):
-        open_place = make_place(id="open1", name="OpenPlace", category="คาเฟ่", lat=16.44, lng=102.84, hours_periods=None)
-        closed_place = make_place(
-            id="closed1", name="ClosedPlace", category="คาเฟ่", lat=16.44, lng=102.84,
-            hours_periods=[{"open": {"day": 0, "hour": 9, "minute": 0}, "close": {"day": 0, "hour": 18, "minute": 0}}],
-        )
-        planner = LLMTripPlanner(candidates=[closed_place, open_place], start_point=self.HOTEL)
-        data = {"itinerary": [{"day": 1, "schedule": [
-            {"place_id": "closed1", "arrival_time": "10:00", "departure_time": "10:30"},
-            {"place_id": "open1", "arrival_time": "11:00", "departure_time": "11:30"},
-        ]}]}
-
-        user_input = TripInput(
-            trip_duration_days=1, start_date="2026-08-03", accommodation_name="Hotel",
-            start_time="09:00", end_time="18:00",
-        )
-        result = planner._apply_deterministic_backstops(data, user_input)
-        names = [s.place.name for s in result[0].schedule]
-        assert "ClosedPlace" not in names
-        assert "OpenPlace" in names
-
-    def test_multi_day_trip_uses_the_real_weekday_per_day(self):
-        tuesday_only = make_place(
-            id="p1", name="TuesdayOnly", category="คาเฟ่", lat=16.44, lng=102.84,
-            hours_periods=[{"open": {"day": 2, "hour": 9, "minute": 0}, "close": {"day": 2, "hour": 18, "minute": 0}}],
-        )
-        planner = LLMTripPlanner(candidates=[tuesday_only], start_point=self.HOTEL)
-        data = {"itinerary": [
-            {"day": 1, "schedule": [{"place_id": "p1", "arrival_time": "10:00", "departure_time": "10:30"}]},
-            {"day": 2, "schedule": [{"place_id": "p1", "arrival_time": "10:00", "departure_time": "10:30"}]},
+    def test_duplicate_place_id_across_days_is_only_scheduled_once(self):
+        place = make_place(id="p1", name="Place1", category="คาเฟ่", lat=16.44, lng=102.84, hours_periods=None)
+        planner = LLMTripPlanner(candidates=[place], start_point=HOTEL)
+        force_passing_judge(planner)
+        planner._call_llm_for_itinerary = lambda prompt: {"itinerary": [
+            {"day": 1, "places": [{"place_id": "p1"}]},
+            {"day": 2, "places": [{"place_id": "p1"}]},  # LLM repeated it -- should be dropped here
         ]}
 
         user_input = TripInput(
             trip_duration_days=2, start_date="2026-08-03", accommodation_name="Hotel",
             start_time="09:00", end_time="18:00",
         )
-        result = planner._apply_deterministic_backstops(data, user_input)
-        day1_names = [s.place.name for s in result[0].schedule]
-        day2_names = [s.place.name for s in result[1].schedule]
-        assert "TuesdayOnly" not in day1_names
-        assert "TuesdayOnly" in day2_names
-        assert result[0].date == "2026-08-03"
-        assert result[1].date == "2026-08-04"
+        result, _ = planner.solve_route_with_llm(user_input, "", "")
+        total_occurrences = sum(
+            1 for day in result for s in day.schedule if s.place.id == "p1"
+        )
+        assert total_occurrences == 1
+
+    def test_duplicate_place_id_within_same_day_is_only_scheduled_once(self):
+        place = make_place(id="p1", name="Place1", category="คาเฟ่", lat=16.44, lng=102.84, hours_periods=None)
+        planner = LLMTripPlanner(candidates=[place], start_point=HOTEL)
+        force_passing_judge(planner)
+        planner._call_llm_for_itinerary = lambda prompt: {"itinerary": [
+            {"day": 1, "places": [{"place_id": "p1"}, {"place_id": "p1"}]},
+        ]}
+
+        user_input = TripInput(
+            trip_duration_days=1, start_date="2026-08-03", accommodation_name="Hotel",
+            start_time="09:00", end_time="18:00",
+        )
+        result, _ = planner.solve_route_with_llm(user_input, "", "")
+        total_occurrences = sum(1 for s in result[0].schedule if s.place.id == "p1")
+        assert total_occurrences == 1
+
+    def test_last_day_of_trip_still_returns_to_hotel(self):
+        # Regression: the old single-pass implementation only added the
+        # return-to-hotel leg when day_num < trip_duration_days.
+        place = make_place(id="p1", name="Place1", category="คาเฟ่", lat=16.44, lng=102.84, hours_periods=None)
+        planner = LLMTripPlanner(candidates=[place], start_point=HOTEL)
+        force_passing_judge(planner)
+        planner._call_llm_for_itinerary = lambda prompt: {"itinerary": [
+            {"day": 1, "places": [{"place_id": "p1"}]},
+        ]}
+
+        user_input = TripInput(
+            trip_duration_days=1, start_date="2026-08-03", accommodation_name="Hotel",
+            start_time="09:00", end_time="18:00",
+        )
+        result, _ = planner.solve_route_with_llm(user_input, "", "")
+        assert result[0].schedule[-1].status == "End of Day (Return to Hotel)"
+
+    def test_meal_role_is_forwarded_onto_the_resulting_slot(self):
+        place = make_place(id="p1", name="Restaurant1", category="ร้านอาหาร", lat=16.44, lng=102.84, hours_periods=None)
+        planner = LLMTripPlanner(candidates=[place], start_point=HOTEL)
+        force_passing_judge(planner)
+        planner._call_llm_for_itinerary = lambda prompt: {"itinerary": [
+            {"day": 1, "places": [{"place_id": "p1", "meal_role": "lunch"}]},
+        ]}
+
+        user_input = TripInput(
+            trip_duration_days=1, start_date="2026-08-03", accommodation_name="Hotel",
+            start_time="09:00", end_time="18:00",
+        )
+        result, _ = planner.solve_route_with_llm(user_input, "", "")
+        slot = next(s for s in result[0].schedule if s.place.id == "p1")
+        assert slot.meal_role == "lunch"
+
+    def test_unknown_place_id_from_llm_is_ignored(self):
+        place = make_place(id="p1", name="Place1", category="คาเฟ่", lat=16.44, lng=102.84, hours_periods=None)
+        planner = LLMTripPlanner(candidates=[place], start_point=HOTEL)
+        force_passing_judge(planner)
+        planner._call_llm_for_itinerary = lambda prompt: {"itinerary": [
+            {"day": 1, "places": [{"place_id": "does-not-exist"}, {"place_id": "p1"}]},
+        ]}
+
+        user_input = TripInput(
+            trip_duration_days=1, start_date="2026-08-03", accommodation_name="Hotel",
+            start_time="09:00", end_time="18:00",
+        )
+        result, _ = planner.solve_route_with_llm(user_input, "", "")
+        names = [s.place.name for s in result[0].schedule]
+        assert "Place1" in names
+
+
+class TestRestaurantCapAndRoles:
+    """_enforce_restaurant_cap_and_roles: caps ร้านอาหาร at
+    MAX_RESTAURANTS_PER_DAY per day (relocating excess to another day with
+    room, dropping only if nowhere fits) and backfills lunch/dinner roles
+    for any day left with exactly 2 restaurants and an incomplete pairing,
+    regardless of whether the LLM ever set meal_role itself."""
+
+    def test_third_restaurant_in_a_single_day_trip_is_dropped(self):
+        r1 = make_place(id="r1", name="R1", category="ร้านอาหาร", lat=16.44, lng=102.84, hours_periods=None)
+        r2 = make_place(id="r2", name="R2", category="ร้านอาหาร", lat=16.44, lng=102.84, hours_periods=None)
+        r3 = make_place(id="r3", name="R3", category="ร้านอาหาร", lat=16.44, lng=102.84, hours_periods=None)
+        planner = LLMTripPlanner(candidates=[r1, r2, r3], start_point=HOTEL)
+        force_passing_judge(planner)
+        planner._call_llm_for_itinerary = lambda prompt: {"itinerary": [
+            {"day": 1, "places": [{"place_id": "r1"}, {"place_id": "r2"}, {"place_id": "r3"}]},
+        ]}
+
+        user_input = TripInput(
+            trip_duration_days=1, start_date="2026-08-03", accommodation_name="Hotel",
+            start_time="09:00", end_time="20:00",
+        )
+        result, _ = planner.solve_route_with_llm(user_input, "", "")
+        restaurant_ids = {s.place.id for s in result[0].schedule if s.place.category == "ร้านอาหาร"}
+        assert len(restaurant_ids) == 2
+        roles = {s.meal_role for s in result[0].schedule if s.place.id in restaurant_ids}
+        assert roles == {"lunch", "dinner"}
+
+    def test_third_restaurant_relocated_to_an_emptier_day_instead_of_dropped(self):
+        r1 = make_place(id="r1", name="R1", category="ร้านอาหาร", lat=16.44, lng=102.84, hours_periods=None)
+        r2 = make_place(id="r2", name="R2", category="ร้านอาหาร", lat=16.44, lng=102.84, hours_periods=None)
+        r3 = make_place(id="r3", name="R3", category="ร้านอาหาร", lat=16.44, lng=102.84, hours_periods=None)
+        planner = LLMTripPlanner(candidates=[r1, r2, r3], start_point=HOTEL)
+        force_passing_judge(planner)
+        planner._call_llm_for_itinerary = lambda prompt: {"itinerary": [
+            {"day": 1, "places": [{"place_id": "r1"}, {"place_id": "r2"}, {"place_id": "r3"}]},
+            {"day": 2, "places": []},
+        ]}
+
+        user_input = TripInput(
+            trip_duration_days=2, start_date="2026-08-03", accommodation_name="Hotel",
+            start_time="09:00", end_time="20:00",
+        )
+        result, _ = planner.solve_route_with_llm(user_input, "", "")
+        day1_ids = {s.place.id for s in result[0].schedule}
+        day2_ids = {s.place.id for s in result[1].schedule}
+        assert "r3" not in day1_ids
+        assert "r3" in day2_ids  # relocated, not dropped -- day 2 had room
+
+    def test_business_closed_restaurant_with_no_hours_data_is_not_relocated(self):
+        # Regression: the relocation check used to be skipped entirely
+        # whenever hours_periods was None, so a permanently-closed
+        # restaurant with no scraped hours could get "relocated" to
+        # another day instead of dropped.
+        r1 = make_place(id="r1", name="R1", category="ร้านอาหาร", lat=16.44, lng=102.84, hours_periods=None)
+        r2 = make_place(id="r2", name="R2", category="ร้านอาหาร", lat=16.44, lng=102.84, hours_periods=None)
+        r3 = make_place(
+            id="r3", name="Defunct", category="ร้านอาหาร", lat=16.44, lng=102.84,
+            hours_periods=None, business_status="CLOSED_PERMANENTLY",
+        )
+        planner = LLMTripPlanner(candidates=[r1, r2, r3], start_point=HOTEL)
+        force_passing_judge(planner)
+        planner._call_llm_for_itinerary = lambda prompt: {"itinerary": [
+            {"day": 1, "places": [{"place_id": "r1"}, {"place_id": "r2"}, {"place_id": "r3"}]},
+            {"day": 2, "places": []},
+        ]}
+
+        user_input = TripInput(
+            trip_duration_days=2, start_date="2026-08-03", accommodation_name="Hotel",
+            start_time="09:00", end_time="20:00",
+        )
+        result, _ = planner.solve_route_with_llm(user_input, "", "")
+        all_ids = {s.place.id for day in result for s in day.schedule}
+        assert "r3" not in all_ids
+
+    def test_two_restaurants_without_llm_assigned_roles_still_get_lunch_and_dinner(self):
+        r1 = make_place(id="r1", name="R1", category="ร้านอาหาร", lat=16.44, lng=102.84, hours_periods=None)
+        r2 = make_place(id="r2", name="R2", category="ร้านอาหาร", lat=16.44, lng=102.84, hours_periods=None)
+        planner = LLMTripPlanner(candidates=[r1, r2], start_point=HOTEL)
+        force_passing_judge(planner)
+        # LLM didn't set meal_role at all -- STRICT RULE 6 isn't always
+        # obeyed, this is the deterministic backstop for that gap too.
+        planner._call_llm_for_itinerary = lambda prompt: {"itinerary": [
+            {"day": 1, "places": [{"place_id": "r1"}, {"place_id": "r2"}]},
+        ]}
+
+        user_input = TripInput(
+            trip_duration_days=1, start_date="2026-08-03", accommodation_name="Hotel",
+            start_time="09:00", end_time="20:00",
+        )
+        result, _ = planner.solve_route_with_llm(user_input, "", "")
+        roles = {s.place.id: s.meal_role for s in result[0].schedule if s.place.id in ("r1", "r2")}
+        assert roles == {"r1": "lunch", "r2": "dinner"}
 
 
 class TestSolveRouteWithLLMJudgeRegeneration:
-    HOTEL = make_place(id="hotel", name="Hotel", category="ที่พัก", lat=16.44, lng=102.84)
-
     def _planner_with_one_place(self):
         place = make_place(id="p1", name="Place1", category="คาเฟ่", lat=16.44, lng=102.84, hours_periods=None)
-        planner = LLMTripPlanner(candidates=[place], start_point=self.HOTEL)
-        planner._call_llm_for_itinerary = lambda prompt: {"itinerary": [{"day": 1, "schedule": [
-            {"place_id": "p1", "arrival_time": "10:00", "departure_time": "10:30"},
-        ]}]}
+        planner = LLMTripPlanner(candidates=[place], start_point=HOTEL)
+        planner._call_llm_for_itinerary = lambda prompt: {"itinerary": [
+            {"day": 1, "places": [{"place_id": "p1"}]},
+        ]}
         return planner
 
     def _user_input(self):
@@ -393,9 +369,32 @@ class TestSolveRouteWithLLMJudgeRegeneration:
         assert result[0].schedule  # still a valid itinerary
         assert rationale == "best effort so far"
 
+    def test_judge_call_failed_still_accepted_immediately_but_logged_distinctly(self, caplog):
+        # judge_call_failed=True is judge.py's fail-open path (see judge.py's
+        # evaluate()) -- it must still short-circuit the loop (no point
+        # regenerating when the judge itself is broken, not the itinerary),
+        # but should be visibly distinguishable from a genuine pass in logs,
+        # since a metrics/experiment pipeline reading these logs would
+        # otherwise silently count an unevaluated itinerary as "passed".
+        planner = self._planner_with_one_place()
+        calls = []
+        original = planner._call_llm_for_itinerary
+        planner._call_llm_for_itinerary = lambda prompt: (calls.append(prompt), original(prompt))[1]
+        planner.judge.evaluate = lambda user_input, itinerary: JudgeVerdict(
+            passed=True, score=0.0, pacing_ok=True, intent_match_ok=True,
+            rationale="", judge_call_failed=True,
+        )
+
+        import logging
+        with caplog.at_level(logging.WARNING):
+            result, rationale = planner.solve_route_with_llm(self._user_input(), "", "")
+
+        assert len(calls) == 1
+        assert any("fail-open" in r.message.lower() for r in caplog.records)
+
     def test_technical_generation_failure_propagates_and_judge_never_called(self):
         place = make_place(id="p1", name="Place1", category="คาเฟ่", lat=16.44, lng=102.84, hours_periods=None)
-        planner = LLMTripPlanner(candidates=[place], start_point=self.HOTEL)
+        planner = LLMTripPlanner(candidates=[place], start_point=HOTEL)
 
         def always_fail(prompt):
             raise ValueError("bad json")
@@ -407,3 +406,309 @@ class TestSolveRouteWithLLMJudgeRegeneration:
 
         with pytest.raises(ValueError):
             planner.solve_route_with_llm(self._user_input(), "", "")
+
+
+class TestMustGoProtection:
+    """must_go_ids (see orchestrator.build_candidate_list /
+    routes_tripplanner.py) marks which candidates came from the user's
+    must_go list -- these tests check the resulting protection: the LLM
+    skipping a must-go id entirely no longer means it's silently absent,
+    order_day_stops' priority tier keeps it off the drop list when
+    possible, the restaurant cap trims optional picks first, and a
+    genuinely infeasible must-go place is still reported instead of
+    vanishing."""
+
+    def test_llm_omits_must_go_place_but_it_still_gets_injected_and_scheduled(self):
+        must_go_place = make_place(id="mg1", name="MustGoPlace", category="คาเฟ่", lat=16.44, lng=102.84, hours_periods=None)
+        planner = LLMTripPlanner(candidates=[must_go_place], start_point=HOTEL, must_go_ids={"mg1"})
+        force_passing_judge(planner)
+        # LLM ignores the must-go candidate entirely -- STRICT RULE 1 only
+        # says derive from provided data, nothing forces inclusion.
+        planner._call_llm_for_itinerary = lambda prompt: {"itinerary": [{"day": 1, "places": []}]}
+
+        user_input = TripInput(
+            trip_duration_days=1, start_date="2026-08-03", accommodation_name="Hotel",
+            start_time="09:00", end_time="18:00",
+        )
+        result, _ = planner.solve_route_with_llm(user_input, "", "")
+        names = [s.place.name for s in result[0].schedule]
+        assert "MustGoPlace" in names
+        assert planner.last_dropped_must_go == []
+
+    def test_must_go_place_genuinely_infeasible_is_reported_via_last_dropped_must_go(self):
+        # Closed every day of a 1-day (Monday) trip -- injection + priority
+        # can't rescue a real hard infeasibility, but it must not vanish
+        # silently either.
+        closed_must_go = make_place(
+            id="mg1", name="ClosedMustGo", category="คาเฟ่", lat=16.44, lng=102.84,
+            hours_periods=[{"open": {"day": 0, "hour": 9, "minute": 0}, "close": {"day": 0, "hour": 18, "minute": 0}}],  # Sunday only
+        )
+        planner = LLMTripPlanner(candidates=[closed_must_go], start_point=HOTEL, must_go_ids={"mg1"})
+        force_passing_judge(planner)
+        planner._call_llm_for_itinerary = lambda prompt: {"itinerary": [{"day": 1, "places": [{"place_id": "mg1"}]}]}
+
+        user_input = TripInput(
+            trip_duration_days=1, start_date="2026-08-03", accommodation_name="Hotel",  # Monday
+            start_time="09:00", end_time="18:00",
+        )
+        result, _ = planner.solve_route_with_llm(user_input, "", "")
+        names = [s.place.name for s in result[0].schedule]
+        assert "ClosedMustGo" not in names
+        assert [p.name for p in planner.last_dropped_must_go] == ["ClosedMustGo"]
+
+    def test_must_go_restaurant_is_kept_over_optional_ones_at_the_cap(self):
+        r_must = make_place(id="rmust", name="MustGoRestaurant", category="ร้านอาหาร", lat=16.44, lng=102.84, hours_periods=None)
+        r1 = make_place(id="r1", name="R1", category="ร้านอาหาร", lat=16.44, lng=102.84, hours_periods=None)
+        r2 = make_place(id="r2", name="R2", category="ร้านอาหาร", lat=16.44, lng=102.84, hours_periods=None)
+        planner = LLMTripPlanner(candidates=[r_must, r1, r2], start_point=HOTEL, must_go_ids={"rmust"})
+        force_passing_judge(planner)
+        # Must-go restaurant listed LAST -- a plain "keep the first N, drop
+        # the rest" policy would drop it by accident; this only passes if
+        # priority (not list order) decides who gets trimmed.
+        planner._call_llm_for_itinerary = lambda prompt: {"itinerary": [
+            {"day": 1, "places": [{"place_id": "r1"}, {"place_id": "r2"}, {"place_id": "rmust"}]},
+        ]}
+
+        user_input = TripInput(
+            trip_duration_days=1, start_date="2026-08-03", accommodation_name="Hotel",
+            start_time="09:00", end_time="20:00",
+        )
+        result, _ = planner.solve_route_with_llm(user_input, "", "")
+        restaurant_ids = {s.place.id for s in result[0].schedule if s.place.category == "ร้านอาหาร"}
+        assert "rmust" in restaurant_ids
+        assert len(restaurant_ids) == 2
+
+
+class TestPaceAttractionRange:
+    """trip_pace now sets a per-day attraction range scaled to the time
+    window (route_scheduler.pace_stop_range): the max is enforced on the
+    LLM's picks, the min is topped up from unused candidates, restaurants
+    don't count and cafes do."""
+
+    def _wats(self, n, **overrides):
+        # Tightly clustered so geography never decides what fits.
+        return [
+            make_place(
+                id=f"w{i}", name=f"Wat{i}", category="สถานที่ท่องเที่ยว", rating=3.0 + i * 0.1,
+                lat=16.44 + i * 0.001, lng=102.84, hours_periods=None, **overrides,
+            )
+            for i in range(n)
+        ]
+
+    def _run(self, planner, llm_places, pace, start="09:00", end="18:00"):
+        force_passing_judge(planner)
+        planner._call_llm_for_itinerary = lambda prompt: {
+            "itinerary": [{"day": 1, "places": [{"place_id": pid} for pid in llm_places]}]
+        }
+        user_input = TripInput(
+            trip_duration_days=1, start_date="2026-08-03", accommodation_name="Hotel",
+            start_time=start, end_time=end, trip_pace=pace,
+        )
+        result, _ = planner.solve_route_with_llm(user_input, "", "")
+        return [s.place for s in result[0].schedule if s.place.category not in (None, "ที่พัก")]
+
+    def test_relaxed_day_is_capped_even_if_llm_over_assigns(self):
+        wats = self._wats(7)
+        planner = LLMTripPlanner(candidates=wats, start_point=HOTEL)
+        stops = self._run(planner, [w.id for w in wats], "relaxed")
+        assert len([p for p in stops if p.category != "ร้านอาหาร"]) <= 4  # relaxed 09-18 -> 3-4
+
+    def test_must_go_places_are_never_trimmed_by_the_cap(self):
+        wats = self._wats(6)
+        planner = LLMTripPlanner(candidates=wats, start_point=HOTEL, must_go_ids={"w0"})  # lowest rated
+        stops = self._run(planner, [w.id for w in wats], "relaxed")
+        assert "w0" in {p.id for p in stops}
+
+    def test_packed_day_is_topped_up_to_its_minimum_from_unused_candidates(self):
+        wats = self._wats(10)
+        planner = LLMTripPlanner(candidates=wats, start_point=HOTEL)
+        stops = self._run(planner, ["w9"], "packed")  # LLM under-selects: 1 pick
+        assert len([p for p in stops if p.category != "ร้านอาหาร"]) >= 6  # packed 09-18 -> 6-7
+
+    def test_floor_applies_even_when_no_idle_gap_is_large(self):
+        # 3 stops leave under UNDERFILLED_GAP_MINUTES idle, so gap-based
+        # backfill alone would stop -- only the pace floor adds more.
+        wats = self._wats(10)
+        planner = LLMTripPlanner(candidates=wats, start_point=HOTEL)
+        stops = self._run(planner, ["w7", "w8", "w9"], "packed", "09:00", "15:00")
+        assert len(stops) >= 3
+        lo, _ = route_scheduler_range("packed", "09:00", "15:00")
+        assert len(stops) >= lo
+
+    def test_relaxed_day_is_not_padded_up_to_packed_levels(self):
+        wats = self._wats(10)
+        planner = LLMTripPlanner(candidates=wats, start_point=HOTEL)
+        stops = self._run(planner, ["w9"], "relaxed")
+        assert len([p for p in stops if p.category != "ร้านอาหาร"]) <= 4
+
+    def test_narrow_window_gets_a_smaller_cap_than_a_wide_one(self):
+        wats = self._wats(9)
+        narrow = self._run(LLMTripPlanner(candidates=list(wats), start_point=HOTEL), [w.id for w in wats], "standard", "09:00", "13:00")
+        wide = self._run(LLMTripPlanner(candidates=list(wats), start_point=HOTEL), [w.id for w in wats], "standard", "09:00", "21:00")
+        assert len(narrow) < len(wide)
+
+    def test_restaurants_do_not_use_up_the_attraction_cap(self):
+        wats = self._wats(4)
+        rest = make_place(id="r1", name="R1", category="ร้านอาหาร", lat=16.445, lng=102.84, hours_periods=None)
+        planner = LLMTripPlanner(candidates=wats + [rest], start_point=HOTEL)
+        stops = self._run(planner, [w.id for w in wats] + ["r1"], "relaxed")
+        assert "r1" in {p.id for p in stops}
+        assert len([p for p in stops if p.category != "ร้านอาหาร"]) == 4
+
+
+def route_scheduler_range(pace, start, end):
+    from datetime import datetime as _dt
+    from src.services.trip_planner import route_scheduler as _rs
+    return _rs.pace_stop_range(pace, _dt.strptime(start, "%H:%M").time(), _dt.strptime(end, "%H:%M").time())
+
+
+HOTEL_PLACE = Place(id="hotel", name="Hotel", category="ที่พัก", lat=16.44, lng=102.84)
+
+
+class TestGuaranteedRestaurantPerDay:
+    """The zero-restaurant fallback tops up a day the LLM left without a
+    "ร้านอาหาร"; the injected restaurant must survive order_day_stops'
+    competition (priority), and _build_post_schedule_feedback catches it when
+    even priority isn't enough."""
+
+    def test_injected_restaurant_gets_priority_over_a_cheaper_optional_place(self):
+        cheap = make_place(id="cheap", name="Cheap", category="สถานที่ท่องเที่ยว", lat=16.4401, lng=102.8401, hours_periods=None)
+        restaurant = make_place(id="rest1", name="Restaurant1", category="ร้านอาหาร", lat=16.455, lng=102.855, hours_periods=None)
+        planner = LLMTripPlanner(candidates=[cheap, restaurant], start_point=HOTEL_PLACE)
+        force_passing_judge(planner)
+        planner._call_llm_for_itinerary = lambda prompt: {"itinerary": [{"day": 1, "places": [{"place_id": "cheap"}]}]}
+        user_input = TripInput(
+            trip_duration_days=1, start_date="2026-08-03", accommodation_name="Hotel",
+            start_time="09:00", end_time="10:15", trip_pace="standard",
+        )
+        result, _ = planner.solve_route_with_llm(user_input, "", "")
+        assert "Restaurant1" in [s.place.name for s in result[0].schedule]
+
+    def test_day_with_a_restaurant_already_picked_is_left_alone(self):
+        r1 = make_place(id="r1", name="R1", category="ร้านอาหาร", lat=16.44, lng=102.84, hours_periods=None)
+        spare = make_place(id="spare", name="SpareRestaurant", category="ร้านอาหาร", lat=16.44, lng=102.84, hours_periods=None)
+        planner = LLMTripPlanner(candidates=[r1, spare], start_point=HOTEL_PLACE)
+        force_passing_judge(planner)
+        planner._call_llm_for_itinerary = lambda prompt: {"itinerary": [{"day": 1, "places": [{"place_id": "r1"}]}]}
+        user_input = TripInput(
+            trip_duration_days=1, start_date="2026-08-03", accommodation_name="Hotel",
+            start_time="09:00", end_time="20:00",
+        )
+        result, _ = planner.solve_route_with_llm(user_input, "", "")
+        names = {s.place.name for s in result[0].schedule}
+        assert "R1" in names
+        assert "SpareRestaurant" not in names
+
+
+class TestPickFallbackRestaurant:
+    """Which restaurant tops up a day the LLM left without one: open at a meal
+    time in the day's window first, then at least visitable, then closest to
+    the day's other places, then best rated. Used to be "first unused in
+    candidate order", which handed a 09:00-18:00 day an evening-only place."""
+    from datetime import date as _date, time as _time
+    DAY = _date(2026, 8, 3)  # Monday
+
+    @staticmethod
+    def rest(place_id, open_h, lat=16.44, lng=102.84, rating=4.5):
+        periods = [
+            {"open": {"day": d, "hour": open_h, "minute": 0}, "close": {"day": d, "hour": 23, "minute": 59}}
+            for d in range(7)
+        ]
+        return make_place(id=place_id, name=place_id, category="ร้านอาหาร", lat=lat, lng=lng, rating=rating, hours_periods=periods)
+
+    def _pick(self, candidates, day_places=(), start=(9, 0), end=(18, 0), used=()):
+        planner = LLMTripPlanner(candidates=list(candidates), start_point=HOTEL_PLACE)
+        return planner._pick_fallback_restaurant(
+            list(day_places), self.DAY, self._time(*start), self._time(*end), set(used),
+        )
+
+    def test_returns_none_when_there_is_no_unused_restaurant(self):
+        assert self._pick([]) is None
+        assert self._pick([self.rest("a", 10)], used={"a"}) is None
+
+    def test_prefers_a_restaurant_open_at_lunch_over_an_evening_only_one_listed_first(self):
+        picked = self._pick([self.rest("evening", 17), self.rest("noon", 10)])
+        assert picked.id == "noon"
+
+    def test_prefers_a_visitable_restaurant_over_one_that_opens_after_the_day_ends(self):
+        # 13:00-18:00 window: neither is open at the 15:30 meal time; "ok" opens
+        # at 17:00 (still reachable before the end), "never" opens at 18:00.
+        picked = self._pick([self.rest("never", 18), self.rest("ok", 17)], start=(13, 0), end=(18, 0))
+        assert picked.id == "ok"
+
+    def test_prefers_the_restaurant_closest_to_the_days_other_places(self):
+        stop = make_place(id="stop", name="Stop", category="สถานที่ท่องเที่ยว", lat=16.70, lng=102.30)
+        far = self.rest("far", 10, lat=16.44, lng=102.84)      # in town, ~70 km from the stop
+        near = self.rest("near", 10, lat=16.70, lng=102.31)    # next to the stop
+        assert self._pick([far, near], day_places=[stop]).id == "near"
+
+    def test_uses_the_hotel_as_the_anchor_when_the_day_has_no_places(self):
+        near_hotel = self.rest("near", 10, lat=16.441, lng=102.841)
+        far_away = self.rest("far", 10, lat=16.70, lng=102.30)
+        assert self._pick([far_away, near_hotel]).id == "near"
+
+    def test_better_rating_breaks_a_distance_tie(self):
+        a = self.rest("a", 10, rating=3.5)
+        b = self.rest("b", 10, rating=4.8)
+        assert self._pick([a, b]).id == "b"
+
+    def test_solve_route_gives_a_day_without_a_restaurant_the_lunch_capable_one(self):
+        attraction = make_place(id="a1", name="Attraction", category="สถานที่ท่องเที่ยว", lat=16.441, lng=102.841, hours_periods=None)
+        planner = LLMTripPlanner(
+            candidates=[attraction, self.rest("evening", 17), self.rest("noon", 10)], start_point=HOTEL_PLACE,
+        )
+        force_passing_judge(planner)
+        planner._call_llm_for_itinerary = lambda prompt: {"itinerary": [{"day": 1, "places": [{"place_id": "a1"}]}]}
+        user_input = TripInput(trip_duration_days=1, start_date="2026-08-03", accommodation_name="Hotel", start_time="09:00", end_time="18:00")
+        result, _ = planner.solve_route_with_llm(user_input, "", "")
+        meals = [s.place.id for s in result[0].schedule if s.place.category == "ร้านอาหาร"]
+        assert meals == ["noon"]
+
+
+class TestBuildPostScheduleFeedback:
+    def _hotel_leg(self):
+        return TimeSlot(
+            place=HOTEL_PLACE, arrival_time="18:00", departure_time="18:00",
+            travel_time_min=0, distance_km=0.0, status="End of Day (Return to Hotel)",
+        )
+
+    def _free_time_slot(self):
+        dummy = make_place(id="free1", name="Free Time", category=None, rating=0.0)
+        return TimeSlot(
+            place=dummy, arrival_time="09:00", departure_time="12:00",
+            travel_time_min=0, distance_km=0.0, status="Free Time",
+        )
+
+    def _real_slot(self, place):
+        return TimeSlot(place=place, arrival_time="09:00", departure_time="10:00", travel_time_min=0, distance_km=0.0)
+
+    def _day(self, *slots):
+        return DailyItinerary(day=1, date="2026-08-03", schedule=list(slots), day_cost_estimate=0.0, day_travel_time_total=0)
+
+    def test_day_with_only_a_hotel_leg_is_flagged_as_completely_empty(self):
+        feedback = LLMTripPlanner(candidates=[])._build_post_schedule_feedback([self._day(self._hotel_leg())])
+        assert "Day 1" in feedback and "completely empty" in feedback
+
+    def test_day_with_only_a_free_time_placeholder_is_flagged_as_completely_empty(self):
+        feedback = LLMTripPlanner(candidates=[])._build_post_schedule_feedback(
+            [self._day(self._free_time_slot(), self._hotel_leg())])
+        assert "completely empty" in feedback
+
+    def test_day_with_a_real_stop_but_no_restaurant_is_flagged_when_a_restaurant_candidate_exists(self):
+        cafe = make_place(id="c1", name="Cafe1", category="คาเฟ่")
+        rest = make_place(id="r1", name="R1", category="ร้านอาหาร")
+        feedback = LLMTripPlanner(candidates=[cafe, rest])._build_post_schedule_feedback(
+            [self._day(self._real_slot(cafe), self._hotel_leg())])
+        assert "restaurant" in feedback.lower()
+
+    def test_day_missing_a_restaurant_is_not_flagged_when_no_restaurant_candidate_exists_at_all(self):
+        cafe = make_place(id="c1", name="Cafe1", category="คาเฟ่")
+        feedback = LLMTripPlanner(candidates=[cafe])._build_post_schedule_feedback(
+            [self._day(self._real_slot(cafe), self._hotel_leg())])
+        assert feedback == ""
+
+    def test_day_with_a_restaurant_among_real_stops_is_not_flagged(self):
+        rest = make_place(id="r1", name="R1", category="ร้านอาหาร")
+        feedback = LLMTripPlanner(candidates=[rest])._build_post_schedule_feedback(
+            [self._day(self._real_slot(rest), self._hotel_leg())])
+        assert feedback == ""

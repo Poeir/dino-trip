@@ -1,14 +1,15 @@
 // Talks directly to the local chatbot-service (FastAPI, see ../../../chatbot-service/)
 // over plain HTTP -- this is a local dev process, not something deployed
 // alongside Supabase, so no supabase-js/functions.invoke involved here.
-const BASE_URL = import.meta.env.VITE_CHATBOT_SERVICE_URL || 'http://localhost:8000'
+// `??` not `||`: empty means "same origin" (/chat/ and /trip/ are proxied by Caddy).
+const BASE_URL = import.meta.env.VITE_CHATBOT_SERVICE_URL ?? 'http://localhost:8000'
 
 // The service streams Server-Sent Events: `token` chunks as the reply is
-// generated, then one `done` event with the full reply + source places.
-// `places` is only known once the whole reply is in (agent.py has to check
-// for the fallback message first), so it always arrives on `done`, not
-// progressively.
-export async function sendChatMessage(message, history, { onToken } = {}) {
+// generated, then one `done` event with the full reply + source places/events.
+// `places`/`events` are only known once the whole reply is in (agent.py has
+// to check for the fallback message first), so they always arrive on `done`,
+// not progressively.
+export async function sendChatMessage(message, { history = [], onToken } = {}) {
   const res = await fetch(`${BASE_URL}/chat/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -21,14 +22,15 @@ export async function sendChatMessage(message, history, { onToken } = {}) {
   let buffer = ''
   let reply = ''
   let places = []
+  let events = []
 
   while (true) {
     const { done, value } = await reader.read()
     if (done) break
     buffer += decoder.decode(value, { stream: true })
-    const events = buffer.split('\n\n')
-    buffer = events.pop() // last chunk may be incomplete, keep for next read
-    for (const raw of events) {
+    const sseEvents = buffer.split('\n\n')
+    buffer = sseEvents.pop() // last chunk may be incomplete, keep for next read
+    for (const raw of sseEvents) {
       const line = raw.trim()
       if (!line.startsWith('data: ')) continue
       const payload = JSON.parse(line.slice(6))
@@ -38,11 +40,12 @@ export async function sendChatMessage(message, history, { onToken } = {}) {
       } else if (payload.type === 'done') {
         reply = payload.reply
         places = payload.places
+        events = payload.events
       }
     }
   }
 
-  return { reply, places } // shape matches the old non-streaming response
+  return { reply, places, events } // shape matches the old non-streaming response
 }
 
 export async function requestTripPlan(tripInput) {
@@ -53,24 +56,8 @@ export async function requestTripPlan(tripInput) {
   })
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
-    throw new Error(body.detail || `chatbot-service /trip/llm failed (${res.status})`)
+    // FastAPI validation errors (422) put an array in `detail`; only a string is user-facing.
+    throw new Error(typeof body.detail === 'string' && body.detail ? body.detail : `chatbot-service /trip/llm failed (${res.status})`)
   }
   return res.json() // TripResponse
-}
-
-// Admin-only helper: LLM-extracts event form fields (name, dateRange,
-// venueName, ...) from raw text an admin pastes in from a Facebook post. The
-// admin always reviews/edits the prefilled form before saving -- this never
-// writes to the events table itself.
-export async function extractEventFromText(text) {
-  const res = await fetch(`${BASE_URL}/events/extract`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text }),
-  })
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}))
-    throw new Error(body.detail || `chatbot-service /events/extract failed (${res.status})`)
-  }
-  return res.json()
 }
