@@ -5,6 +5,7 @@ from datetime import date
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from src.core.clock import today_bangkok
 from src.core.llm_client import make_llm_client
 from src.core.config import MODEL_NAME
 from src.services.trip_planner.json_utils import clean_json_string
@@ -37,7 +38,7 @@ class ExtractEventRequest(BaseModel):
 
 
 def build_prompt(post_text: str) -> str:
-    today = date.today().strftime("%Y-%m-%d (%A)")
+    today = today_bangkok().strftime("%Y-%m-%d (%A)")
     return f"""
     You extract structured event info from a Thai Facebook post so an admin can review it before publishing. Today's date is {today} -- resolve relative dates ("พรุ่งนี้", "เสาร์นี้", "สุดสัปดาห์นี้") against it.
 

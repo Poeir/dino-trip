@@ -7,6 +7,7 @@ import unicodedata
 from concurrent.futures import ThreadPoolExecutor
 from openai import BadRequestError
 from src.core.llm_client import make_llm_client
+from src.core.clock import BANGKOK_TZ, now_bangkok
 from src.core.config import MODEL_NAME
 from src.core.usage import UsageTracker
 from src.services.rag.retriever import PlaceRetriever
@@ -18,10 +19,6 @@ FALLBACK_MESSAGE = "(น้องไดโน) ไม่มีข้อมูล
 # wording as the frontend's own catch-all in AppContext.sendChat.
 ERROR_MESSAGE = "ขออภัยครับ ระบบแชทขัดข้องชั่วคราว ลองใหม่อีกครั้งนะครับ"
 
-# Thailand has no DST, so a fixed offset is exact and needs no tz database.
-# Not the process clock: the production container runs in UTC, which put
-# "is it open now" answers 7 hours off.
-BANGKOK_TZ = datetime.timezone(datetime.timedelta(hours=7))
 _THAI_WEEKDAYS = ("จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์", "อาทิตย์")
 _THAI_MONTHS = (
     "มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
@@ -32,7 +29,7 @@ _THAI_MONTHS = (
 def current_time_text(now: datetime.datetime | None = None) -> str:
     """Today's date and time in Thailand, in the same Buddhist-era form the
     event date ranges use ("23-25 ต.ค. 2569") so the model can compare them."""
-    now = (now or datetime.datetime.now(datetime.timezone.utc)).astimezone(BANGKOK_TZ)
+    now = now.astimezone(BANGKOK_TZ) if now else now_bangkok()
     return (
         f"วัน{_THAI_WEEKDAYS[now.weekday()]}ที่ {now.day} {_THAI_MONTHS[now.month - 1]} "
         f"พ.ศ. {now.year + 543} (ค.ศ. {now.year}) เวลา {now:%H:%M} น."
