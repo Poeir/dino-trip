@@ -12,6 +12,7 @@ const PLACE_ICONS = {
   'อุทยานแห่งชาติ': icon('nature'),
   'ตลาด': icon('market'),
   'ห้างสรรพสินค้า': icon('market'),
+  'ร้านของฝาก': icon('market'),
   'สถานที่ท่องเที่ยว': icon('map-pin'),
   'ร้านอาหาร': icon('restaurant'),
 }

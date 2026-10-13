@@ -17,9 +17,19 @@ logger = logging.getLogger(__name__)
 
 # Max "generate -> judge" cycles before giving up on quality and returning the
 # last itinerary anyway. Kept small and NOT an env var (application-logic
-# tunable, not a deployment secret) -- there is no request timeout anywhere in
-# this stack, so this cap is the only thing bounding worst-case latency.
+# tunable, not a deployment secret) -- together with the per-call timeouts
+# below it is what bounds worst-case latency: nothing else in this stack
+# (Caddy, the browser's fetch) times a trip request out.
 MAX_JUDGE_ATTEMPTS = 2
+
+# Per-call limits for the generation call. Without them the OpenAI SDK's own
+# defaults applied (600s per attempt, 2 silent retries), so one stalled
+# gateway call could hold a request -- and the traveller on the loading page --
+# for half an hour. Generous on purpose: a multi-day prompt on the pro-tier
+# model is slow when healthy. No SDK retries: _generate_itinerary_data already
+# retries once itself.
+GENERATE_TIMEOUT_S = 120
+LLM_MAX_RETRIES = 0
 
 # STRICT RULE 6 in generate_prompt() already frames restaurant picks around
 # a lunch/dinner pair -- this is that assumption enforced deterministically,
@@ -42,8 +52,14 @@ MAX_CAFES_PER_DAY = route_scheduler.CATEGORY_DAILY_CAP["คาเฟ่"]
 
 
 class LLMTripPlanner:
-    def __init__(self, candidates: List[Place], start_point: Place = None, must_go_ids: Optional[Set[str]] = None):
+    def __init__(
+        self, candidates: List[Place], start_point: Place = None, must_go_ids: Optional[Set[str]] = None,
+        spare_places: Optional[List[Place]] = None,
+    ):
         self.candidates = candidates
+        # orchestrator.build_spare_pool: never shown to the LLM (not in the
+        # prompt, not in location_map), only appended to the backfill pool.
+        self.spare_places = spare_places or []
         self.start_point = start_point
         # ids from user_input.must_go that were actually found in the DB
         # (see orchestrator.build_candidate_list) -- everything downstream
@@ -55,7 +71,7 @@ class LLMTripPlanner:
         self.must_go_ids = must_go_ids or set()
         self.location_map = {loc.id: loc for loc in candidates}
         self.default_model = TRIP_PLANNER_MODEL_NAME
-        self.client = make_llm_client()
+        self.client = make_llm_client(timeout=GENERATE_TIMEOUT_S, max_retries=LLM_MAX_RETRIES)
         self.judge = TripItineraryJudge()
         # One tracker for the whole trip (every generate + judge call, retries
         # included); the route attaches metadata and calls finish().
@@ -406,6 +422,40 @@ class LLMTripPlanner:
 
         return dropped
 
+    def _resolve_unfittable_meal_roles(
+        self, day_assignments: Dict[int, List[Place]], meal_roles: Dict[str, str],
+        start_time_of_day, end_time_of_day,
+    ) -> None:
+        """A lunch/dinner role is a hard start-time floor in route_scheduler
+        (11:00 / 17:30), whoever set it -- the LLM (rule 6) or
+        _enforce_restaurant_cap_and_roles. When the day's window can't hold
+        that meal at all (a "dinner" on a day ending 18:00) the restaurant can
+        never be scheduled. Confirmed on a real trip: it was dropped at the
+        very end, after ordering and backfill had treated the afternoon as
+        taken, and the day went home at 13:05.
+
+        Such a restaurant is taken off its day here, before ordering, so the
+        freed time is planned for -- the day keeps the same meals it ended up
+        with before. Not reported as a drop: a regenerate round could only
+        "fix" it by not picking a dinner, which is this same result.
+        The role alone is removed instead (scheduled by its real opening
+        hours) when the place is a must-go or the day's only restaurant.
+        Tried and rejected: always just removing the role. In replays the
+        freed restaurant became a second anytime meal that landed right after
+        lunch (12:18, then 13:23)."""
+        for places in day_assignments.values():
+            for place in [p for p in places if p.category == "ร้านอาหาร"]:
+                role = meal_roles.get(place.id)
+                if not role or route_scheduler.meal_role_fits_window(role, start_time_of_day, end_time_of_day):
+                    continue
+                del meal_roles[place.id]
+                other_meal = any(p.category == "ร้านอาหาร" and p is not place for p in places)
+                if place.id in self.must_go_ids or not other_meal:
+                    logger.info("trip planner: ignoring meal_role %s on %s, it cannot fit in this day's time window", role, place.name)
+                    continue
+                places.remove(place)
+                logger.info("trip planner: dropping %s, a %s cannot fit in this day's time window", place.name, role)
+
     def solve_route_with_llm(self, user_input: TripInput, pace_instruction: str, budget_instruction: str) -> Tuple[List[DailyItinerary], str]:
         feedback_block = ""
         final_itinerary = None
@@ -581,6 +631,7 @@ class LLMTripPlanner:
         restaurant_cap_drops = self._enforce_restaurant_cap_and_roles(
             day_assignments, meal_roles, used_ids, trip_start_date, user_input.trip_duration_days,
         )
+        self._resolve_unfittable_meal_roles(day_assignments, meal_roles, start_time_of_day, end_time_of_day)
         cafe_cap_drops = self._enforce_category_cap(
             day_assignments, "คาเฟ่", MAX_CAFES_PER_DAY,
             used_ids, trip_start_date, user_input.trip_duration_days,
@@ -647,7 +698,7 @@ class LLMTripPlanner:
         backfill_pool = [
             loc for loc in self.candidates
             if loc.id not in used_ids and loc.category != "ร้านอาหาร"
-        ]
+        ] + self.spare_places
 
         # Order every day's stops first (geography/time-of-day only, no
         # backfill yet) so the cross-day pass below can see every day's real
@@ -688,24 +739,36 @@ class LLMTripPlanner:
             start_time_of_day, end_time_of_day, user_input.trip_pace, backfill_pool,
             stop_range=(stop_min, stop_max),
         )
-        drop_feedback = self._build_drop_feedback(dropped_by_day)
 
         final_itinerary = []
         for day_num in range(1, user_input.trip_duration_days + 1):
             route = routes[day_num]
             day_date = day_dates[day_num]
             anchor_ids = {p.id for p in route if route_scheduler.find_anchor_window(p, day_date)}
+            late_drops: List[Tuple[Place, str]] = []
             schedule, day_cost, day_travel = route_scheduler.materialize_day_schedule(
                 route, anchor_ids, meal_roles, self.start_point,
                 day_date, start_time_of_day, end_time_of_day, user_input.trip_pace,
                 gap_filler_pool=backfill_pool, max_attractions=stop_max,
                 must_go_ids=self.must_go_ids | meal_fallback_ids,
+                dropped=late_drops,
             )
             final_itinerary.append(DailyItinerary(
                 day=day_num, date=day_date.strftime("%Y-%m-%d"), schedule=schedule,
                 day_cost_estimate=day_cost, day_travel_time_total=day_travel,
             ))
+            # Picks that survived ordering but not the real schedule used to
+            # vanish with only a log line, so the regenerate loop never heard
+            # of them. Backfill additions are not the LLM's picks -- skipped.
+            assigned_ids = {p.id for p in day_assignments.get(day_num, [])}
+            for p, reason in late_drops:
+                if p.id not in assigned_ids:
+                    continue
+                if p.id in self.must_go_ids:
+                    reason = "MUST-GO PLACE -- " + reason
+                dropped_by_day.setdefault(day_num, []).append((p, reason))
 
+        drop_feedback = self._build_drop_feedback(dropped_by_day)
         post_schedule_feedback = self._build_post_schedule_feedback(final_itinerary)
         if post_schedule_feedback:
             drop_feedback = f"{drop_feedback}\n{post_schedule_feedback}" if drop_feedback else post_schedule_feedback

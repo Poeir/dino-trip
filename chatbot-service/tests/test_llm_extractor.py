@@ -307,6 +307,148 @@ class TestRestaurantCapAndRoles:
         assert roles == {"r1": "lunch", "r2": "dinner"}
 
 
+class TestUnfittableMealRole:
+    """A "dinner" role on a day that ends 18:00 can never be seated (17:30 +
+    a meal). Real trip, 2026-10-11 09:00-18:00, rebuilt here from the places'
+    real coordinates and Sunday hours: the dinner pick was planned at 15:00,
+    cut at the very end, and took the cafe ordered after it along -- three
+    stops, home at 13:05."""
+
+    @staticmethod
+    def _sunday(open_h, open_m, close_h):
+        return [{"open": {"day": 0, "hour": open_h, "minute": open_m}, "close": {"day": 0, "hour": close_h, "minute": 0}}]
+
+    def _places(self):
+        return [
+            make_place(id="temple", name="Temple", category="วัด", lat=16.4616, lng=102.8224, hours_periods=None),
+            make_place(id="noodle", name="Noodle", category="ร้านอาหาร", lat=16.4529, lng=102.8326,
+                       hours_periods=self._sunday(8, 0, 17)),
+            make_place(id="rin", name="Rin", category="คาเฟ่", lat=16.4572, lng=102.7975,
+                       hours_periods=self._sunday(7, 30, 16)),
+            make_place(id="ready", name="Ready", category="คาเฟ่", lat=16.4361, lng=102.8240,
+                       hours_periods=self._sunday(8, 0, 17)),
+            make_place(id="en", name="En", category="ร้านอาหาร", lat=16.4527, lng=102.8240,
+                       hours_periods=self._sunday(15, 0, 23)),
+        ]
+
+    HOTEL = make_place(id="hotel", name="Hotel", category="ที่พัก", lat=16.4290, lng=102.8304)
+
+    def _build(self, planner, picks, end_time="18:00"):
+        user_input = TripInput(
+            trip_duration_days=1, start_date="2026-10-11", accommodation_name="Hotel",  # Sunday
+            trip_pace="standard", start_time="09:00", end_time=end_time,
+        )
+        return planner._build_itinerary_from_llm_days({"itinerary": [{"day": 1, "places": picks}]}, user_input)
+
+    REAL_PICKS = [
+        {"place_id": "temple"}, {"place_id": "noodle", "meal_role": "lunch"}, {"place_id": "rin"},
+        {"place_id": "ready"}, {"place_id": "en", "meal_role": "dinner"},
+    ]
+
+    def test_dinner_that_cannot_fit_no_longer_takes_another_stop_down_with_it(self):
+        planner = LLMTripPlanner(candidates=self._places(), start_point=self.HOTEL, must_go_ids={"temple"})
+        itinerary, feedback = self._build(planner, self.REAL_PICKS)
+        ids = [s.place.id for s in itinerary[0].schedule if s.status != "Free Time"]
+        assert sorted(ids[:-1]) == ["noodle", "ready", "rin", "temple"]
+        assert itinerary[0].schedule[-1].arrival_time > "13:05"
+        # Not worth a regenerate round: it could only pick no dinner at all.
+        assert feedback == ""
+
+    def test_dinner_is_still_scheduled_when_the_day_runs_late_enough(self):
+        planner = LLMTripPlanner(candidates=self._places(), start_point=self.HOTEL, must_go_ids={"temple"})
+        itinerary, _ = self._build(planner, self.REAL_PICKS, end_time="20:00")
+        en = next(s for s in itinerary[0].schedule if s.place.id == "en")
+        assert en.meal_role == "dinner"
+
+    def test_only_restaurant_of_the_day_keeps_its_place_without_the_role(self):
+        planner = LLMTripPlanner(candidates=self._places(), start_point=self.HOTEL)
+        itinerary, _ = self._build(planner, [{"place_id": "temple"}, {"place_id": "en", "meal_role": "dinner"}])
+        en = next(s for s in itinerary[0].schedule if s.place.id == "en")
+        assert en.meal_role is None
+        assert en.arrival_time < "17:30"  # by its real opening hours (15:00), not the dinner window
+
+    def test_must_go_restaurant_is_never_taken_off_the_day(self):
+        planner = LLMTripPlanner(candidates=self._places(), start_point=self.HOTEL, must_go_ids={"en"})
+        itinerary, _ = self._build(planner, [
+            {"place_id": "noodle", "meal_role": "lunch"}, {"place_id": "en", "meal_role": "dinner"},
+        ])
+        ids = {s.place.id for s in itinerary[0].schedule}
+        assert {"noodle", "en"} <= ids
+        assert planner.last_dropped_must_go == []
+
+
+class TestEveningMarketWithDinner:
+    """Evening market + dinner restaurant on one day: sit down to dinner
+    first, then a short walk through the market. No dinner restaurant: the
+    market keeps its full visit and is where the evening is spent."""
+
+    @staticmethod
+    def _stay(slot):
+        from datetime import datetime
+        return (datetime.strptime(slot.departure_time, "%H:%M") - datetime.strptime(slot.arrival_time, "%H:%M")).seconds // 60 - slot.wait_time_min
+
+    def _run(self, picks):
+        places = [
+            make_place(id="sight", name="Sight", category="สถานที่ท่องเที่ยว", lat=16.47, lng=102.84, hours_periods=None),
+            make_place(id="lunch", name="Lunch", category="ร้านอาหาร", lat=16.46, lng=102.84, hours_periods=None),
+            make_place(id="dinner", name="Dinner", category="ร้านอาหาร", lat=16.445, lng=102.84, hours_periods=None),
+            make_place(id="market", name="ตลาดโต้รุ่ง", category="ตลาด", lat=16.455, lng=102.84, hours_periods=None),
+        ]
+        planner = LLMTripPlanner(candidates=places, start_point=HOTEL)
+        user_input = TripInput(
+            trip_duration_days=1, start_date="2026-08-03", accommodation_name="Hotel",
+            trip_pace="relaxed", start_time="09:00", end_time="20:00",
+        )
+        itinerary, _ = planner._build_itinerary_from_llm_days({"itinerary": [{"day": 1, "places": picks}]}, user_input)
+        return [s for s in itinerary[0].schedule if s.status != "Free Time"]
+
+    def test_dinner_then_a_short_market_walk(self):
+        slots = self._run([
+            {"place_id": "sight"}, {"place_id": "market"},
+            {"place_id": "lunch", "meal_role": "lunch"}, {"place_id": "dinner", "meal_role": "dinner"},
+        ])
+        ids = [s.place.id for s in slots]
+        assert ids.index("dinner") < ids.index("market")
+        assert self._stay(next(s for s in slots if s.place.id == "market")) == 45
+        assert slots[-1].arrival_time <= "20:00"
+
+    def test_market_is_the_evening_when_there_is_no_dinner_restaurant(self):
+        slots = self._run([{"place_id": "sight"}, {"place_id": "market"}, {"place_id": "lunch"}])
+        market = next(s for s in slots if s.place.id == "market")
+        assert self._stay(market) >= 120        # the full evening, not the 45-minute walk
+        assert market.arrival_time >= "15:00"   # pulled towards the evening, not left mid-morning
+
+
+class TestScheduleTimeDropsReachFeedback:
+    """Picks that survive ordering but are cut while the real schedule is
+    built used to leave only a log line, so the regenerate loop never heard
+    of them."""
+
+    def test_only_the_llms_own_picks_are_reported(self, monkeypatch):
+        cafe = make_place(id="c1", name="PickedCafe", category="คาเฟ่", lat=16.44, lng=102.84, hours_periods=None)
+        rest = make_place(id="r1", name="R1", category="ร้านอาหาร", lat=16.44, lng=102.84, hours_periods=None)
+        extra = make_place(id="x1", name="BackfillOnly", category="วัด", lat=16.44, lng=102.84, hours_periods=None)
+        from src.services.trip_planner import route_scheduler
+        real = route_scheduler.materialize_day_schedule
+
+        def cutting(*args, dropped=None, **kwargs):
+            dropped.append((cafe, "the day would end after 18:00"))
+            dropped.append((extra, "the day would end after 18:00"))
+            return real(*args, **kwargs)
+
+        monkeypatch.setattr(route_scheduler, "materialize_day_schedule", cutting)
+        planner = LLMTripPlanner(candidates=[cafe, rest, extra], start_point=HOTEL)
+        user_input = TripInput(
+            trip_duration_days=1, start_date="2026-08-03", accommodation_name="Hotel",
+            start_time="09:00", end_time="18:00",
+        )
+        _, feedback = planner._build_itinerary_from_llm_days(
+            {"itinerary": [{"day": 1, "places": [{"place_id": "c1"}, {"place_id": "r1"}]}]}, user_input,
+        )
+        assert "PickedCafe" in feedback and "the day would end after 18:00" in feedback
+        assert "BackfillOnly" not in feedback
+
+
 class TestSolveRouteWithLLMJudgeRegeneration:
     def _planner_with_one_place(self):
         place = make_place(id="p1", name="Place1", category="คาเฟ่", lat=16.44, lng=102.84, hours_periods=None)

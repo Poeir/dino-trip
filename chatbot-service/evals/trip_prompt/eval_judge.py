@@ -17,9 +17,11 @@ import os
 import re
 
 
-from src.core.llm_client import make_llm_client
+from .providers import make_client, parse_spec
 
-DEFAULT_JUDGE_MODEL = os.environ.get("EVAL_JUDGE_MODEL", "claude-sonnet-5.5")
+# Claude is only served by the KKU gateway, so the default names its provider and
+# keeps working when LLM_PROVIDER=vertex (generator on Vertex, judge on KKU).
+DEFAULT_JUDGE_MODEL = os.environ.get("EVAL_JUDGE_MODEL", "kku:claude-sonnet-5.5")
 
 CRITERIA = ["interest_fit", "constraint_fit", "variety_flow", "day_coherence", "selection_quality"]
 
@@ -126,6 +128,8 @@ Output ONLY a JSON object, with the critique first:
 def _parse(content):
     if content is None:
         raise ValueError("empty judge response")
+    # some reasoning models return their scratch work inline; braces in it would confuse the match below
+    content = re.sub(r"<think>.*?</think>", "", content, flags=re.S)
     m = re.search(r"\{.*\}", content, re.S)
     if not m:
         raise ValueError(f"no JSON in judge response: {content[:200]}")
@@ -141,8 +145,12 @@ def _parse(content):
 
 class EvalJudge:
     def __init__(self, model=None):
-        self.model = model or DEFAULT_JUDGE_MODEL
-        self.client = make_llm_client()
+        # model may be "provider:model" (see providers.py); judge and generator can use different providers.
+        self.provider, self.model = parse_spec(model or DEFAULT_JUDGE_MODEL)
+        self.client = make_client(self.provider)
+        # Some models (e.g. GPT-5 family, reasoning models) reject a non-default temperature.
+        # Learned from the first rejection, recorded in every verdict so it is visible in the data.
+        self._omit_temperature = False
 
     def score(self, user_input, candidates, itinerary):
         prompt = build_prompt(user_input, candidates, itinerary)
@@ -156,7 +164,7 @@ class EvalJudge:
                         {"role": "system", "content": "You are a strict travel-itinerary evaluator. Output JSON only."},
                         {"role": "user", "content": prompt},
                     ],
-                    temperature=0.0,
+                    **({} if self._omit_temperature else {"temperature": 0.0}),
                 )
                 usage = getattr(resp, "usage", None)
                 tokens = (usage.prompt_tokens + usage.completion_tokens) if usage else 0
@@ -167,8 +175,12 @@ class EvalJudge:
                     "scores": scores,
                     "mean": sum(scores.values()) / len(scores),
                     "judge_model": self.model,
+                    "judge_provider": self.provider,
+                    "temperature": None if self._omit_temperature else 0.0,
                     "tokens": spent,
                 }
             except Exception as e:  # retry once, then record the failure (never fail open here)
                 last_err = e
-        return {"error": str(last_err), "judge_model": self.model, "tokens": spent}
+                if "temperature" in str(e).lower():
+                    self._omit_temperature = True  # the retry goes out with the model's default
+        return {"error": str(last_err), "judge_model": self.model, "judge_provider": self.provider, "tokens": spent}

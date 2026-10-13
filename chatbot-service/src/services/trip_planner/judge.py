@@ -28,10 +28,16 @@ logger = logging.getLogger(__name__)
 # generously than this threshold assumes.
 PASS_SCORE_THRESHOLD = 0.45
 
+# The judge fails open (see evaluate), so a slow judge should give up early
+# rather than hold the finished itinerary back: without a limit the SDK
+# default applied (600s per attempt, 2 silent retries).
+JUDGE_TIMEOUT_S = 60
+JUDGE_MAX_RETRIES = 0
+
 
 class TripItineraryJudge:
     def __init__(self):
-        self.client = make_llm_client()
+        self.client = make_llm_client(timeout=JUDGE_TIMEOUT_S, max_retries=JUDGE_MAX_RETRIES)
         self.default_model = TRIP_PLANNER_MODEL_NAME
         # Shared with LLMTripPlanner, which assigns its own tracker here so
         # generate + judge calls land in one per-trip total.

@@ -35,3 +35,32 @@ def test_trip_input_defaults_and_normal_request_still_valid():
 def test_trip_input_rejects_oversized_fields(overrides):
     with pytest.raises(ValidationError):
         TripInput(**{**BASE, **overrides})
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"start_date": "11/10/2026"},                       # was a 500 from strptime further down
+        {"start_date": "2026-02-30"},
+        {"start_time": "9am"},
+        {"end_time": "25:00"},
+        {"start_time": "18:00", "end_time": "09:00"},       # was a trip with no stops in it
+        {"start_time": "09:00", "end_time": "09:00"},
+        {"trip_pace": "กำลังดี"},                             # the label, not the key the form sends
+        {"budget_level": "luxury"},
+        {"area_scope": "ทั้งประเทศ"},
+        {"accommodation_lat": 116.4, "accommodation_lng": 102.8},
+        {"accommodation_lat": 16.4, "accommodation_lng": 1028.0},
+    ],
+)
+def test_trip_input_rejects_malformed_values(overrides):
+    with pytest.raises(ValidationError):
+        TripInput(**{**BASE, **overrides})
+
+
+def test_trip_input_accepts_every_value_the_form_sends():
+    for pace in ("relaxed", "standard", "packed"):
+        for budget in ("ประหยัด", "ปานกลาง", "หรูหรา"):
+            for area in ("เมือง", "ทั่วขอนแก่น"):
+                TripInput(**BASE, trip_pace=pace, budget_level=budget, area_scope=area,
+                          start_time="08:30", end_time="20:00", accommodation_lat=16.43, accommodation_lng=102.83)

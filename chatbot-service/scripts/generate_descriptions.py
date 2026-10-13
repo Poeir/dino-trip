@@ -66,7 +66,7 @@ FETCH_HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; description-enrichment-
 # คะแนนรีวิว X ดาว..." / "...ยังไม่มีคะแนนรีวิว") -- i.e. a place this script
 # hasn't touched yet. Used to skip already-processed places on a resumed run
 # instead of re-spending search+LLM calls on them.
-ORIGINAL_TEMPLATE_RE = re.compile(r"^(คาเฟ่|ตลาด|ห้างสรรพสินค้า|พิพิธภัณฑ์|ร้านอาหาร|วัด|สถานที่ท่องเที่ยว|สวนสาธารณะ|อุทยานแห่งชาติ)ในขอนแก่น")
+ORIGINAL_TEMPLATE_RE = re.compile(r"^(คาเฟ่|ตลาด|ห้างสรรพสินค้า|ร้านของฝาก|พิพิธภัณฑ์|ร้านอาหาร|วัด|สถานที่ท่องเที่ยว|สวนสาธารณะ|อุทยานแห่งชาติ)ในขอนแก่น")
 
 SYSTEM_PROMPT = (
     "You are a concise Thai local-guide copywriter. Output JSON only, in the "

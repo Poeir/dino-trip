@@ -164,6 +164,7 @@ function mapTags(category, goodForChildren, types, name) {
   // Museums had no interest tag at all -- treating them as a cultural stop,
   // same as this dataset already treats วัด.
   if (category === 'พิพิธภัณฑ์') tags.add('วัฒนธรรม/ศาสนา')
+  if (category === 'ร้านของฝาก') tags.add('ช้อปปิ้ง/หัตถกรรม')
   if (goodForChildren) tags.add('ครอบครัว')
   for (const t of types || []) {
     if (FOOD_TYPE_TAGS[t]) tags.add(FOOD_TYPE_TAGS[t])

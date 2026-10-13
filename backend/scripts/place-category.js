@@ -62,6 +62,12 @@ export const CATEGORY_BY_TYPE = {
   // markets (but keeps malls) on a หรูหรา budget.
   shopping_mall: 'ห้างสรรพสินค้า', department_store: 'ห้างสรรพสินค้า',
 
+  // Souvenir / local-product shops: a quick stop to buy something to take
+  // home, neither a market to walk around nor a mall. Google has no closer
+  // type than gift_shop; a shop it types only as `store` (เตียฮั่วหยู) still
+  // has to be set by an admin.
+  gift_shop: 'ร้านของฝาก',
+
   // Lodging
   hotel: 'ที่พัก', resort_hotel: 'ที่พัก', motel: 'ที่พัก', hostel: 'ที่พัก',
   inn: 'ที่พัก', guest_house: 'ที่พัก', bed_and_breakfast: 'ที่พัก', cottage: 'ที่พัก',

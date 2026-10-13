@@ -87,6 +87,46 @@ SYNONYMS: dict[str, list[str]] = {
     "อุทยานแห่งชาติ": ["ธรรมชาติ"],
 }
 
+# Local nicknames that resolve to one specific place *name*, not a tag --
+# unlike SYNONYMS above, blending the real name into the original (longer)
+# query text wasn't enough: word_similarity(p.name, query_text) still has to
+# win greatest(embedding_similarity, word_similarity, tag_match) against
+# every other row, and confirmed testing showed "วัดเก้าชั้นในขอนแก่น
+# วัฒนธรรม/ศาสนา พระมหาธาตุแก่นนคร" still ranked พระมหาธาตุแก่นนคร dead last
+# (15th) even though it cleared the match threshold -- while searching
+# "พระมหาธาตุแก่นนคร" alone ranks it #1. So these run as their own clean
+# search variant (see retriever.search_and_expand) instead of being appended.
+ALIASES: dict[str, str] = {
+    "วัดเก้าชั้น": "พระมหาธาตุแก่นนคร",
+    "พระธาตุเก้าชั้น": "พระมหาธาตุแก่นนคร",
+}
+
+
+def alias_variants(query: str) -> list[str]:
+    lowered = query.lower()
+    return list(dict.fromkeys(name for keyword, name in ALIASES.items() if keyword in lowered))
+
+# Generic filler words that dilute both the keyword match (word_similarity
+# against the place's *name*) and the embedding -- confirmed by testing
+# against the live retriever: "ร้านก๋วยเตี๋ยวแถวท่าพระ" returned 5 วัด results
+# and zero ก๋วยเตี๋ยว, while the stripped "ก๋วยเตี๋ยวท่าพระ" alone returned the
+# right ones. Substring removal, same style as the keyword check above --
+# there's no Thai word-tokenizer here, and these are distinctive enough
+# multi-character strings that an accidental mid-word match is unlikely.
+# Never used to *replace* the original query, only to add a second search
+# variant that callers merge in, so a bad strip can only add candidates,
+# never drop ones the original query already found.
+FILLER_WORDS = ("อยากกิน", "อยากไป", "อยาก", "ร้าน", "แถว", "บริเวณ", "ใกล้ๆ", "ใกล้", "หน่อย")
+
+
+def strip_filler(query: str) -> str | None:
+    """None if stripping had no effect (nothing to search a second time for)."""
+    stripped = query
+    for w in FILLER_WORDS:
+        stripped = stripped.replace(w, " ")
+    stripped = " ".join(stripped.split())
+    return stripped if stripped and stripped != query else None
+
 
 def expand_query(query: str) -> str:
     """Appends any matched synonym tags onto the query text, so both the

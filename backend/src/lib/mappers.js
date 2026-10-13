@@ -38,6 +38,7 @@ export function rowToPlace(row) {
     img: (row.uploadedPhotoUrls?.[0]) || row.img,
     images: (row.uploadedPhotoUrls?.length ? row.uploadedPhotoUrls : null) || (row.images && row.images.length ? row.images : (row.img ? [row.img] : [])),
     businessStatus: row.business_status,
+    marketTime: row.market_time ?? null,
     // Sync bookkeeping (admin badges). The parked Google values themselves are
     // only served by the admin place-sync endpoints, not on every public list.
     lockedFields: row.locked_fields || [],
@@ -110,6 +111,11 @@ export function rowToQr(row) {
 
 const splitList = (v) => (Array.isArray(v) ? v : (v || '').split(',').map((s) => s.trim()).filter(Boolean))
 
+// places.market_time (migration 20261012000001) -- keep in step with its CHECK
+// constraint and the admin place form's options.
+export const MARKET_TIMES = ['morning', 'evening', 'all_day']
+const MARKET_CATEGORY = 'ตลาด'
+
 // Inverse mappers: request body (camelCase form fields) -> DB row payload.
 // Mirrors the payload-building blocks that used to be inline in
 // AppContext.jsx's saveForm().
@@ -136,7 +142,16 @@ export function placePayload(body) {
   if ((hasLat && !Number.isFinite(lat)) || (hasLng && !Number.isFinite(lng)) || (Number.isFinite(lat) && Math.abs(lat) > 90) || (Number.isFinite(lng) && Math.abs(lng) > 180)) {
     throw httpError(400, 'พิกัดไม่ถูกต้อง (ละติจูด -90 ถึง 90, ลองจิจูด -180 ถึง 180)')
   }
+  // Only written when the caller sent the field at all: a path that omits it
+  // must not wipe a label it never showed. A label only means something on a
+  // market, so any other category clears it.
+  let marketTime
+  if (body.marketTime !== undefined) {
+    marketTime = body.marketTime === '' || body.marketTime == null || body.category !== MARKET_CATEGORY ? null : body.marketTime
+    if (marketTime !== null && !MARKET_TIMES.includes(marketTime)) throw httpError(400, 'ช่วงเวลาของตลาดไม่ถูกต้อง')
+  }
   return {
+    ...(marketTime !== undefined ? { market_time: marketTime } : {}),
     name, category: body.category, rating: Number.isFinite(rating) && rating !== 0 ? rating : null,
     review_count: parseInt(body.reviews) || 0, price: body.price, address: body.address,
     hours: body.hours, phone: body.phone, description: body.desc,
