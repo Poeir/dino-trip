@@ -206,8 +206,8 @@ input, textarea, select, button { font-family: inherit; }
 .dc-chat-fab:hover img { filter: drop-shadow(0 14px 26px rgba(46,125,50,0.5)); }
 .dc-chat-fab:active { transform: scale(0.94) rotate(0deg); }
 .dc-send-btn { transition: transform 0.2s ease, box-shadow 0.2s ease; }
-.dc-send-btn:hover { transform: scale(1.08); box-shadow: 0 8px 18px rgba(46,125,50,0.45); }
-.dc-send-btn:active { transform: scale(0.92); }
+.dc-send-btn:hover:not(:disabled) { transform: scale(1.08); box-shadow: 0 8px 18px rgba(46,125,50,0.45); }
+.dc-send-btn:active:not(:disabled) { transform: scale(0.92); }
 .dc-chat-bubble { transition: transform 0.2s ease, box-shadow 0.2s ease; }
 .dc-chat-bubble:hover { transform: translateY(-2px); box-shadow: 0 18px 36px rgba(0,0,0,0.22); }
 

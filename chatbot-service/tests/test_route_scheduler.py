@@ -48,6 +48,7 @@ class TestGetVisitDuration:
     @pytest.mark.parametrize("category,expected", [
         ("พิพิธภัณฑ์", 90), ("วัด", 45), ("สวนสาธารณะ", 60),
         ("ตลาด", 120), ("ร้านอาหาร", 60), ("คาเฟ่", 45), ("สถานที่ท่องเที่ยว", 60),
+        ("ห้างสรรพสินค้า", 90), ("ร้านของฝาก", 30),
     ])
     def test_base_duration_by_category_standard_pace(self, category, expected):
         p = make_place(category=category, name="Some Place")
@@ -319,7 +320,10 @@ class TestPreferredTimeWindow:
         assert rs.preferred_time_window(make_place(category=category)) == rs.ATTRACTION_WINDOW
 
     def test_regular_market_is_flexible(self):
-        assert rs.preferred_time_window(make_place(category="ตลาด", name="ตลาดเช้า")) is None
+        assert rs.preferred_time_window(make_place(category="ตลาด", name="ตลาดจอมพล")) is None
+
+    def test_morning_market_gets_morning_window(self):
+        assert rs.preferred_time_window(make_place(category="ตลาด", name="ตลาดเช้า")) == rs.MARKET_MORNING_WINDOW
 
     def test_night_market_gets_evening_window(self):
         assert rs.preferred_time_window(make_place(category="ตลาด", name="ตลาดกลางคืน")) == rs.MARKET_EVENING_WINDOW
@@ -576,8 +580,9 @@ class TestEndOfDayVisitTruncation:
     def test_a_stop_that_is_not_last_keeps_its_normal_duration(self):
         first = make_place(id="a", name="A", category="สถานที่ท่องเที่ยว", lat=16.441, lng=102.841, hours_periods=None)
         second = make_place(id="b", name="B", category="สถานที่ท่องเที่ยว", lat=16.442, lng=102.842, hours_periods=None)
+        # "packed": no longer stays (see TestStretchStays), so durations are the nominal ones.
         schedule, _, _ = rs.materialize_day_schedule(
-            [first, second], set(), {}, HOTEL, self.DAY, time(9, 0), time(18, 0), "standard",
+            [first, second], set(), {}, HOTEL, self.DAY, time(9, 0), time(18, 0), "packed",
         )
         durations = {
             s.place.id: (datetime.strptime(s.departure_time, "%H:%M") - datetime.strptime(s.arrival_time, "%H:%M")).seconds // 60
@@ -1062,3 +1067,536 @@ class TestMaterializeTailTrim:
         assert "Dinner" not in names
         assert names[-2] == "Sight" and schedule[-1].status.startswith("End of Day")
         assert self._minutes(schedule[-1].arrival_time) <= 18 * 60
+
+    def _meal_day(self):
+        lunch = make_place(id="r0", name="Lunch", category="ร้านอาหาร", lat=16.43, lng=102.84, hours_periods=None)
+        sight = make_place(id="a", name="Sight", category="สถานที่ท่องเที่ยว", lat=16.45, lng=102.84, hours_periods=None)
+        dinner = make_place(id="r1", name="Dinner", category="ร้านอาหาร", lat=16.43, lng=102.84, hours_periods=None)
+        cafe = make_place(id="c", name="Cafe", category="คาเฟ่", lat=16.44, lng=102.84, hours_periods=None)
+        return [lunch, sight, dinner, cafe], {"r0": "lunch", "r1": "dinner"}
+
+    def test_stop_ordered_after_an_overrunning_dinner_still_gets_its_turn(self):
+        # Real trip: the cafe was skipped because the dinner before it ended
+        # at 18:30, then the dinner itself was cut -- both gone, home at 13:05.
+        route, roles = self._meal_day()
+        schedule, _, travel = self._run(route, time(18, 0), roles=roles)
+        names = [s.place.name for s in schedule if s.status != "Free Time"]
+        assert names == ["Lunch", "Sight", "Cafe", "Mantra Varee Hotel"]
+        assert self._minutes(schedule[-1].arrival_time) <= 18 * 60
+        assert travel == sum(s.travel_time_min for s in schedule)
+
+    def test_dropped_out_param_reports_the_cut_stop_with_a_reason(self):
+        route, roles = self._meal_day()
+        dropped = []
+        rs.materialize_day_schedule(
+            route, set(), roles, REAL_HOTEL, self.DAY, time(9, 0), time(18, 0), "standard", dropped=dropped,
+        )
+        assert [(p.id, reason) for p, reason in dropped] == [("r1", "the day would end after 18:00")]
+
+    def test_stops_left_unvisited_behind_a_kept_overrun_are_reported(self):
+        near, far = self._far_pair()
+        cafe = make_place(id="c", name="Cafe", category="คาเฟ่", lat=16.44, lng=102.84, hours_periods=None)
+        dropped = []
+        schedule, _, _ = rs.materialize_day_schedule(
+            [near, far, cafe], set(), {}, REAL_HOTEL, self.DAY, time(9, 0), time(12, 0), "standard",
+            must_go_ids={"far"}, dropped=dropped,
+        )
+        assert "Cafe" not in [s.place.name for s in schedule]
+        assert [(p.id, reason) for p, reason in dropped] == [("c", "no time left before 12:00")]
+
+    def test_stop_closed_when_reached_is_reported(self):
+        early_bird = make_place(
+            id="m", name="Morning Market", category="ตลาด", lat=16.43, lng=102.84,
+            hours_periods=[{"open": {"day": 1, "hour": 6, "minute": 0}, "close": {"day": 1, "hour": 8, "minute": 0}}],
+        )
+        dropped = []
+        rs.materialize_day_schedule(
+            [early_bird], set(), {}, REAL_HOTEL, self.DAY, time(9, 0), time(18, 0), "standard", dropped=dropped,
+        )
+        assert [p.id for p, _ in dropped] == ["m"]
+        assert dropped[0][1].startswith("closed when reached")
+
+
+class TestPlanningWalkHonoursMealRoles:
+    """_simulate_day_walk (ordering, backfill) must wait for a lunch/dinner
+    meal_role exactly as materialize_day_schedule does. Real 09:00-18:00
+    trip: a "dinner" pick was planned at 15:00 when it opened, so the
+    afternoon looked full; the real schedule then held it to 17:30, cut it,
+    and the day went home at 13:05."""
+    DAY = date(2026, 7, 27)  # Monday
+
+    @staticmethod
+    def _restaurant(place_id, name):
+        return make_place(id=place_id, name=name, category="ร้านอาหาร", lat=16.43, lng=102.84, hours_periods=None)
+
+    def _walk(self, route, end, roles=None):
+        return rs._simulate_day_walk(
+            route, REAL_HOTEL, self.DAY, datetime.combine(self.DAY, time(9, 0)),
+            datetime.combine(self.DAY, end), "standard", roles,
+        )
+
+    @pytest.mark.parametrize("role,start,end,expected", [
+        ("dinner", time(9, 0), time(18, 0), False),   # the real trip: 17:30 + a meal overruns 18:00
+        ("dinner", time(9, 0), time(19, 0), True),
+        ("lunch", time(9, 0), time(18, 0), True),
+        ("lunch", time(14, 0), time(20, 0), False),
+        ("brunch", time(9, 0), time(18, 0), True),    # unknown role: nothing holds it to a window
+    ])
+    def test_meal_role_fits_window(self, role, start, end, expected):
+        assert rs.meal_role_fits_window(role, start, end) is expected
+
+    def test_dinner_role_is_held_to_its_window(self):
+        dinner = self._restaurant("r1", "Dinner")
+        held = self._walk([dinner], time(20, 0), {"r1": "dinner"})
+        assert held[0]["start_activity_dt"].strftime("%H:%M") == "17:30"
+        # No role: seated on arrival, as before.
+        assert self._walk([dinner], time(20, 0))[0]["start_activity_dt"].hour == 9
+
+    def test_dinner_that_cannot_fit_does_not_survive_the_planning_walk(self):
+        lunch, dinner = self._restaurant("r0", "Lunch"), self._restaurant("r1", "Dinner")
+        stops = self._walk([lunch, dinner], time(18, 0), {"r0": "lunch", "r1": "dinner"})
+        assert [s["place"].id for s in stops] == ["r0"]
+
+    def test_ordering_drops_the_unfittable_dinner_instead_of_planning_around_it(self):
+        lunch, dinner = self._restaurant("r0", "Lunch"), self._restaurant("r1", "Dinner")
+        sight = make_place(id="a", name="Sight", category="สถานที่ท่องเที่ยว", lat=16.45, lng=102.84, hours_periods=None)
+        route = rs.order_day_stops(
+            [lunch, sight, dinner], REAL_HOTEL, self.DAY, time(9, 0), time(18, 0), "standard",
+            {"r0": "lunch", "r1": "dinner"},
+        )
+        assert sorted(p.id for p in route) == ["a", "r0"]
+
+    def test_planning_walk_and_real_schedule_agree_on_seating_times(self):
+        lunch, dinner = self._restaurant("r0", "Lunch"), self._restaurant("r1", "Dinner")
+        sight = make_place(id="a", name="Sight", category="สถานที่ท่องเที่ยว", lat=16.45, lng=102.84, hours_periods=None)
+        route, roles = [lunch, sight, dinner], {"r0": "lunch", "r1": "dinner"}
+        planned = {s["place"].id: s["start_activity_dt"].strftime("%H:%M") for s in self._walk(route, time(20, 0), roles)}
+        schedule, _, _ = rs.materialize_day_schedule(
+            route, set(), roles, REAL_HOTEL, self.DAY, time(9, 0), time(20, 0), "standard",
+        )
+        seated = {
+            s.place.id: (datetime.strptime(s.arrival_time, "%H:%M") + timedelta(minutes=s.wait_time_min)).strftime("%H:%M")
+            for s in schedule if s.place.id in planned
+        }
+        # The sight between the two is left out: a longer lunch moves it (TestStretchStays).
+        meals = lambda times: {k: v for k, v in times.items() if k != "a"}
+        assert meals(planned) == meals(seated) == {"r0": "11:00", "r1": "17:30"}
+
+
+class TestMarketTiming:
+    """Markets have a time of day: a fresh market in the early morning, a
+    night market from about 17:00. The scheduler used to know neither (its
+    "ตลาดกลางคืน" name check matched no real market), so replays had a night
+    market at 12:15 and a fresh market at 12:16."""
+    DAY = date(2026, 7, 27)  # Monday
+    START, END = datetime(2026, 7, 27, 9, 0), datetime(2026, 7, 27, 20, 0)
+
+    @staticmethod
+    def market(name, open_h=None, close_h=None, **overrides):
+        periods = None
+        if open_h is not None:
+            periods = [
+                {"open": {"day": d, "hour": open_h, "minute": 0}, "close": {"day": d, "hour": close_h, "minute": 0}}
+                for d in range(7)
+            ]
+        defaults = dict(id="mk", name=name, category="ตลาด", lat=16.45, lng=102.84, hours_periods=periods)
+        defaults.update(overrides)
+        return make_place(**defaults)
+
+    @staticmethod
+    def dinner():
+        return make_place(id="r1", name="Dinner", category="ร้านอาหาร", lat=16.425, lng=102.84, hours_periods=None)
+
+    @staticmethod
+    def sight(**overrides):
+        defaults = dict(id="a", name="Sight", category="สถานที่ท่องเที่ยว", lat=16.47, lng=102.84, hours_periods=None)
+        defaults.update(overrides)
+        return make_place(**defaults)
+
+    @staticmethod
+    def _stay(slot):
+        return (datetime.strptime(slot.departure_time, "%H:%M") - datetime.strptime(slot.arrival_time, "%H:%M")).seconds // 60 - slot.wait_time_min
+
+    @pytest.mark.parametrize("name,open_h,close_h,expected", [
+        ("ตลาดต้นตาล", 16, 23, "evening"),           # hours: never open before mid-afternoon
+        ("ตลาดหนองไผ่ศิลา", 14, 21, "evening"),
+        ("ตลาดหน้าโรงพยาบาล", 5, 10, "morning"),     # hours: always shut by early afternoon
+        ("ตลาดโต้รุ่งร่วมจิตร", 6, 21, "evening"),   # all-day hours listed: the name decides
+        ("ตลาดสดเทศบาล1", 5, 17, "morning"),
+        ("ตลาดสดยามเย็น", 17, 22, "evening"),        # hours beat the name
+        ("ตลาดจอมพล", 6, 22, None),                  # open all day, nothing in the name
+        ("ตลาดโรงอวน", None, None, None),            # no hours data, nothing in the name
+        ("กังสดาลไนท์", None, None, "evening"),
+    ])
+    def test_market_kind(self, name, open_h, close_h, expected):
+        assert rs.market_kind(self.market(name, open_h, close_h)) == expected
+
+    def test_market_open_past_midnight_is_an_evening_market(self):
+        overnight = [{"open": {"day": d, "hour": 17, "minute": 0}, "close": {"day": (d + 1) % 7, "hour": 2, "minute": 0}} for d in range(7)]
+        assert rs.market_kind(self.market("ตลาดรื่นรมย์", hours_periods=overnight)) == "evening"
+
+    def test_open_24h_sentinel_leaves_the_decision_to_the_name(self):
+        always = [{"open": {"day": 0, "hour": 0, "minute": 0}}]
+        assert rs.market_kind(self.market("ตลาดบางลำภู", hours_periods=always)) is None
+        assert rs.market_kind(self.market("ตลาดโต้รุ่ง", hours_periods=always)) == "evening"
+
+    def test_only_markets_have_a_kind(self):
+        assert rs.market_kind(make_place(category="คาเฟ่", name="ไนท์คาเฟ่")) is None
+
+    def test_durations(self):
+        evening, morning, unknown = self.market("ตลาดต้นตาล", 16, 23), self.market("ตลาดสดเทศบาล1", 5, 17), self.market("ตลาดจอมพล", 6, 22)
+        assert rs.get_visit_duration(morning, "standard") == rs.MORNING_MARKET_MINUTES
+        assert rs.get_visit_duration(evening, "standard") == 120                      # the market is the evening
+        assert rs.get_visit_duration(evening, "standard", day_has_dinner=True) == rs.MARKET_AFTER_DINNER_MINUTES
+        assert rs.get_visit_duration(unknown, "standard", day_has_dinner=True) == 120
+
+    def test_dinner_first_then_a_short_walk_through_the_market(self):
+        # Geography alone says market first: sight (north) -> market -> dinner
+        # (by the hotel) is a straight run home, dinner-then-market doubles back.
+        market, dinner, sight = self.market("ตลาดโต้รุ่ง"), self.dinner(), self.sight()
+        roles = {"r1": "dinner"}
+        route = rs.order_day_stops([market, sight, dinner], REAL_HOTEL, self.DAY, time(9, 0), time(20, 0), "standard", roles)
+        assert [p.id for p in route] == ["a", "r1", "mk"]
+        schedule, _, _ = rs.materialize_day_schedule(
+            route, set(), roles, REAL_HOTEL, self.DAY, time(9, 0), time(20, 0), "standard",
+        )
+        market_slot = next(s for s in schedule if s.place.id == "mk")
+        assert market_slot.arrival_time > "18:30"
+        assert self._stay(market_slot) == rs.MARKET_AFTER_DINNER_MINUTES
+        assert schedule[-1].arrival_time <= "20:00"
+
+    def test_market_goes_before_dinner_rather_than_being_dropped(self):
+        # Day ends 19:00: dinner 17:30-18:30 leaves no room for the market after it.
+        market, dinner = self.market("ตลาดโต้รุ่ง"), self.dinner()
+        route = rs.order_day_stops([market, dinner], REAL_HOTEL, self.DAY, time(9, 0), time(19, 0), "standard", {"r1": "dinner"})
+        assert [p.id for p in route] == ["mk", "r1"]
+
+    def test_evening_market_without_a_dinner_keeps_its_full_visit(self):
+        market, sight = self.market("ตลาดต้นตาล", 16, 23), self.sight()
+        schedule, _, _ = rs.materialize_day_schedule(
+            [sight, market], set(), {}, REAL_HOTEL, self.DAY, time(9, 0), time(20, 0), "standard",
+        )
+        assert self._stay(next(s for s in schedule if s.place.id == "mk")) >= 120
+
+    def test_fresh_market_is_visited_first_and_night_market_last(self):
+        # The night market is the stop nearest the hotel and the fresh market
+        # the farthest: distance alone orders them the other way round.
+        night = self.market("ตลาดโต้รุ่งร่วมจิตร", 6, 21, id="night", lat=16.426, lng=102.84)
+        fresh = self.market("ตลาดสดเทศบาล1", 5, 17, id="fresh", lat=16.46, lng=102.84)
+        sight = self.sight(lat=16.44)
+        route = rs.order_day_stops([night, sight, fresh], REAL_HOTEL, self.DAY, time(9, 0), time(20, 0), "standard")
+        assert [p.id for p in route] == ["fresh", "a", "night"]
+
+    def test_auto_add_time_ok(self):
+        evening, morning, unknown = self.market("ตลาดต้นตาล", 16, 23), self.market("ตลาดสดเทศบาล1", 5, 17), self.market("ตลาดจอมพล", 6, 22)
+        at = lambda h, m=0: datetime(2026, 7, 27, h, m)
+        assert rs.auto_add_time_ok(evening, at(17, 30)) and not rs.auto_add_time_ok(evening, at(16, 0))
+        assert rs.auto_add_time_ok(morning, at(9, 10)) and not rs.auto_add_time_ok(morning, at(12, 16))
+        assert not rs.auto_add_time_ok(unknown, at(17, 30))          # can't tell when people go: never auto-added
+        assert rs.auto_add_time_ok(self.sight(), at(13, 0))          # only markets are restricted
+
+    def test_gap_filler_only_uses_a_market_at_its_hour(self):
+        night = self.market("ตลาดโต้รุ่งร่วมจิตร", 6, 21)   # listed as open all day
+        here, nxt = self.sight(), self.dinner()
+        find = lambda pool, hour: rs._find_gap_filler(pool, here, nxt, datetime(2026, 7, 27, hour, 0), 200, "standard", [])
+        assert find([night], 13) is None
+        assert find([night], 17)["place"].id == "mk"
+        assert find([self.market("ตลาดจอมพล", 6, 22)], 17) is None
+
+    def test_backfill_never_adds_a_market_at_the_wrong_hour(self):
+        sight = self.sight()
+        insert = lambda pool: rs._find_best_backfill_insertion([sight], REAL_HOTEL, self.DAY, self.START, self.END, "standard", {}, pool)
+        assert insert([self.market("ตลาดจอมพล", 6, 22)]) == (None, None)             # kind unknown
+        place, pos = insert([self.market("ตลาดสดเทศบาล1", 5, 17)])                   # only as the day's first stop
+        assert (place.id, pos) == ("mk", 0)
+        place, pos = insert([self.market("ตลาดโต้รุ่งร่วมจิตร", 6, 21)])              # held to 17:00, so it may go in
+        assert (place.id, pos) == ("mk", 1)
+
+    def test_market_is_never_auto_added_ahead_of_the_days_dinner(self):
+        night, here, dinner = self.market("ตลาดต้นตาล", 16, 23), self.sight(), self.dinner()
+        at_17 = datetime(2026, 7, 27, 17, 0)
+        assert rs._find_gap_filler([night], here, dinner, at_17, 200, "standard", [], dinner_ahead=True) is None
+        # Backfill: the only slot it may take is the one after dinner.
+        place, pos = rs._find_best_backfill_insertion(
+            [here, dinner], REAL_HOTEL, self.DAY, self.START, self.END, "standard", {"r1": "dinner"}, [night],
+        )
+        assert (place.id, pos) == ("mk", 2)
+
+    def test_restaurant_that_only_opens_in_the_evening_counts_as_the_dinner(self):
+        # A lone restaurant gets no meal_role; one opening at 18:00 is the dinner all the same.
+        late = make_place(
+            id="r9", name="Late Kitchen", category="ร้านอาหาร", lat=16.425, lng=102.84,
+            hours_periods=[{"open": {"day": d, "hour": 18, "minute": 0}, "close": {"day": d, "hour": 23, "minute": 0}} for d in range(7)],
+        )
+        all_day = make_place(id="r8", name="All Day Kitchen", category="ร้านอาหาร", hours_periods=None)
+        assert rs._day_has_dinner([late], {}) and not rs._day_has_dinner([all_day], {})
+        route = rs.order_day_stops([self.market("ตลาดโต้รุ่ง"), self.sight(), late], REAL_HOTEL, self.DAY, time(9, 0), time(20, 0), "standard")
+        assert [p.id for p in route] == ["a", "r9", "mk"]
+
+    def _market_start(self, market, end):
+        stops = rs._simulate_day_walk(
+            [self.sight(), market], REAL_HOTEL, self.DAY, self.START, datetime.combine(self.DAY, end), "standard",
+        )
+        return next(s for s in stops if s["place"].id == "mk")["start_activity_dt"].strftime("%H:%M")
+
+    def test_night_market_listed_as_open_all_day_is_still_held_to_the_evening(self):
+        # Nothing else to do after the one sight: it used to be walked at ~10:15.
+        assert self._market_start(self.market("ตลาดโต้รุ่งร่วมจิตร", 6, 21), time(20, 0)) == "17:00"
+
+    def test_the_17_00_floor_gives_way_when_the_day_ends_early(self):
+        # 09:00-18:00: 120 min + the drive back only fit from 15:5x, so it is
+        # not held to 17:00 and lost (the real must-go case in
+        # TestEndOfDayVisitTruncation), and a 16:00 opening still decides.
+        assert self._market_start(self.market("ตลาดโต้รุ่งร่วมจิตร", 6, 21), time(18, 0)) < "16:00"
+        assert self._market_start(self.market("ตลาดต้นตาล", 16, 23), time(18, 0)) == "16:00"
+
+    def test_admin_label_wins_over_hours_and_name(self):
+        # places.market_time: "ตลาดสด..." open all day, but labelled an evening market.
+        assert rs.market_kind(self.market("ตลาดสดเทศบาล1", 5, 17, market_time="evening")) == "evening"
+        assert rs.market_kind(self.market("ตลาดต้นตาล", 16, 23, market_time="bogus")) == "evening"   # unknown label: ignored
+
+    def test_all_day_label_has_no_window_but_may_be_auto_added(self):
+        food_court = self.market("ตลาดตองแปด", 8, 20, market_time="all_day")
+        assert rs.preferred_time_window(food_court) is None
+        assert rs.auto_add_time_ok(food_court, datetime(2026, 7, 27, 13, 0))
+        assert rs.get_visit_duration(food_court, "standard") == 120
+
+
+class TestSparePlaces:
+    """Spare places (Place.is_spare) only fill dead time on trips whose
+    interests can't: last in line, at most two a day and one per half of it,
+    outdoors only for a morning or late-afternoon walk. Real case: a
+    "อาหารพื้นถิ่น + คาเฟ่" city trip, 09:00-20:00, with 284 idle minutes."""
+    DAY = date(2026, 7, 27)  # Monday
+    START, END = datetime(2026, 7, 27, 9, 0), datetime(2026, 7, 27, 20, 0)
+
+    @staticmethod
+    def park(place_id, lat=16.43, **overrides):
+        defaults = dict(id=place_id, name=place_id, category="สวนสาธารณะ", lat=lat, lng=102.84, hours_periods=None, is_spare=True)
+        defaults.update(overrides)
+        return make_place(**defaults)
+
+    @staticmethod
+    def sight(place_id="a", lat=16.45):
+        return make_place(id=place_id, name=place_id, category="สถานที่ท่องเที่ยว", lat=lat, lng=102.84, hours_periods=None)
+
+    def _insert(self, route, pool, roles=None):
+        return rs._find_best_backfill_insertion(route, REAL_HOTEL, self.DAY, self.START, self.END, "standard", roles or {}, pool)
+
+    def test_spares_are_the_last_tier(self):
+        own, thin, spare = self.sight("own"), make_place(id="thin", rating=3.0, review_count=5), self.park("spare")
+        assert [[p.id for p in tier] for tier in rs._filler_tiers([spare, thin, own])] == [["own"], ["thin"], ["spare"]]
+
+    def test_interest_candidate_is_used_before_a_nearer_spare(self):
+        far_own, near_spare = self.sight("own", lat=16.50), self.park("spare", lat=16.425)
+        place, _ = self._insert([self.sight()], [near_spare, far_own])
+        assert place.id == "own"
+
+    def test_outdoor_spare_only_for_a_morning_or_late_afternoon_walk(self):
+        spare, at = self.park("p"), lambda h, m=0: datetime(2026, 7, 27, h, m)
+        assert rs.auto_add_time_ok(spare, at(9, 30)) and rs.auto_add_time_ok(spare, at(16, 30))
+        assert not rs.auto_add_time_ok(spare, at(13, 0)) and not rs.auto_add_time_ok(spare, at(19, 0))
+        assert rs.auto_add_time_ok(self.park("mine", is_spare=False), at(13, 0))   # an interest match: unrestricted
+
+    def test_no_more_than_two_spares_a_day(self):
+        day = [self.park("p1"), self.park("p2"), self.sight()]
+        assert not rs._category_cap_ok(day, self.park("p3"))
+        assert rs._category_cap_ok(day, self.sight("another"))
+        assert rs._category_cap_ok(day[1:], self.park("p3"))
+
+    def test_one_spare_per_half_of_the_day(self):
+        at = lambda h: datetime(2026, 7, 27, h, 0)
+        assert not rs._spare_half_free(self.park("p"), at(10), [at(9)])
+        assert rs._spare_half_free(self.park("p"), at(17), [at(9)])
+        assert rs._spare_half_free(self.sight(), at(10), [at(9)])           # not a spare: no such limit
+
+    def test_second_spare_is_not_added_to_the_same_morning(self):
+        first, second = self.park("p1"), self.park("p2", lat=16.435)
+        place, pos = self._insert([self.sight()], [first, second])
+        assert place.is_spare and pos == 0
+        route = [place, self.sight()]
+        assert self._insert(route, [p for p in (first, second) if p.id != place.id]) == (None, None)
+
+    def test_polish_does_not_move_a_spare_to_midday(self):
+        # Two cafes back to back cost a penalty that parking the spare between
+        # them would save -- which is how it ended up walked at 13:57.
+        lunch = make_place(id="r0", name="Lunch", category="ร้านอาหาร", lat=16.43, lng=102.84, hours_periods=None)
+        cafes = [make_place(id=f"c{i}", name=f"C{i}", category="คาเฟ่", lat=16.43 + i * 0.002, lng=102.84, hours_periods=None) for i in (1, 2)]
+        spare = self.park("p")
+        route = [spare, lunch, *cafes]
+        polish = lambda added: rs._or_opt_polish(
+            route, set(), REAL_HOTEL, self.DAY, self.START, self.END, "standard", {"r0": "lunch"}, auto_added_ids=added,
+        )
+        assert [p.id for p in polish(None)] != [p.id for p in route]      # free to move: it does
+        assert [p.id for p in polish({"p"})][0] == "p"                    # an auto-added spare keeps its morning
+
+    def test_gap_filler_respects_the_half_day_rule(self):
+        spare, here, nxt = self.park("p"), self.sight(), self.sight("b", lat=16.44)
+        find = lambda taken: rs._find_gap_filler([spare], here, nxt, datetime(2026, 7, 27, 9, 0), 120, "standard", [], spare_starts=taken)
+        assert find([])["place"].id == "p"
+        assert find([datetime(2026, 7, 27, 9, 30)]) is None
+
+
+class TestDinnerFillTarget:
+    """Dinner is seated from 17:30 whatever time the day ends (a 09:00-20:00
+    day was home by 18:36). Fillers may now run up to the latest start that
+    still ends the day on time -- but dinner never waits for it."""
+    DAY = date(2026, 7, 27)  # Monday
+
+    @staticmethod
+    def dinner(**overrides):
+        defaults = dict(id="r1", name="Dinner", category="ร้านอาหาร", lat=16.425, lng=102.84, hours_periods=None)
+        defaults.update(overrides)
+        return make_place(**defaults)
+
+    def _until(self, end, place=None, later=(), roles=None):
+        return rs._dinner_fill_until(
+            place or self.dinner(), {"r1": "dinner"} if roles is None else roles, list(later),
+            datetime.combine(self.DAY, end), REAL_HOTEL, "standard", True,
+        )
+
+    def test_target_follows_the_days_end(self):
+        # 20:00 - 60 min meal - 5 min drive - 20 min filler slack
+        assert self._until(time(20, 0)) == 18 * 60 + 35
+        assert self._until(time(22, 0)) == rs.DINNER_LATEST_START
+        assert self._until(time(18, 30)) is None            # no later than the normal 17:30: nothing to extend
+
+    def test_room_is_kept_for_the_market_walk_after_dinner(self):
+        market = make_place(id="mk", name="ตลาดโต้รุ่ง", category="ตลาด", hours_periods=None)
+        assert self._until(time(20, 0), later=[market]) == 18 * 60 + 35 - rs.MARKET_AFTER_DINNER_MINUTES - rs.AFTER_DINNER_HOP_MINUTES
+
+    def test_no_target_for_a_non_dinner_or_a_restaurant_that_closes_too_early(self):
+        assert self._until(time(20, 0), roles={}) is None
+        closes_at_19 = self.dinner(hours_periods=[
+            {"open": {"day": d, "hour": 11, "minute": 0}, "close": {"day": d, "hour": 19, "minute": 0}} for d in range(7)
+        ])
+        assert self._until(time(20, 0), place=closes_at_19) is None
+
+    def _afternoon(self, pool):
+        sight = make_place(id="a", name="Sight", category="สถานที่ท่องเที่ยว", lat=16.45, lng=102.84, hours_periods=None)
+        schedule, _, _ = rs.materialize_day_schedule(
+            [sight, self.dinner()], set(), {"r1": "dinner"}, REAL_HOTEL, self.DAY, time(15, 0), time(20, 0), "standard",
+            gap_filler_pool=pool,
+        )
+        return schedule
+
+    @staticmethod
+    def _fillers(second_is_spare):
+        return [
+            make_place(id="f1", name="F1", category="สถานที่ท่องเที่ยว", lat=16.44, lng=102.84, hours_periods=None),
+            make_place(id="f2", name="F2", category="สวนสาธารณะ", lat=16.435, lng=102.84, hours_periods=None, is_spare=second_is_spare),
+        ]
+
+    def test_a_spare_carries_dinner_past_17_30(self):
+        # f1 closes the real wait for 17:30; the spare then uses the longer evening.
+        schedule = self._afternoon(self._fillers(second_is_spare=True))
+        assert [s.place.id for s in schedule[:-1]] == ["a", "f1", "f2", "r1"]
+        assert next(s for s in schedule if s.place.id == "r1").arrival_time > "18:00"
+        assert schedule[-1].arrival_time <= "20:00"
+
+    def test_the_longer_evening_is_not_spent_from_the_shared_pool(self):
+        # Replays: day 1 took a park for a later dinner, and day 2, which had
+        # used that park to close a real wait, got a 129-minute hole instead.
+        pool = self._fillers(second_is_spare=False)
+        schedule = self._afternoon(pool)
+        assert [s.place.id for s in schedule[:-1]] == ["a", "f1", "r1"]
+        assert [p.id for p in pool] == ["f2"]          # still there for another day
+
+    def test_dinner_does_not_wait_when_nothing_fills_the_time(self):
+        schedule = self._afternoon([])
+        dinner = next(s for s in schedule if s.place.id == "r1")
+        assert dinner.arrival_time == "17:30"
+
+
+class TestStretchStays:
+    """Idle time that fillers could not use goes into longer stays at the
+    stops the day already has. Real 09:00-20:00 trip (cafes + local food in
+    the city): 173 idle minutes before dinner while every stop kept its fixed
+    45-60 minutes."""
+    DAY = date(2026, 7, 27)  # Monday
+
+    @staticmethod
+    def place(place_id, category, **overrides):
+        defaults = dict(id=place_id, name=place_id.upper(), category=category, lat=16.43, lng=102.84, hours_periods=None)
+        defaults.update(overrides)
+        return make_place(**defaults)
+
+    def _meals_and_cafe(self, **cafe):
+        return [self.place("r0", "ร้านอาหาร"), self.place("c1", "คาเฟ่", lat=16.431, **cafe), self.place("r1", "ร้านอาหาร", lat=16.432)]
+
+    def _day(self, route, roles=None, start=time(9, 0), end=time(20, 0), pace="standard"):
+        schedule, _, _ = rs.materialize_day_schedule(
+            route, set(), {"r0": "lunch", "r1": "dinner"} if roles is None else roles,
+            REAL_HOTEL, self.DAY, start, end, pace,
+        )
+        return {s.place.id: s for s in schedule}, schedule
+
+    @staticmethod
+    def _seated(slot):
+        return (datetime.strptime(slot.arrival_time, "%H:%M") + timedelta(minutes=slot.wait_time_min)).strftime("%H:%M")
+
+    def _stay(self, slot):
+        return (datetime.strptime(slot.departure_time, "%H:%M") - datetime.strptime(self._seated(slot), "%H:%M")).seconds // 60
+
+    def test_room_by_category_and_pace(self):
+        cafe, wat = self.place("c1", "คาเฟ่"), self.place("w1", "วัด")
+        assert [rs._stretch_room(cafe, pace) for pace in ("relaxed", "standard", "packed")] == [45, 30, 0]
+        assert rs._stretch_room(wat, "relaxed") == 15
+        assert rs._stretch_room(self.place("b1", "ร้านอาหาร", name="หมูกระทะ"), "relaxed") == 0   # already two hours
+        market = self.place("mk", "ตลาด", name="ตลาดโต้รุ่ง")
+        assert rs._stretch_room(market, "relaxed") == 30
+        assert rs._stretch_room(market, "relaxed", day_has_dinner=True) == 0    # the short walk after dinner stays short
+
+    def test_stops_before_a_wait_stay_longer_and_the_meal_keeps_its_time(self):
+        by_id, schedule = self._day(self._meals_and_cafe())
+        assert (self._stay(by_id["r0"]), self._stay(by_id["c1"])) == (80, 75)
+        assert (self._seated(by_id["r0"]), self._seated(by_id["r1"])) == ("11:00", "17:30")
+        # What is still idle before dinner starts when the cafe is left.
+        free = next(s for s in schedule if s.status == "Free Time" and s.arrival_time > "12:00")
+        assert free.arrival_time == by_id["c1"].departure_time
+        # Dinner, the day's last stop, uses the time left before 20:00.
+        assert self._stay(by_id["r1"]) == 80
+        assert schedule[-1].arrival_time <= "20:00"
+
+    def test_pace_decides_how_much(self):
+        packed, _ = self._day(self._meals_and_cafe(), pace="packed")
+        relaxed, _ = self._day(self._meals_and_cafe(), pace="relaxed")
+        assert [self._stay(packed[i]) for i in ("r0", "c1", "r1")] == [60, 45, 60]
+        assert [self._stay(relaxed[i]) for i in ("r0", "c1", "r1")] == [90, 90, 90]
+
+    def test_never_past_closing_time(self):
+        hours = [{"open": {"day": d, "hour": 8, "minute": 0}, "close": {"day": d, "hour": 13, "minute": 0}} for d in range(7)]
+        by_id, _ = self._day(self._meals_and_cafe(hours_periods=hours))
+        assert by_id["c1"].departure_time <= "13:00"
+        assert self._stay(by_id["c1"]) >= 45
+
+    def test_a_meal_is_never_pushed_later(self):
+        # Replays: a day's only restaurant went from 15:38 to 16:33 behind
+        # longer sightseeing stops. The sight before the meal may not grow;
+        # the meal itself, with nothing behind it, may.
+        sight, meal = self.place("a", "สถานที่ท่องเที่ยว"), self.place("r0", "ร้านอาหาร", lat=16.431)
+        by_id, _ = self._day([sight, meal], roles={}, start=time(11, 0), end=time(18, 0))
+        assert self._seated(by_id["r0"]) == "12:10"
+        assert (self._stay(by_id["a"]), self._stay(by_id["r0"])) == (60, 80)
+
+    def test_a_spare_walk_stays_inside_its_hours(self):
+        sight = self.place("a", "สถานที่ท่องเที่ยว")
+        park = self.place("p1", "สวนสาธารณะ", lat=16.431, is_spare=True)
+        by_id, _ = self._day([sight, park], roles={}, pace="relaxed")
+        assert by_id["p1"].arrival_time <= "10:30"       # SPARE_OUTDOOR_WINDOWS: a morning walk starts by then
+        assert self._stay(by_id["a"]) > 60               # ...and the sight still got what fits before it
+
+    def test_a_block_that_shrinks_becomes_an_ordinary_wait(self):
+        sight, lunch = self.place("a", "สถานที่ท่องเที่ยว"), self.place("r0", "ร้านอาหาร", lat=16.431)
+        packed, packed_schedule = self._day([sight, lunch], roles={"r0": "lunch"}, pace="packed")
+        assert any(s.status == "Free Time" for s in packed_schedule)      # 50 idle minutes shown as a block
+        by_id, schedule = self._day([sight, lunch], roles={"r0": "lunch"})
+        assert not any(s.status == "Free Time" for s in schedule)
+        assert (by_id["r0"].arrival_time, by_id["r0"].wait_time_min, by_id["r0"].status) == ("10:30", 30, "Waiting")
+        assert self._seated(by_id["r0"]) == "11:00"
+
+    def test_the_day_never_ends_later_than_asked(self):
+        route = [self.place("r0", "ร้านอาหาร"), self.place("c1", "คาเฟ่", lat=16.431)]
+        _, packed = self._day(route, roles={"r0": "lunch"}, end=time(13, 0), pace="packed")
+        _, schedule = self._day(route, roles={"r0": "lunch"}, end=time(13, 0))
+        assert (packed[-1].arrival_time, schedule[-1].arrival_time) == ("12:55", "13:00")

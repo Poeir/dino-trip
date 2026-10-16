@@ -106,6 +106,9 @@ const initialState = {
   chatOpen: false,
   chatInput: '',
   chatTyping: false,
+  // True from send until the reply's stream ends (chatTyping only covers the
+  // wait for the first token) -- the send button is disabled meanwhile.
+  chatBusy: false,
   chatMessages: [
     { from: 'bot', text: 'สวัสดีครับ! ผมน้องไดโน ผู้ช่วยนำเที่ยวขอนแก่น สอบถามเรื่องสถานที่ อาหาร หรือเทศกาลได้เลยครับ' }
   ],
@@ -189,6 +192,7 @@ export function AppProvider({ children }) {
   const navigate = useNavigate()
   const [state, setStateRaw] = useState(initialState)
   const toastTimer = useRef(null)
+  const chatBusyRef = useRef(false)
   const stateRef = useRef(state)
   stateRef.current = state
   // Only read here (derived sign-up options below); SignupPage triggers the load.
@@ -554,6 +558,13 @@ export function AppProvider({ children }) {
   const sendChat = async (overrideText) => {
     const text = (overrideText ?? stateRef.current.chatInput).trim()
     if (!text) return
+    // One turn at a time: tokens are appended to the last message, so a send
+    // while a reply is still streaming would continue that reply inside the
+    // new turn's bubble. A ref rather than state.chatBusy, which only updates
+    // on the next render -- too late for a double Enter. The typed text stays
+    // in the box for when the reply finishes.
+    if (chatBusyRef.current) return
+    chatBusyRef.current = true
     // Snapshot the conversation before the new turn is pushed; empty bot
     // placeholders (interrupted streams) carry no content and are skipped.
     // Only the last few turns are sent: the server keeps just the tail anyway
@@ -565,7 +576,7 @@ export function AppProvider({ children }) {
       .map((m) => ({ role: m.from === 'user' ? 'user' : 'assistant', content: m.text }))
     // Push the user message plus an empty bot placeholder that fills in as
     // tokens stream in -- always the last message in the array while streaming.
-    setState((s) => ({ chatMessages: [...s.chatMessages, { from: 'user', text }, { from: 'bot', text: '', places: [], events: [] }], chatInput: '', chatTyping: true }))
+    setState((s) => ({ chatMessages: [...s.chatMessages, { from: 'user', text }, { from: 'bot', text: '', places: [], events: [] }], chatInput: '', chatTyping: true, chatBusy: true }))
     const appendToLastBotMessage = (patch) => setState((s) => {
       const msgs = s.chatMessages.slice()
       msgs[msgs.length - 1] = { ...msgs[msgs.length - 1], ...patch(msgs[msgs.length - 1]) }
@@ -580,11 +591,12 @@ export function AppProvider({ children }) {
         },
       })
       appendToLastBotMessage(() => ({ places, events }))
-      setState({ chatTyping: false })
     } catch (err) {
       console.error('Chat request failed:', err)
       appendToLastBotMessage(() => ({ text: 'ขออภัยครับ ระบบแชทขัดข้องชั่วคราว ลองใหม่อีกครั้งนะครับ', places: [], events: [] }))
-      setState({ chatTyping: false })
+    } finally {
+      chatBusyRef.current = false
+      setState({ chatTyping: false, chatBusy: false })
     }
   }
 
@@ -641,8 +653,18 @@ export function AppProvider({ children }) {
       : { tripForm: { ...s.tripForm, mustGo: [...s.tripForm.mustGo, trimmed] }, mustGoQuery: '', tripFormError: '' })
   }
   const removeMustGo = (name) => setState((s) => ({ tripForm: { ...s.tripForm, mustGo: s.tripForm.mustGo.filter((x) => x !== name) } }))
+  // Enter takes the first suggestion when it matches what was typed, so the
+  // chip carries a real place name: the planner only accepts a typed name
+  // that identifies one place (chatbot-service core/db.py), and "วัด" alone
+  // would be skipped. Suggestions arrive debounced, hence the match check --
+  // the list on screen may still belong to an earlier keystroke.
   const onMustGoKeyDown = (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); addMustGo(stateRef.current.mustGoQuery) }
+    if (e.key !== 'Enter') return
+    e.preventDefault()
+    const s = stateRef.current
+    const typed = s.mustGoQuery.trim().toLowerCase()
+    const top = typed && s.mustGoSuggestions.find((p) => !s.tripForm.mustGo.includes(p.name) && p.name.toLowerCase().includes(typed))
+    addMustGo(top ? top.name : s.mustGoQuery)
   }
   const setPace = (p) => setState((s) => ({ tripForm: { ...s.tripForm, pace: p } }))
   const onDailyStartChange = (e) => updateTripField('dailyStart', e.target.value)

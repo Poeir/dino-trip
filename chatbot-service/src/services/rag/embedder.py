@@ -17,10 +17,11 @@ lingering until an admin notices and deletes it.
 """
 import logging
 import threading
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 
 from sentence_transformers import SentenceTransformer
 
+from src.core.clock import today_bangkok
 from src.core.config import EMBEDDING_MODEL_NAME
 from src.core.db import supabase
 
@@ -92,13 +93,13 @@ def _event_is_expired(e: dict, today: str) -> bool:
 
 
 def pending_events():
-    today = date.today().isoformat()
+    today = today_bangkok().isoformat()
     rows = supabase.table("events").select(EVENT_SELECT).is_("embedding", "null").execute().data
     return [e for e in rows if not _event_is_expired(e, today)]
 
 
 def all_events():
-    today = date.today().isoformat()
+    today = today_bangkok().isoformat()
     rows = supabase.table("events").select(EVENT_SELECT).execute().data
     return [e for e in rows if not _event_is_expired(e, today)]
 
@@ -106,7 +107,7 @@ def all_events():
 def expire_events() -> int:
     """Clears the embedding of every already-embedded event whose date range
     is in the past. Returns how many were cleared."""
-    today = date.today().isoformat()
+    today = today_bangkok().isoformat()
     rows = supabase.table("events").select("id, event_start_date, event_end_date").not_.is_("embedding", "null").execute().data
     expired_ids = [e["id"] for e in rows if _event_is_expired(e, today)]
     for event_id in expired_ids:

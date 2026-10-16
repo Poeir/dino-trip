@@ -11,11 +11,16 @@ environment (same as running the app). What's faked out here is the LLM
 client and the retriever's DB calls, so these tests are deterministic and
 don't depend on live model behavior or network/API availability.
 """
+import time
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import pytest
 
 from src.services.chatbot.agent import (
+    BANGKOK_TZ,
+    ERROR_MESSAGE,
     FALLBACK_MESSAGE,
     MATCH_EVENTS_TAG,
     MATCH_KB_TAG,
@@ -25,6 +30,8 @@ from src.services.chatbot.agent import (
     SOURCE_KB,
     SOURCE_PLACES,
     RAGChatbotService,
+    cited_only,
+    current_time_text,
     match_tag,
 )
 
@@ -99,10 +106,23 @@ class FakeCompletions:
         return make_response(self._response_text)
 
 
+def make_client(completions):
+    """Mimics the SDK client far enough for agent.py: `.chat.completions`
+    plus `.with_options(...)`, which records what it was asked for."""
+    client = SimpleNamespace(chat=SimpleNamespace(completions=completions), options=[])
+
+    def with_options(**kwargs):
+        client.options.append(kwargs)
+        return client
+
+    client.with_options = with_options
+    return client
+
+
 def make_service(response_text=None, stream_text=None, places=None, kb_entries=None, events=None):
     svc = RAGChatbotService()
     svc.retriever = FakeRetriever(places=places, kb_entries=kb_entries, events=events)
-    svc.client = SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions(response_text, stream_text)))
+    svc.client = make_client(FakeCompletions(response_text, stream_text))
     return svc
 
 
@@ -278,7 +298,7 @@ def make_multiturn_service(**kwargs):
     svc = RAGChatbotService()
     svc.retriever = FakeRetriever()
     completions = RewriteAwareCompletions(**kwargs)
-    svc.client = SimpleNamespace(chat=SimpleNamespace(completions=completions))
+    svc.client = make_client(completions)
     return svc, completions
 
 
@@ -351,6 +371,17 @@ class TestLatencyGuards:
         result = svc.chat("เปิดกี่โมง", history=HISTORY)
         assert result["reply"] == "ตอบครับ"
 
+    def test_rewrite_call_is_not_retried_by_the_sdk(self):
+        # The client's default retry would double the rewrite's short timeout.
+        svc, _ = make_multiturn_service()
+        svc.chat("เปิดกี่โมง", history=HISTORY)
+        assert svc.client.options == [{"max_retries": 0}]
+
+    def test_answer_call_keeps_the_clients_own_retry_setting(self):
+        svc, _ = make_multiturn_service()
+        svc.chat("แนะนำร้านกาแฟ")  # first turn: no rewrite call at all
+        assert svc.client.options == []
+
     def test_all_three_sources_are_searched_with_the_same_query(self):
         svc, _ = make_multiturn_service(rewrite_text="ร้าน X เปิดกี่โมง")
         svc.chat("เปิดกี่โมง", history=HISTORY)
@@ -376,7 +407,157 @@ class TestLatencyGuards:
         assert sum(len(m["content"]) for m in out) <= MAX_HISTORY_MESSAGES * worst_turn
 
 
+def make_failing_stream(text_before_failure, chunk_size=3):
+    def gen():
+        yield from make_stream(text_before_failure, chunk_size)
+        raise RuntimeError("stream died")
+    return gen()
+
+
+class TestTurnFailures:
+    """A failed turn must still end the SSE stream with a visible message and
+    a `done` event: an exception escaping chat_stream kills the response
+    after its 200 headers, and an empty reply renders as no bubble at all."""
+
+    def _collect(self, svc, message, history=None):
+        events = list(svc.chat_stream(message, history=history))
+        tokens = "".join(e["text"] for e in events if e["type"] == "token")
+        assert [e["type"] for e in events].count("done") == 1 and events[-1]["type"] == "done"
+        return tokens, events[-1]
+
+    def test_retrieval_failure_streams_the_error_message(self):
+        svc = make_service(stream_text=f"{MATCH_PLACES_TAG} ตอบครับ")
+        svc.retriever.search_events = lambda **kw: (_ for _ in ()).throw(RuntimeError("db down"))
+        tokens, done = self._collect(svc, "แนะนำร้านกาแฟ")
+        assert tokens == done["reply"] == ERROR_MESSAGE
+        assert done["places"] == [] and done["events"] == []
+
+    def test_llm_call_failure_streams_the_error_message(self):
+        svc = make_service()
+        svc.client.chat.completions.create = lambda **kw: (_ for _ in ()).throw(TimeoutError("Request timed out."))
+        tokens, done = self._collect(svc, "แนะนำร้านกาแฟ")
+        assert tokens == done["reply"] == ERROR_MESSAGE
+        assert done["places"] == []
+
+    def test_stream_dying_mid_answer_keeps_the_partial_text_and_appends_the_error(self):
+        svc = make_service()
+        svc.client.chat.completions.create = lambda **kw: make_failing_stream(f"{MATCH_PLACES_TAG} ร้านแรกคือ")
+        tokens, done = self._collect(svc, "แนะนำร้านกาแฟ")
+        assert tokens == done["reply"] == f"ร้านแรกคือ\n\n{ERROR_MESSAGE}"
+        assert done["places"] == []
+
+    def test_stream_dying_after_a_no_match_answer_adds_nothing(self):
+        svc = make_service()
+        svc.client.chat.completions.create = lambda **kw: make_failing_stream(f"{NO_MATCH_TAG} เหตุผลภายใน")
+        tokens, done = self._collect(svc, "แก้สมการ 2x=4")
+        assert tokens == done["reply"] == FALLBACK_MESSAGE
+
+    @pytest.mark.parametrize("stream_text", ["", MATCH_PLACES_TAG, f"{MATCH_PLACES_TAG}  ", "[MATCH:PLA"])
+    def test_empty_reply_streams_the_error_message_not_an_empty_bubble(self, stream_text):
+        svc = make_service(stream_text=stream_text)
+        tokens, done = self._collect(svc, "แนะนำร้านกาแฟ")
+        assert tokens == done["reply"] == ERROR_MESSAGE
+        assert done["places"] == []
+
+    @pytest.mark.parametrize("response_text", [None, "", MATCH_PLACES_TAG])
+    def test_non_streaming_empty_reply_returns_the_error_message(self, response_text):
+        svc = make_service(response_text=response_text)
+        result = svc.chat("แนะนำร้านกาแฟ")
+        assert result["reply"] == ERROR_MESSAGE
+        assert result["places"] == []
+
+
+class TestCitedCards:
+    """Cards are limited to the places/events the reply names -- every case
+    here is a real DB name and the way the model was seen to write it."""
+
+    def _names(self, cards, reply):
+        return [c["name"] for c in cited_only([{"name": n} for n in cards], reply)]
+
+    def test_only_the_place_the_reply_names_is_kept(self):
+        cards = ["วัดพระบาทภูพานคำ", "ก๋วยเตี๋ยวตี๋ม่อ", "วัดป่าชัยวัน"]
+        assert self._names(cards, "แถวท่าพระมีร้าน **ก๋วยเตี๋ยวตี๋ม่อ** แนะนำครับ") == ["ก๋วยเตี๋ยวตี๋ม่อ"]
+
+    def test_markdown_spacing_and_punctuation_differences_still_match(self):
+        cards = ["En Khonkaen - เอ็น ขอนแก่น", "อโรคยาศาล “กู่แก้ว”", "Masaki Khon Kaen - มาซากิ ขอนแก่น"]
+        reply = '**En Khonkaen (เอ็น ขอนแก่น)** และ อโรคยาศาล "กู่แก้ว" ครับ'
+        assert self._names(cards, reply) == cards[:2]
+
+    @pytest.mark.parametrize("name, written_as", [
+        ("พระธาตุขามแก่น จังหวัดขอนแก่น", "พระธาตุขามแก่น (วัดเจติยภูมิ)"),
+        ("น้ำผุดตาดเต่า at ภูผาม่าน ขอนแก่น", "น้ำผุดตาดเต่า at ภูผาม่าน (อ.ภูผาม่าน)"),
+        ("เที่ยวขอนแก่น Khonkaen Exotic Pets สนามบินขอนแก่น", "Khonkaen Exotic Pets สนามบินขอนแก่น"),
+        ("ธารธาราลานกางเต็นท์เขื่อนอุบลรัตน์ อ.อุบลรัตน์ จ.ขอนแก่น", "ธารธาราลานกางเต็นท์เขื่อนอุบลรัตน์"),
+    ])
+    def test_name_written_without_its_location_qualifier_still_matches(self, name, written_as):
+        cards = [name, "วัดป่าชัยวัน"]
+        assert self._names(cards, f"ขอแนะนำ **{written_as}** ครับ") == [name]
+
+    def test_a_partial_overlap_is_not_a_mention(self):
+        # "ภูเวียง" and "ไดโนเสาร์" are both in the reply, but neither place is.
+        cards = ["ศูนย์ศึกษาวิจัยและพิพิธภัณฑ์ไดโนเสาร์ (พิพิธภัณฑ์ไดโนเสาร์ภูเวียง)", "รอยตีนไดโนเสาร์ ภูเวียง", "ลานไดโนเสาร์ เขื่อนอุบลรัตน์"]
+        reply = "ศูนย์ศึกษาวิจัยและพิพิธภัณฑ์ไดโนเสาร์ (พิพิธภัณฑ์ไดโนเสาร์ภูเวียง) เปิด 09:30 น."
+        assert self._names(cards, reply) == cards[:1]
+
+    def test_a_name_that_shrinks_to_a_common_word_needs_its_full_form(self):
+        cards = ["ก๋วยเตี๋ยวตี๋ม่อ", "ชาม ( Charm kitchen )"]
+        assert self._names(cards, "ก๋วยเตี๋ยวตี๋ม่อ ราคาชามละ 50 บาท") == ["ก๋วยเตี๋ยวตี๋ม่อ"]
+        assert self._names(cards, "ร้านชาม (Charm kitchen) ก็น่าลองครับ") == ["ชาม ( Charm kitchen )"]
+
+    def test_cards_are_left_alone_when_the_reply_names_none_of_them(self):
+        cards = ["วัดพระบาทภูพานคำ", "วัดป่าชัยวัน"]
+        assert self._names(cards, "มีวัดให้เลือกหลายแห่งครับ") == cards
+
+    def test_chat_and_chat_stream_both_drop_uncited_places_and_events(self):
+        text = f"{match_tag(SOURCE_PLACES, SOURCE_EVENTS)} แนะนำ ร้าน B และงาน Y Fest ครับ"
+        kwargs = dict(
+            places=[make_place_row("p1", "ร้าน A"), make_place_row("p2", "ร้าน B")],
+            events=[make_event_row("e1", "X Fest"), make_event_row("e2", "Y Fest")],
+        )
+        result = make_service(response_text=text, **kwargs).chat("คำถาม")
+        done = list(make_service(stream_text=text, **kwargs).chat_stream("คำถาม"))[-1]
+        for out in (result, done):
+            assert [p["id"] for p in out["places"]] == ["p2"]
+            assert [e["id"] for e in out["events"]] == ["e2"]
+
+
+class TestCurrentTime:
+    def test_formats_thai_weekday_date_and_both_year_systems(self):
+        now = datetime(2026, 10, 12, 21, 40, tzinfo=BANGKOK_TZ)
+        assert current_time_text(now) == "วันจันทร์ที่ 12 ตุลาคม พ.ศ. 2569 (ค.ศ. 2026) เวลา 21:40 น."
+
+    def test_a_utc_clock_is_converted_to_thai_time(self):
+        # 18:30 UTC is already 01:30 the next day in Thailand -- a UTC
+        # container clock used to report the wrong weekday and hour here.
+        now = datetime(2026, 10, 12, 18, 30, tzinfo=timezone.utc)
+        assert current_time_text(now).startswith("วันอังคารที่ 13 ตุลาคม")
+        assert current_time_text(now).endswith("เวลา 01:30 น.")
+
+    def test_system_prompt_carries_todays_date(self):
+        svc, c = make_multiturn_service()
+        svc.chat("มีงานอะไรบ้าง")
+        assert current_time_text().split(" เวลา ")[0] in c.answer_calls[0]["messages"][0]["content"]
+
+
 class TestEmbedCache:
+    def test_concurrent_misses_for_the_same_query_encode_once(self, monkeypatch):
+        # agent._prepare embeds the same query from three threads at once.
+        from src.services.rag import retriever
+        calls = []
+
+        class SlowModel:
+            def encode(self, text, normalize_embeddings):
+                calls.append(text)
+                time.sleep(0.05)
+                return SimpleNamespace(tolist=lambda: [0.1, 0.2])
+
+        monkeypatch.setattr(retriever, "_model", SlowModel())
+        retriever._embed_cached.cache_clear()
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            results = list(pool.map(retriever.embed, ["q"] * 3))
+        assert results == [[0.1, 0.2]] * 3
+        assert calls == ["q"]
+
     def test_same_query_is_encoded_once(self, monkeypatch):
         from src.services.rag import retriever
         calls = []

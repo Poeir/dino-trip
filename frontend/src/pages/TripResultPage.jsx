@@ -11,6 +11,7 @@ import PlaceDetailView from '../components/PlaceDetailView.jsx'
 import { CalendarIcon, RouteIcon, GiftIcon, PinIcon } from '../components/Icons.jsx'
 import { fetchPlace, fetchPlaces } from '../lib/apiClient.js'
 import { dayDirectionsUrls } from '../utils/mapsLink.js'
+import { tripNotices } from '../utils/tripNotices.js'
 
 const sparkles = [
   { left: '6%', top: '20%', size: 7, duration: '3.2s', delay: '0s' },
@@ -95,6 +96,7 @@ export default function TripResultPage() {
   }
   if (!state.tripPlan) return <Navigate to="/trip" replace />
   const plan = derived.tripPlan
+  const notices = tripNotices(state.tripPlanNote)
   const selectedPlaceView = selectedPlace
     ? { ...selectedPlace, isFavorite: state.favoriteIds.includes(selectedPlace.id), onToggleFavorite: () => actions.toggleFavorite(selectedPlace.id) }
     : null
@@ -147,6 +149,17 @@ export default function TripResultPage() {
               </div>
             )}
           </div>
+
+          {/* A must-go place that is missing from the plan, or a public holiday
+              on the trip dates: without this the place just wasn't there. */}
+          {notices.length > 0 && (
+            <div role="status" style={{ background: '#FFF3E0', border: '1px solid #FFB74D', borderRadius: 16, padding: '14px 16px' }}>
+              <div style={{ fontWeight: 800, fontSize: 12.5, color: '#A65B00', marginBottom: 6 }}>ข้อควรทราบเกี่ยวกับแผนนี้</div>
+              <ul style={{ margin: 0, paddingLeft: 18, display: 'grid', gap: 6, fontSize: 13, color: '#6b4a1e', lineHeight: 1.5 }}>
+                {notices.map((text) => <li key={text}>{text}</li>)}
+              </ul>
+            </div>
+          )}
 
           {state.tripPlanRationale && (
             <div style={{ background: '#FFF8E1', border: '1px solid #FBC02D', borderRadius: 16, padding: '14px 16px' }}>

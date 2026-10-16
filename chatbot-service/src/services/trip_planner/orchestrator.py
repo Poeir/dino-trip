@@ -29,6 +29,26 @@ BUDGET_EXCLUDED_CATEGORIES = {
     "หรูหรา": {"ตลาด"},
 }
 
+# --- Spare pool -----------------------------------------------------------
+# Some interest sets can't fill a day on their own: "อาหารพื้นถิ่น + คาเฟ่" in
+# the city retrieves one temple, four cafes and restaurants, and a 09:00-20:00
+# day had 284 idle minutes with nothing left to put in them. The spare pool
+# is a short list of neutral places to walk around (parks, lakes, landmarks,
+# a market at its hour) that the LLM never sees; route_scheduler only draws
+# on it after every interest candidate, at most MAX_SPARE_STOPS_PER_DAY a day
+# and only at a sensible hour (auto_add_time_ok). No temples or museums: those
+# reach a trip through the traveller's interests, not as padding.
+SPARE_CATEGORIES = route_scheduler.SPARE_OUTDOOR_CATEGORIES + ("ตลาด",)
+# Stricter than the usual filler bar (route_scheduler.MIN_FILLER_*): nobody
+# asked for these places, so only well-established ones qualify.
+SPARE_MIN_RATING = 4.0
+SPARE_MIN_REVIEWS = 200
+# A spare is a walk near where the traveller sleeps, before setting off or on
+# the way back -- never a reason to drive to another district.
+SPARE_MAX_KM_FROM_HOTEL = route_scheduler.INTERCITY_THRESHOLD_KM
+SPARE_POOL_SIZE = 20
+
+
 # Google's administrative_area_level_2 name for Khon Kaen's city district
 # (see import-places.js's mapDistrict()) comes back inconsistently across
 # rows -- confirmed against the live `places` table: "อำเภอเมืองขอนแก่น" (the
@@ -262,6 +282,38 @@ class TripBuilderService:
                         have, have_lunch = have + 1, have_lunch + (1 if lunch_capable(place) else 0)
 
         return accommodation, must_go_list + interest_list, missing_must_go, {p.id for p in must_go_list}
+
+    def build_spare_pool(self, user_input: TripInput, accommodation: Place, exclude_ids: set):
+        """Spare places for this trip (see SPARE_CATEGORIES above), nearest
+        the accommodation first. Same budget and area rules as the candidate
+        list; `exclude_ids` are the candidates already in play."""
+        allowed_prices = BUDGET_PRICE_RANGES.get(user_input.budget_level, [0, 1, 2])
+        excluded_categories = BUDGET_EXCLUDED_CATEGORIES.get(user_input.budget_level, set())
+
+        spares = []
+        for row in self.retriever.list_by_categories(SPARE_CATEGORIES):
+            if not row.get("id") or row["id"] in exclude_ids:
+                continue
+            place = Place(**row, is_spare=True)
+            if (place.rating or 0.0) < SPARE_MIN_RATING or (place.review_count or 0) < SPARE_MIN_REVIEWS:
+                continue
+            if place.category in excluded_categories:
+                continue
+            if place.price_level is not None and place.price_level not in allowed_prices:
+                continue
+            if user_input.area_scope == "เมือง" and not _is_mueang_district(place.district):
+                continue
+            if place.lat is None or place.lng is None or route_scheduler._is_business_closed(place):
+                continue
+            # A market only counts once it's known when people go to it.
+            if place.category == "ตลาด" and route_scheduler.market_kind(place) not in ("morning", "evening"):
+                continue
+            distance = route_scheduler.calculate_distance(accommodation, place)
+            if distance > SPARE_MAX_KM_FROM_HOTEL:
+                continue
+            spares.append((distance, place))
+        spares.sort(key=lambda pair: pair[0])
+        return [place for _, place in spares[:SPARE_POOL_SIZE]]
 
     def get_dynamic_instructions(self, user_input: TripInput):
         start = datetime.strptime(user_input.start_time, "%H:%M").time()

@@ -48,7 +48,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--run", required=True)
     ap.add_argument("--pool-tag", default="_final")
-    ap.add_argument("--judge-model", default=None)
+    ap.add_argument("--judge-model", default=None, help="'kku:<model>' or 'vertex:<model>' picks the provider")
     ap.add_argument("--workers", type=int, default=2)
     ap.add_argument("--max-judge-tokens", type=int, default=0)
     ap.add_argument("--dry-run", action="store_true", help="only verify that the itineraries can be rebuilt; no LLM call")

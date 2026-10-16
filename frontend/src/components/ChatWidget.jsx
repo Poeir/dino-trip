@@ -269,7 +269,7 @@ export default function ChatWidget() {
               placeholder="พิมพ์คำถามของคุณ..."
               style={{ flex: 1, minWidth: 0, border: '1px solid #DCD8C6', background: '#F8F9F4', borderRadius: 20, padding: '9px 16px', fontSize: 13.5, outline: 'none' }}
             />
-            <button onClick={() => actions.sendChat()} className="dc-send-btn" style={{ background: 'linear-gradient(135deg,#66BB6A,#388E3C)', border: 'none', width: 36, height: 36, borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 6px 14px rgba(46,125,50,0.35)' }}>
+            <button onClick={() => actions.sendChat()} disabled={state.chatBusy} className="dc-send-btn" style={{ background: 'linear-gradient(135deg,#66BB6A,#388E3C)', border: 'none', width: 36, height: 36, borderRadius: '50%', cursor: state.chatBusy ? 'default' : 'pointer', opacity: state.chatBusy ? 0.45 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 6px 14px rgba(46,125,50,0.35)' }}>
               <Send size={16} color="#fff" aria-label="ส่ง" style={{ marginLeft: -1 }} />
             </button>
           </div>

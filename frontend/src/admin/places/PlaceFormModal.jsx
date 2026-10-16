@@ -17,6 +17,14 @@ import FormSection, { FormActions, FormGrid, FormGroup } from '../ui/FormSection
 import PlaceSyncInfo from '../PlaceSyncInfo.jsx'
 import PlaceAiDescription from './PlaceAiDescription.jsx'
 
+// places.market_time -- keep in step with MARKET_TIMES in backend/src/lib/mappers.js.
+const MARKET_TIME_OPTIONS = [
+  { value: '', label: 'ไม่ระบุ (ให้ระบบเดาจากเวลาเปิดและชื่อ)' },
+  { value: 'morning', label: 'ตลาดเช้า' },
+  { value: 'evening', label: 'ตลาดเย็น / กลางคืน' },
+  { value: 'all_day', label: 'ไม่มีช่วงเฉพาะ (ไปได้ตลอดเวลาที่เปิด)' },
+]
+
 function validate(f) {
   const e = {}
   if (!f.name?.trim()) e.name = 'กรุณากรอกชื่อสถานที่'
@@ -120,6 +128,16 @@ export default function PlaceFormModal({ onChanged }) {
               </select>
             </Field>
           </FormGrid>
+          {f.category === 'ตลาด' && (
+            <div>
+              <Field label="ช่วงเวลาที่คนนิยมไปเดิน">
+                <select className="ad-select" value={f.marketTime || ''} onChange={(e) => actions.updateFormField('marketTime', e.target.value)}>
+                  {MARKET_TIME_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </Field>
+              <div className="ad-hint">ใช้จัดเวลาในทริป: ตลาดเช้าจะถูกจัดเป็นจุดแรกของวัน ตลาดเย็นตั้งแต่ราว 17:00 หลังมื้อเย็น ช่องนี้ไม่ใช่เวลาเปิด-ปิด ระบบยังจัดเฉพาะในเวลาทำการของสถานที่เสมอ</div>
+            </div>
+          )}
           <FormGroup legend="คะแนน">
             <StarRatingInput value={f.rating} onChange={(v) => actions.updateFormField('rating', v)} />
             {errors.rating
