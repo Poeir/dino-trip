@@ -111,7 +111,7 @@ export function crudRouter({ table, select, order, sortRows, toRow, toResponse, 
     if ('ids' in req.query) {
       let query = applyQueryParams(db(table).select(columns), req.query)
       const data = await query
-      const rows = sortRows ? sortRows(data) : data
+      const rows = sortRows ? sortRows(data, req.query) : data
       return res.json((await enrich(rows)).map(mapRow))
     }
 
@@ -130,7 +130,7 @@ export function crudRouter({ table, select, order, sortRows, toRow, toResponse, 
           for (const rule of orderRules) query = query.orderBy(rule.column, rule.ascending === false ? 'desc' : 'asc')
         }
         const data = await query
-        const rows = sortRows ? sortRows(data) : data
+        const rows = sortRows ? sortRows(data, req.query) : data
         responseData = (await enrich(rows)).map(mapRow)
       } else {
         const page = Math.max(1, parseInt(req.query.page, 10) || 1)
@@ -150,7 +150,7 @@ export function crudRouter({ table, select, order, sortRows, toRow, toResponse, 
         // gets the fast DB-level path below like any other resource.
         if (sortRows && !explicitSort) {
           const query = applyQueryParams(db(table).select(columns), req.query)
-          const all = sortRows(await query)
+          const all = sortRows(await query, req.query)
           const total = all.length
           const rows = all.slice((page - 1) * pageSize, page * pageSize)
           responseData = { data: (await enrich(rows)).map(mapRow), total, page, pageSize, totalPages: Math.ceil(total / pageSize) }

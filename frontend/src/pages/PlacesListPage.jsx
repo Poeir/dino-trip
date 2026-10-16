@@ -17,7 +17,17 @@ import { placeCategoryIcon, MASCOT } from '../data/categoryImages.js'
 // >=1500 reviews reads as "popular" -- mirrors the badge PlacesTab/PlaceCard
 // used to compute in AppContext.jsx before this page moved to its own
 // server-paginated fetch.
-const placeBadge = (p) => p.reviews >= 1500 ? { label: 'ยอดนิยม', bg: '#FDEEE3', color: '#9b5527' } : { label: '', bg: '', color: '' }
+const placeBadge = (p) => {
+  if (p.isFeatured) return { label: 'แนะนำ', bg: '#FFF3C4', color: '#7A5205' }
+  if (p.reviews >= 1500) return { label: 'ยอดนิยม', bg: '#FDEEE3', color: '#9b5527' }
+  return { label: '', bg: '', color: '' }
+}
+
+const SORT_OPTIONS = [
+  { value: 'recommended', label: 'แนะนำ' },
+  { value: 'popular', label: 'ยอดนิยม (รีวิวมากสุด)' },
+  { value: 'topRated', label: 'คะแนนสูงสุด' },
+]
 
 function CategoryIcon({ cat }) {
   const props = { size: 15, color: cat.iconBorder, box: false }
@@ -52,9 +62,11 @@ export default function PlacesListPage() {
   // The search box binds to AppContext's state.searchQuery (shared with the
   // category chips' onClick handlers), so this page passes the debounced
   // term through extraParams rather than usePagedList's own query/setQuery.
+  const [sort, setSort] = useState('recommended')
   const paged = usePagedList(fetchPlaces, {
     pageSize: 24,
     extraParams: {
+      sort: sort === 'recommended' ? undefined : sort,
       search: debouncedSearch || undefined,
       category: state.activeCategory === 'ทั้งหมด' ? undefined : state.activeCategory,
       isActive: true,
@@ -92,12 +104,24 @@ export default function PlacesListPage() {
     <main data-role="places-page" style={{ maxWidth: 1360, margin: '0 auto', padding: 'var(--page-pt) var(--page-gutter) var(--page-pb)' }}>
       <h1 data-font="culture" style={{ fontSize: 27, fontWeight: 800, color: '#1B5E20', margin: '0 0 6px' }}>สถานที่ท่องเที่ยวทั้งหมด</h1>
       <p style={{ color: '#5f6a63', fontSize: 14, margin: '0 0 22px' }}>รวมสถานที่แนะนำในขอนแก่น เลือกดูตามหมวดหมู่ได้เลย</p>
-      <input
-        value={state.searchQuery}
-        onChange={actions.onSearchChange}
-        placeholder="ค้นหาสถานที่..."
-        style={{ width: '100%', maxWidth: 420, border: '1px solid #DCD8C6', borderRadius: 20, padding: '10px 18px', fontSize: 14, marginBottom: 18, display: 'block' }}
-      />
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', marginBottom: 18 }}>
+        <input
+          value={state.searchQuery}
+          onChange={actions.onSearchChange}
+          placeholder="ค้นหาสถานที่..."
+          style={{ flex: '1 1 260px', maxWidth: 420, border: '1px solid #DCD8C6', borderRadius: 20, padding: '10px 18px', fontSize: 14 }}
+        />
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5, color: '#5f6a63' }}>
+          เรียงตาม
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.target.value)}
+            style={{ border: '1px solid #DCD8C6', borderRadius: 20, padding: '9px 14px', fontSize: 14, background: '#fff', color: '#1f2a24' }}
+          >
+            {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </label>
+      </div>
       <div data-role="places-filter-wrap" data-more={canScrollMore ? 'true' : 'false'} data-back={canScrollBack ? 'true' : 'false'} style={{ position: 'relative' }}>
       <button type="button" className="dc-filter-prev" aria-label="ดูหมวดหมู่ก่อนหน้า" onClick={() => filterRef.current?.scrollBy({ left: -180, behavior: 'smooth' })}><ChevronLeft size={18} /></button>
       <div ref={filterRef} data-role="places-filter-bar" data-more={canScrollMore ? 'true' : 'false'} data-back={canScrollBack ? 'true' : 'false'} onScroll={updateCanScroll} style={{ display: 'flex', gap: 9, flexWrap: 'wrap', marginBottom: 26 }}>

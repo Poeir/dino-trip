@@ -28,6 +28,7 @@ export function rowToPlace(row) {
     reviewsList: row.reviews || [],
     location: row.lat != null && row.lng != null ? { lat: row.lat, lng: row.lng } : null,
     isActive: row.is_active !== false,
+    isFeatured: !!row.is_featured,
     // An admin-uploaded gallery (row.uploadedPhotoUrls, attached by
     // places.routes.js's attachUploadedPhotos()) wins outright over whatever
     // was in `img`/`images` (a Google-imported gallery from import-places.js,
@@ -147,6 +148,9 @@ export function placePayload(body) {
     // openCreateForm's `isActive: true` default and lets any caller that
     // omits the field (older code paths) leave existing rows untouched.
     is_active: body.isActive !== false,
+    // Only written when the caller sends it, so older payloads that omit it
+    // don't reset a pinned place.
+    ...(body.isFeatured !== undefined && { is_featured: !!body.isFeatured }),
   }
 }
 

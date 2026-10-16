@@ -960,7 +960,7 @@ export function AppProvider({ children }) {
 
   const openCreateForm = (type) => {
     const defaults = {
-      place: { name: '', category: 'คาเฟ่', rating: '4.5', reviews: '0', price: '', address: '', lat: '', lng: '', hours: '', phone: '', desc: '', amenities: '', tags: '', hasQR: false, qrPoints: '0', img: '', isActive: true },
+      place: { name: '', category: 'คาเฟ่', rating: '4.5', reviews: '0', price: '', address: '', lat: '', lng: '', hours: '', phone: '', desc: '', amenities: '', tags: '', hasQR: false, qrPoints: '0', img: '', isActive: true, isFeatured: false },
       event: { name: '', category: '', dateRange: '', venueName: '', admission: '', organizer: '', suitableFor: '', desc: '', status: 'upcoming', img: '', eventStartDate: '', eventEndDate: '', placeId: '' },
       kb: { title: '', category: 'transport', content: '', isPinned: false, isActive: true },
       qr: { placeId: '', points: '10', isActive: true, expiresAt: '', radiusM: '200' },
@@ -1051,7 +1051,7 @@ export function AppProvider({ children }) {
   ;['name', 'category', 'rating', 'reviews', 'price', 'address', 'hours', 'phone', 'desc', 'amenities', 'tags', 'qrPoints', 'dateRange', 'venueName', 'admission', 'organizer', 'suitableFor', 'status', 'title', 'content', 'placeId', 'points', 'cost', 'img'].forEach((f) => {
     fieldHandlers['onField_' + f] = (e) => updateFormField(f, e.target.value)
   })
-  ;['hasQR', 'isPinned', 'isActive'].forEach((f) => {
+  ;['hasQR', 'isPinned', 'isActive', 'isFeatured'].forEach((f) => {
     fieldHandlers['onField_' + f] = (e) => updateFormField(f, e.target.checked)
   })
 
