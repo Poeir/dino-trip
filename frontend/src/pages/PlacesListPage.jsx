@@ -13,6 +13,7 @@ import LoadingSpinner from '../components/LoadingSpinner.jsx'
 import EmptyState from '../components/EmptyState.jsx'
 import LoadError from '../components/LoadError.jsx'
 import { placeCategoryIcon, MASCOT } from '../data/categoryImages.js'
+import { SUBCATEGORIES } from '../data/seed.js'
 
 // >=1500 reviews reads as "popular" -- mirrors the badge PlacesTab/PlaceCard
 // used to compute in AppContext.jsx before this page moved to its own
@@ -63,10 +64,17 @@ export default function PlacesListPage() {
   // category chips' onClick handlers), so this page passes the debounced
   // term through extraParams rather than usePagedList's own query/setQuery.
   const [sort, setSort] = useState('recommended')
+  // Second chip row for ร้านอาหาร / คาเฟ่. Derived against the active category so
+  // a stale pick from another category never reaches the request.
+  const [subcategory, setSubcategory] = useState(null)
+  const subOptions = SUBCATEGORIES[state.activeCategory]
+  const activeSub = subOptions?.includes(subcategory) ? subcategory : null
+  useEffect(() => { setSubcategory(null) }, [state.activeCategory])
   const paged = usePagedList(fetchPlaces, {
     pageSize: 24,
     extraParams: {
       sort: sort === 'recommended' ? undefined : sort,
+      subcategory: activeSub || undefined,
       search: debouncedSearch || undefined,
       category: state.activeCategory === 'ทั้งหมด' ? undefined : state.activeCategory,
       isActive: true,
@@ -133,6 +141,14 @@ export default function PlacesListPage() {
       </div>
       <button type="button" className="dc-filter-next" aria-label="ดูหมวดหมู่ถัดไป" onClick={() => filterRef.current?.scrollBy({ left: 180, behavior: 'smooth' })}><ChevronRight size={18} /></button>
       </div>
+      {subOptions && (
+        <div data-role="places-subfilter-bar" style={{ display: 'flex', gap: 9, flexWrap: 'wrap', margin: '-10px 0 22px' }}>
+          <FilterPill active={!activeSub} onClick={() => setSubcategory(null)}>ทั้งหมด</FilterPill>
+          {subOptions.map((s) => (
+            <FilterPill key={s} active={s === activeSub} onClick={() => setSubcategory(s)}>{s}</FilterPill>
+          ))}
+        </div>
+      )}
       {paged.loading && placesView.length === 0 && <LoadingSpinner size={36} label="กำลังโหลดสถานที่..." />}
       {paged.error && <LoadError message="โหลดรายการสถานที่ไม่สำเร็จ" onRetry={paged.refetch} />}
       {!paged.loading && !paged.error && placesView.length === 0 && (

@@ -49,7 +49,7 @@ def place_text(p: dict) -> str:
     address (like the original setup_vector_db.py did) was tested against
     this dataset and badly diluted retrieval quality (buffet/park/cafe
     queries all returned irrelevant top results); dropping them fixed it."""
-    parts = [p.get("name"), p.get("category"), *(p.get("tags") or []), p.get("description"), *(p.get("amenities") or [])]
+    parts = [p.get("name"), p.get("category"), p.get("subcategory"), *(p.get("tags") or []), p.get("description"), *(p.get("amenities") or [])]
     return " - ".join(x for x in parts if x)
 
 
@@ -62,7 +62,7 @@ def event_text(e: dict) -> str:
     return " - ".join(x for x in parts if x)
 
 
-PLACE_SELECT = "id, name, category, description, tags, amenities"
+PLACE_SELECT = "id, name, category, subcategory, description, tags, amenities"
 KB_SELECT = "id, title, category, content"
 EVENT_SELECT = "id, name, category, venue_name, organizer, suitable_for, description, event_start_date, event_end_date"
 

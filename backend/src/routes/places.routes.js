@@ -14,7 +14,7 @@ import { rateLimit } from '../lib/rateLimit.js'
 
 // Excludes `embedding` (384-float pgvector column, RAG-only) and
 // `hours_periods`/`price_level` -- the frontend doesn't read them.
-export const PLACE_COLUMNS = 'id, source, google_place_id, name, category, rating, review_count, price, address, district, hours, phone, website, maps_url, lat, lng, description, amenities, tags, has_qr, qr_points, is_featured, img, images, reviews, business_status, is_active, locked_fields, last_synced_at, google_diff, created_at, updated_at'
+export const PLACE_COLUMNS = 'id, source, google_place_id, name, category, rating, review_count, price, address, district, hours, phone, website, maps_url, lat, lng, description, amenities, tags, has_qr, qr_points, is_featured, subcategory, img, images, reviews, business_status, is_active, locked_fields, last_synced_at, google_diff, created_at, updated_at'
 
 // Matches fetch-places.js's own MAX_PHOTOS_PER_PLACE -- same gallery-size
 // convention for admin-uploaded photos as Google-imported ones.
@@ -83,6 +83,7 @@ export const placesRouter = crudRouter({
   beforeDelete: galleryCleanup('place_photos', 'place_id'),
   // ?search= (PlacesTab/PlacesListPage's search box), ?category= (exact
   // match, both admin sort dropdown and the public category chips),
+  // ?subcategory= (exact match, the public list's second chip row),
   // ?isActive=true (PlacesListPage only -- admin sees hidden places too, so
   // it never sends this param), ?hasQR=true (PointsPage's QR-places list),
   // and ?ids= (AppContext's post-trip-plan QR-points lookup, batched by id
@@ -94,6 +95,7 @@ export const placesRouter = crudRouter({
   sortable: ['name', 'rating'],
   filters: (query, q) => {
     if (q.category) query = query.where('category', q.category)
+    if (q.subcategory) query = query.where('subcategory', q.subcategory)
     if (q.isActive != null) query = query.where('is_active', q.isActive === 'true')
     if (q.hasQR != null) query = query.where('has_qr', q.hasQR === 'true')
     if (q.ids) query = query.whereIn('id', String(q.ids).split(','))

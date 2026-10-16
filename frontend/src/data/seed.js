@@ -26,3 +26,10 @@ export const adminTabs = [
   { key: 'trips', label: 'ทริป', icon: 'trips', group: 'ผู้ใช้และการใช้งาน' },
   { key: 'survey', label: 'ความพึงพอใจ', icon: 'survey', group: 'ผู้ใช้และการใช้งาน' }
 ]
+
+// places.subcategory options per category -- keep in step with SUBCATEGORIES in
+// backend/src/lib/placeSubcategory.js.
+export const SUBCATEGORIES = {
+  'ร้านอาหาร': ['อาหารอีสาน', 'ปิ้งย่าง/ชาบู', 'ก๋วยเตี๋ยว', 'ญี่ปุ่น/เกาหลี', 'อาหารเช้า', 'เวียดนาม', 'อื่นๆ'],
+  'คาเฟ่': ['เบเกอรี่/ของหวาน', 'บาร์/bistro', 'คาเฟ่ทั่วไป'],
+}

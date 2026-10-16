@@ -10,6 +10,7 @@ import LocationPicker from '../../components/LocationPicker.jsx'
 import HoursComposer from '../../components/HoursComposer.jsx'
 import PlacePhotoGallery, { MAX_PHOTOS } from '../../components/PlacePhotoGallery.jsx'
 import { AMENITY_OPTIONS, TAG_OPTIONS } from '../../data/placeVocabulary.js'
+import { SUBCATEGORIES } from '../../data/seed.js'
 import { createPlace, updatePlace, fetchPlace, fetchPlacePhotos, uploadPlacePhoto, deletePlacePhoto } from '../../lib/apiClient.js'
 import { useDirtyGuard } from '../hooks/useDirtyGuard.js'
 import { usePhotoQueue } from '../hooks/usePhotoQueue.js'
@@ -122,12 +123,24 @@ export default function PlaceFormModal({ onChanged }) {
               <input className="ad-input" value={f.name || ''} onChange={actions.onField_name} placeholder="เช่น คาเฟ่ริมบึง" />
             </Field>
             <Field label="หมวดหมู่" required error={errors.category}>
-              <select className="ad-select" value={f.category || ''} onChange={actions.onField_category}>
+              <select className="ad-select" value={f.category || ''} onChange={(e) => {
+                actions.onField_category(e)
+                // A subcategory only means something within its own category.
+                if (!SUBCATEGORIES[e.target.value]?.includes(f.subcategory)) actions.updateFormField('subcategory', '')
+              }}>
                 <option value="">-- เลือกหมวดหมู่ --</option>
                 {derived.placeCategoryOptions.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
             </Field>
           </FormGrid>
+          {SUBCATEGORIES[f.category] && (
+            <Field label="ประเภทย่อย">
+              <select className="ad-select" value={f.subcategory || ''} onChange={(e) => actions.updateFormField('subcategory', e.target.value)}>
+                <option value="">-- ยังไม่ระบุ --</option>
+                {SUBCATEGORIES[f.category].map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </Field>
+          )}
           {f.category === 'ตลาด' && (
             <div>
               <Field label="ช่วงเวลาที่คนนิยมไปเดิน">

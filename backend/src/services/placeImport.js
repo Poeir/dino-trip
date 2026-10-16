@@ -3,6 +3,7 @@ import { httpError } from '../middleware/errorHandler.js'
 import { invalidateCache } from '../lib/crudRouter.js'
 import { uploadImageBuffer, deleteImage } from '../lib/cloudinary.js'
 import { placeToRow } from '../lib/googlePlaceRow.js'
+import { classifySubcategory } from '../lib/placeSubcategory.js'
 import { GooglePlaceNotFound } from './placeSync.js'
 
 // Admin "add a place from Google Maps": search Google, pick a result, and the
@@ -121,7 +122,9 @@ export async function importGooglePlace(googlePlaceId, actorId) {
   const details = await fetchDetails(gid)
   // Create first (hidden), then attach photos: the Cloudinary folder needs the
   // new place's id, and a photo failure must not lose the place.
-  const row = { ...placeToRow(details), is_active: false }
+  const draft = placeToRow(details)
+  // Rule-based only (no LLM at import time); null leaves it for the admin to pick.
+  const row = { ...draft, subcategory: classifySubcategory(draft), is_active: false }
   let place
   try {
     ;[place] = await db('places').insert(row).returning(['id', 'name'])

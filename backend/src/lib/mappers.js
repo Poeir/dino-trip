@@ -3,6 +3,7 @@
 // API is the single place that knows about the DB column shape.
 import { httpError } from '../middleware/errorHandler.js'
 import { eventDateLabel, formatDateRange, isPlainDateText } from './eventDate.js'
+import { SUBCATEGORIES, isValidSubcategory } from './placeSubcategory.js'
 
 export function rowToPlace(row) {
   return {
@@ -29,6 +30,7 @@ export function rowToPlace(row) {
     location: row.lat != null && row.lng != null ? { lat: row.lat, lng: row.lng } : null,
     isActive: row.is_active !== false,
     isFeatured: !!row.is_featured,
+    subcategory: row.subcategory || null,
     // An admin-uploaded gallery (row.uploadedPhotoUrls, attached by
     // places.routes.js's attachUploadedPhotos()) wins outright over whatever
     // was in `img`/`images` (a Google-imported gallery from import-places.js,
@@ -151,8 +153,16 @@ export function placePayload(body) {
     marketTime = body.marketTime === '' || body.marketTime == null || body.category !== MARKET_CATEGORY ? null : body.marketTime
     if (marketTime !== null && !MARKET_TIMES.includes(marketTime)) throw httpError(400, 'ช่วงเวลาของตลาดไม่ถูกต้อง')
   }
+  // Same rule for subcategory: untouched when omitted; only the food categories
+  // have a list, so any other category clears it.
+  let subcategory
+  if (body.subcategory !== undefined) {
+    subcategory = body.subcategory === '' || body.subcategory == null || !SUBCATEGORIES[body.category] ? null : body.subcategory
+    if (subcategory !== null && !isValidSubcategory(body.category, subcategory)) throw httpError(400, 'ประเภทย่อยไม่ถูกต้องสำหรับหมวดนี้')
+  }
   return {
     ...(marketTime !== undefined ? { market_time: marketTime } : {}),
+    ...(subcategory !== undefined ? { subcategory } : {}),
     name, category: body.category, rating: Number.isFinite(rating) && rating !== 0 ? rating : null,
     review_count: parseInt(body.reviews) || 0, price: body.price, address: body.address,
     hours: body.hours, phone: body.phone, description: body.desc,
