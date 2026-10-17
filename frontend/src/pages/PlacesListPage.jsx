@@ -20,7 +20,8 @@ import { SUBCATEGORIES } from '../data/seed.js'
 // server-paginated fetch.
 const placeBadge = (p) => {
   if (p.isFeatured) return { label: 'แนะนำ', bg: '#FFF3C4', color: '#7A5205' }
-  if (p.reviews >= 1500) return { label: 'ยอดนิยม', bg: '#FDEEE3', color: '#9b5527' }
+  // popularBadge: 'auto' = by review count, 'show' = always, 'hide' = never (set per place in admin).
+  if (p.popularBadge === 'show' || (p.popularBadge !== 'hide' && p.reviews >= 1500)) return { label: 'ยอดนิยม', bg: '#FDEEE3', color: '#9b5527' }
   return { label: '', bg: '', color: '' }
 }
 

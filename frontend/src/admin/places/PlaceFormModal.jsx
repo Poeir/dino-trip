@@ -208,6 +208,13 @@ export default function PlaceFormModal({ onChanged }) {
           <div className="ad-hint">ปิดไว้เพื่อกันไม่ให้สถานที่นี้ไปโผล่ในหน้ารายการสาธารณะ (เช่น สถานที่ที่เพิ่มมาแค่เป็นหมุดของกิจกรรม) โดยไม่ต้องลบทิ้ง</div>
           <label className="ad-check"><input type="checkbox" checked={!!f.isFeatured} onChange={actions.onField_isFeatured} /> ปักหมุดเป็นสถานที่เด่น</label>
           <div className="ad-hint">สถานที่เด่นจะขึ้นก่อนในหน้ารายการสถานที่ (เรียงแบบ "แนะนำ") และมีป้าย "แนะนำ" — ใช้กับแลนด์มาร์กที่นักท่องเที่ยวควรเห็น</div>
+          <Field label={'ป้าย "ยอดนิยม"'}>
+            <select className="ad-select" value={f.popularBadge || 'auto'} onChange={(e) => actions.updateFormField('popularBadge', e.target.value)}>
+              <option value="auto">อัตโนมัติ (แสดงเมื่อมีรีวิว 1,500 ขึ้นไป)</option>
+              <option value="show">แสดงเสมอ</option>
+              <option value="hide">ไม่แสดง</option>
+            </select>
+          </Field>
         </FormSection>
 
         <FormSection title="คำอธิบายและแท็ก">

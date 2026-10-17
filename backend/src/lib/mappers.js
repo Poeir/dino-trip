@@ -31,6 +31,7 @@ export function rowToPlace(row) {
     isActive: row.is_active !== false,
     isFeatured: !!row.is_featured,
     subcategory: row.subcategory || null,
+    popularBadge: row.popular_badge || 'auto',
     // An admin-uploaded gallery (row.uploadedPhotoUrls, attached by
     // places.routes.js's attachUploadedPhotos()) wins outright over whatever
     // was in `img`/`images` (a Google-imported gallery from import-places.js,
@@ -38,7 +39,9 @@ export function rowToPlace(row) {
     // once an admin has curated their own photos, those are the gallery.
     // Both are absolute Cloudinary URLs (src/lib/cloudinary.js) -- nothing
     // to resolve against the API's own origin.
-    img: (row.uploadedPhotoUrls?.[0]) || row.img,
+    // `img` also falls back to the first gallery image: Google-imported places can have
+    // `images` filled while the `img` column is empty, and list cards only read `img`.
+    img: (row.uploadedPhotoUrls?.[0]) || row.img || row.images?.[0] || null,
     images: (row.uploadedPhotoUrls?.length ? row.uploadedPhotoUrls : null) || (row.images && row.images.length ? row.images : (row.img ? [row.img] : [])),
     businessStatus: row.business_status,
     marketTime: row.market_time ?? null,
@@ -176,6 +179,8 @@ export function placePayload(body) {
     // Only written when the caller sends it, so older payloads that omit it
     // don't reset a pinned place.
     ...(body.isFeatured !== undefined && { is_featured: !!body.isFeatured }),
+    // 'auto' (or empty) stores null = badge decided by review count.
+    ...(body.popularBadge !== undefined && { popular_badge: ['show', 'hide'].includes(body.popularBadge) ? body.popularBadge : null }),
   }
 }
 
