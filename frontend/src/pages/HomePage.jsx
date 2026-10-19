@@ -7,6 +7,7 @@ import HeroSearch from '../components/HeroSearch.jsx'
 import LoadingSpinner from '../components/LoadingSpinner.jsx'
 import { CalendarIcon, PinIcon } from '../components/Icons.jsx'
 import { fetchPlaces } from '../lib/apiClient.js'
+import { useScannableQr } from '../lib/useScannableQr.js'
 import { haversineKm } from '../utils/geo.js'
 import { placeCategoryIcon, EVENT_ICON, MASCOT } from '../data/categoryImages.js'
 
@@ -30,6 +31,7 @@ const heroParticles = [
 
 export default function HomePage() {
   const { state, actions, derived } = useApp()
+  const qrBadgePoints = useScannableQr()
   const [places, setPlaces] = useState([])
   const [placesLoading, setPlacesLoading] = useState(true)
 
@@ -154,7 +156,7 @@ export default function HomePage() {
                 <div style={{ padding: 16 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
                     <span style={{ fontSize: 11, fontWeight: 700, color: '#2E7D32', background: '#E8F5E9', padding: '3px 9px', borderRadius: 10 }}>{place.category}</span>
-                    {place.hasQR && <span style={{ fontSize: 11, fontWeight: 700, color: '#7A5205', background: '#FFF8E1', padding: '3px 9px', borderRadius: 10 }}>+{place.qrPoints} พอยท์</span>}
+                    {qrBadgePoints(place) != null && <span style={{ fontSize: 11, fontWeight: 700, color: '#7A5205', background: '#FFF8E1', padding: '3px 9px', borderRadius: 10 }}>+{qrBadgePoints(place)} พอยท์</span>}
                   </div>
                   <div style={{ fontWeight: 400, fontSize: 16, color: '#1f2a24', marginBottom: 4 }}>{place.name}</div>
                   <div style={{ fontWeight: 300, fontSize: 13, color: '#5f6a63', marginBottom: 8 }}><StarGlyph /> {place.rating} ({place.reviews}) · {place.price}{place.distanceKm != null && ` · ${place.distanceKm} กม.`}</div>

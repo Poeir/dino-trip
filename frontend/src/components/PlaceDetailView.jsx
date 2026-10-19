@@ -1,6 +1,7 @@
 import { StarGlyph } from './Icons.jsx'
 import { useState } from 'react'
 import { useApp } from '../context/AppContext.jsx'
+import { useScannableQr } from '../lib/useScannableQr.js'
 import ImageSlot from './ImageSlot.jsx'
 import ImageGallery from './ImageGallery.jsx'
 import ReportPlaceModal from './ReportPlaceModal.jsx'
@@ -10,7 +11,9 @@ import { ChecklistIcon, StarIcon, PinIcon, ClockIcon, PhoneIcon, RouteIcon, Penc
 export default function PlaceDetailView({ place: p, imageHeight = 460 }) {
   const { state, actions } = useApp()
   const [reportOpen, setReportOpen] = useState(false)
+  const qrBadgePoints = useScannableQr()
   if (!p || !p.id) return null
+  const qrPoints = qrBadgePoints(p)
   const reviewsToShow = p.reviewsList || []
   const mapQuery = p.location ? `${p.location.lat},${p.location.lng}` : p.address
   const mapEmbedSrc = mapQuery ? `https://maps.google.com/maps?q=${encodeURIComponent(mapQuery)}&z=15&output=embed` : null
@@ -52,7 +55,7 @@ export default function PlaceDetailView({ place: p, imageHeight = 460 }) {
         <div data-role="place-detail-media" style={{ position: 'sticky', top: 88 }}>
           <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 12, fontWeight: 700, color: '#2E7D32', background: '#E8F5E9', padding: '4px 11px', borderRadius: 10 }}>{p.category}</span>
-            {p.hasQR && <span style={{ fontSize: 12, fontWeight: 700, color: '#7A5205', background: '#FFF8E1', padding: '4px 11px', borderRadius: 10 }}>มี QR รับพอยท์ +{p.qrPoints}</span>}
+            {qrPoints != null && <span style={{ fontSize: 12, fontWeight: 700, color: '#7A5205', background: '#FFF8E1', padding: '4px 11px', borderRadius: 10 }}>มี QR รับพอยท์ +{qrPoints}</span>}
             {p.businessStatus === 'CLOSED_TEMPORARILY' && <span style={{ fontSize: 12, fontWeight: 700, color: '#B45309', background: '#FEF3C7', padding: '4px 11px', borderRadius: 10 }}>ปิดชั่วคราว</span>}
             {p.businessStatus === 'CLOSED_PERMANENTLY' && <span style={{ fontSize: 12, fontWeight: 700, color: '#B91C1C', background: '#FEE2E2', padding: '4px 11px', borderRadius: 10 }}>ปิดถาวรแล้ว</span>}
           </div>

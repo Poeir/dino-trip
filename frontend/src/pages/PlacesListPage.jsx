@@ -7,6 +7,7 @@ import { GridIcon, CupIcon, TempleIcon, MuseumIcon, TreeIcon, MountainIcon, Bask
 import PageControls from '../components/PageControls.jsx'
 import FilterPill from '../components/FilterPill.jsx'
 import { fetchPlaces } from '../lib/apiClient.js'
+import { useScannableQr } from '../lib/useScannableQr.js'
 import { usePagedList } from '../lib/usePagedList.js'
 import { useSeo } from '../lib/useSeo.js'
 import LoadingSpinner from '../components/LoadingSpinner.jsx'
@@ -48,6 +49,7 @@ function CategoryIcon({ cat }) {
 
 export default function PlacesListPage() {
   const { state, actions, derived } = useApp()
+  const qrBadgePoints = useScannableQr()
   useSeo({
     title: 'สถานที่ท่องเที่ยวขอนแก่นทั้งหมด',
     description: 'รวมสถานที่ท่องเที่ยว วัด คาเฟ่ ร้านอาหาร พิพิธภัณฑ์ สวนสาธารณะ และตลาดในขอนแก่น พร้อมรีวิวและแผนที่ เลือกดูตามหมวดหมู่ได้เลย',
@@ -172,7 +174,7 @@ export default function PlacesListPage() {
             <div data-role="place-card-body" style={{ padding: 16, flex: 1, overflow: 'hidden' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
                 <span style={{ fontSize: 11, fontWeight: 700, color: '#2E7D32', background: '#E8F5E9', padding: '3px 9px', borderRadius: 10 }}>{place.category}</span>
-                {place.hasQR && <span style={{ fontSize: 11, fontWeight: 700, color: '#7A5205', background: '#FFF8E1', padding: '3px 9px', borderRadius: 10 }}>+{place.qrPoints} พอยท์</span>}
+                {qrBadgePoints(place) != null && <span style={{ fontSize: 11, fontWeight: 700, color: '#7A5205', background: '#FFF8E1', padding: '3px 9px', borderRadius: 10 }}>+{qrBadgePoints(place)} พอยท์</span>}
               </div>
               <div style={{ fontWeight: 400, fontSize: 16, color: '#1f2a24', marginBottom: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{place.name}</div>
               <div style={{ fontWeight: 300, fontSize: 13, color: '#5f6a63', marginBottom: 8, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}><StarGlyph /> {place.rating} ({place.reviews}) · {place.price}</div>

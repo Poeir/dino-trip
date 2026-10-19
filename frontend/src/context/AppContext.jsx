@@ -5,7 +5,7 @@ import {
 } from '../data/seed.js'
 import { useThaiAddress } from '../lib/thaiAddress.js'
 import {
-  fetchPlaces, createPlace, updatePlace, deletePlace,
+  fetchPlaces, fetchScannablePlaces, createPlace, updatePlace, deletePlace,
   fetchEvents, createEvent, updateEvent, deleteEvent,
   fetchKnowledgeBase, createKnowledgeBase, updateKnowledgeBase, deleteKnowledgeBase,
   fetchQrs, createQr, updateQr, deleteQr,
@@ -680,7 +680,7 @@ export function AppProvider({ children }) {
   // into the shape the rest of the app already renders (days/items/place,
   // camelCase) so TripResultPage.jsx and the derived.tripPlan logic below
   // don't need to know where the plan came from. `qrPointsByPlaceId` (id ->
-  // {hasQR,qrPoints}) comes from submitTripForm's own fetchPlaces({ids})
+  // {hasQR,qrPoints}) comes from submitTripForm's own fetchScannablePlaces()
   // call -- chatbot-service's TripResponse deliberately omits has_qr/
   // qr_points (see trip_planner/models.py's `extra = "ignore"`), and there's
   // no bulk `state.places` array to cross-reference anymore.
@@ -858,8 +858,10 @@ export function AppProvider({ children }) {
       let qrPointsByPlaceId = new Map()
       if (placeIds.length) {
         try {
-          const qrPlaces = await fetchPlaces({ ids: placeIds.join(',') })
-          qrPointsByPlaceId = new Map(qrPlaces.map((p) => [p.id, { hasQR: p.hasQR, qrPoints: p.qrPoints }]))
+          // Live QRs only, with the points a scan really awards (not places.qr_points).
+          const scannable = await fetchScannablePlaces()
+          const wanted = new Set(placeIds)
+          qrPointsByPlaceId = new Map(scannable.filter((p) => wanted.has(p.id)).map((p) => [p.id, { hasQR: true, qrPoints: p.qrPoints }]))
         } catch (err) {
           console.error('Fetching QR points for trip plan places failed (continuing without them):', err)
         }
