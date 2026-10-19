@@ -1,4 +1,4 @@
-import { BookOpen, CalendarDays, ClipboardList, Flag, Gift, Inbox, LayoutDashboard, LogOut, MapPin, QrCode, Route, Ticket, Users, X } from 'lucide-react'
+import { BookOpen, CalendarDays, ClipboardList, Flag, Gift, Globe, Inbox, LayoutDashboard, LogOut, MapPin, QrCode, Route, Ticket, Users, X } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useApp } from '../context/AppContext.jsx'
@@ -139,6 +139,10 @@ export default function AdminSidebar({ open = false, onClose }) {
         </nav>
 
         <div className="ad-sidebar__footer">
+          <Link to="/" className="ad-nav__link" title="ไปหน้าผู้ใช้" onClick={handleNavigate}>
+            <Globe size={18} strokeWidth={2} className="ad-nav__icon" aria-hidden="true" />
+            <span className="ad-nav__label">ไปหน้าผู้ใช้</span>
+          </Link>
           <button type="button" className="ad-nav__logout" onClick={actions.adminLogout} title="ออกจากระบบ">
             <LogOut size={18} strokeWidth={2} className="ad-nav__icon" aria-hidden="true" />
             <span className="ad-nav__label">ออกจากระบบ</span>
