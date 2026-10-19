@@ -976,9 +976,11 @@ export function AppProvider({ children }) {
       setState({ authSubmitting: false, authError: err.message })
     }
   }
-  const adminLogout = () => {
-    apiLogout().catch(() => {})
-    setState({ adminLoggedIn: false })
+  // An admin is also the signed-in user (the boot check sets loggedIn/currentUser
+  // from the same session), so clear those too or the header keeps showing them.
+  const adminLogout = async () => {
+    await apiLogout().catch(() => {})
+    setState({ adminLoggedIn: false, loggedIn: false, currentUser: null, userName: '', userPoints: 0 })
     navigate('/')
   }
 
