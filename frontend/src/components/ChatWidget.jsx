@@ -68,22 +68,6 @@ function renderMarkdown(text) {
   })
 }
 
-// Templated (not LLM-generated) follow-up suggestions -- derived purely from
-// which categories showed up in the attached place cards, no extra network
-// call. Category-specific ones are added on top of a generic base set.
-function getFollowUpChips(places) {
-  if (!places || places.length === 0) return []
-  const categories = new Set(places.map((p) => p.category).filter(Boolean))
-  const chips = ['มีสาขาอื่นมั้ย', 'ราคาเท่าไหร่', 'เปิดกี่โมง']
-  if (categories.has('ร้านอาหาร') || categories.has('คาเฟ่')) {
-    chips.push('มีเมนูมังสวิรัติมั้ย')
-  }
-  if (categories.has('สถานที่ท่องเที่ยว') || categories.has('วัด') || categories.has('สวนสาธารณะ')) {
-    chips.push('ใกล้ๆ มีที่เที่ยวอะไรอีก')
-  }
-  return chips.slice(0, 3)
-}
-
 const bubbleMessages = [
   'อยากไปเที่ยวไหนดีครับ ถามน้องไดโนได้เลย!',
   'ให้น้องไดโนช่วยวางแผนทริปมั้ยครับ?',
@@ -224,19 +208,6 @@ export default function ChatWidget() {
                           <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{state.events.find((x) => x.id === e.id)?.dateLabel || e.dateRange || 'ไม่มีข้อมูลวันที่'}</span>
                         </div>
                       </div>
-                    ))}
-                  </div>
-                )}
-                {msg.from === 'bot' && msg.places && msg.places.length > 0 && i === derived.chatMessagesView.length - 1 && !state.chatTyping && (
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', paddingLeft: 29 }}>
-                    {getFollowUpChips(msg.places).map((chip) => (
-                      <button
-                        key={chip}
-                        onClick={() => actions.sendChat(chip)}
-                        style={{ background: '#fff', border: '1px solid #C8E6C9', color: '#2E7D32', borderRadius: 14, padding: '5px 11px', fontSize: 11.5, cursor: 'pointer', whiteSpace: 'nowrap' }}
-                      >
-                        {chip}
-                      </button>
                     ))}
                   </div>
                 )}
