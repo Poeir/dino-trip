@@ -66,7 +66,7 @@ class FakeRetriever:
         self.kb_queries = []
         self.event_queries = []
 
-    def search_and_expand(self, query, limit=5):
+    def search_chat_places(self, query, limit=5):
         self.place_queries.append(query)
         return self._places
 
@@ -537,6 +537,26 @@ class TestCurrentTime:
         svc, c = make_multiturn_service()
         svc.chat("มีงานอะไรบ้าง")
         assert current_time_text().split(" เวลา ")[0] in c.answer_calls[0]["messages"][0]["content"]
+
+
+class TestAreaNote:
+    """A "แถว X" result carries an area_note (retriever.search_chat_places);
+    the model may not work distances out itself, so the prompt must show it."""
+
+    def test_area_note_reaches_the_prompt(self):
+        row = {**make_place_row(), "area_note": "ห่างจาก บึงแก่นนคร ประมาณ 0.8 กม. (วัดเป็นเส้นตรง)"}
+        completions = FakeCompletions(response_text=f"{MATCH_PLACES_TAG} ร้าน Test Cafe ครับ")
+        svc = make_service(places=[row])
+        svc.client = make_client(completions)
+        svc.chat("คาเฟ่แถวบึงแก่นนคร")
+        assert "ทำเลเทียบกับที่ผู้ใช้ถาม: ห่างจาก บึงแก่นนคร ประมาณ 0.8 กม." in completions.calls[0]["messages"][0]["content"]
+
+    def test_rows_without_a_note_get_no_area_line(self):
+        completions = FakeCompletions(response_text=f"{MATCH_PLACES_TAG} ร้าน Test Cafe ครับ")
+        svc = make_service()
+        svc.client = make_client(completions)
+        svc.chat("แนะนำคาเฟ่")
+        assert "ทำเลเทียบกับที่ผู้ใช้ถาม" not in completions.calls[0]["messages"][0]["content"]
 
 
 class TestEmbedCache:

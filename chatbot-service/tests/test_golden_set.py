@@ -109,6 +109,46 @@ class TestPlaceRetrievalCorrectness:
         assert result["places"]
 
 
+class TestAreaAndSituationQueries:
+    """"แถว X" and situation questions (retriever.search_chat_places). All of
+    these answered "ไม่มีข้อมูล" or recommended the wrong kind of place
+    before: the search never looked at where a place is, or at what "ฝนตก"
+    implies."""
+
+    def test_restaurants_around_a_landmark(self, svc):
+        result = svc.chat("ร้านอาหารแถวบึงแก่นนคร")
+        assert result["reply"] != FALLBACK_MESSAGE
+        assert result["places"]
+        assert all(p["category"] == "ร้านอาหาร" for p in result["places"])
+
+    def test_going_out_in_a_subdistrict(self, svc):
+        result = svc.chat("อยากเที่ยวแถวท่าพระ ช่วยแนะนำหน่อย")
+        assert result["reply"] != FALLBACK_MESSAGE
+        assert result["places"]
+
+    def test_what_is_around_a_mall(self, svc):
+        result = svc.chat("แถวเซ็นทรัลขอนแก่นมีอะไรบ้าง")
+        assert result["reply"] != FALLBACK_MESSAGE
+        assert result["places"]
+
+    def test_something_the_area_does_not_have_is_refused(self, svc):
+        # ท่าพระ has no Japanese restaurant: the area's noodle shop must not
+        # be offered as sushi.
+        result = svc.chat("ร้านซูชิแถวท่าพระ")
+        assert result["reply"] == FALLBACK_MESSAGE
+        assert result["places"] == []
+
+    def test_rainy_day_gets_indoor_places(self, svc):
+        result = svc.chat("ฝนตกควรไปเที่ยวไหนดี")
+        assert result["places"]
+        assert all(p["category"] in ("พิพิธภัณฑ์", "ห้างสรรพสินค้า") for p in result["places"])
+
+    def test_souvenirs_get_a_souvenir_shop_or_the_silk_article(self, svc):
+        result = svc.chat("ซื้อของฝากที่ไหนดี")
+        assert result["reply"] != FALLBACK_MESSAGE
+        assert all(p["category"] == "ร้านของฝาก" for p in result["places"])
+
+
 class TestNoMatchCorrectness:
     """Queries that should be refused, not hallucinated or padded with
     tangentially-related places."""

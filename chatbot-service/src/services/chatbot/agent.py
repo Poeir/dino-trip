@@ -14,7 +14,13 @@ from src.services.rag.retriever import PlaceRetriever
 
 logger = logging.getLogger(__name__)
 
-FALLBACK_MESSAGE = "(น้องไดโน) ไม่มีข้อมูลในส่วนนี้ครับ ลองถามเกี่ยวกับสถานที่ท่องเที่ยว ร้านอาหาร หรือคาเฟ่ในขอนแก่นดูนะครับ"
+# Still a refusal (the model's own no-match text is never shown), but one
+# that says what the bot can do and how to ask again, instead of a dead end.
+FALLBACK_MESSAGE = (
+    "ขออภัยครับ น้องไดโนยังไม่มีข้อมูลเรื่องนี้ในระบบ "
+    "ตอนนี้น้องไดโนช่วยแนะนำร้านอาหาร คาเฟ่ ที่เที่ยว วัด ตลาด และงานอีเวนต์ในขอนแก่นได้ครับ "
+    "ลองบอกแนวที่ชอบหรือย่านที่จะไปดูนะครับ เช่น \"คาเฟ่บรรยากาศดีแถวบึงแก่นนคร\" หรือ \"ที่เที่ยวพาเด็ก\""
+)
 # Shown when a turn fails (LLM timeout, DB error, empty model output). Same
 # wording as the frontend's own catch-all in AppContext.sendChat.
 ERROR_MESSAGE = "ขออภัยครับ ระบบแชทขัดข้องชั่วคราว ลองใหม่อีกครั้งนะครับ"
@@ -259,7 +265,7 @@ class RAGChatbotService:
         # threads raced on it. retriever.embed() serializes the encode, so
         # the three searches still only encode the query once.
         with ThreadPoolExecutor(max_workers=3) as pool:
-            f_places = pool.submit(self.retriever.search_and_expand, query=search_query, limit=3)
+            f_places = pool.submit(self.retriever.search_chat_places, query=search_query, limit=3)
             f_kb = pool.submit(self.retriever.search_knowledge_base, query=search_query, limit=3)
             f_events = pool.submit(self.retriever.search_events, query=search_query, limit=3)
             places = f_places.result()
@@ -311,6 +317,9 @@ class RAGChatbotService:
             f"เวลาเปิด-ปิด: {p.get('hours') or '-'}\n"
             f"ราคา: {p.get('price') or 'ไม่มีข้อมูลราคา'}\n"
             f"สิ่งอำนวยความสะดวก: {', '.join(p.get('amenities') or []) or 'ไม่มีข้อมูล'}"
+            # Set by retriever.search_chat_places for "แถว X" questions: the
+            # model may not work out distances itself (rule 4), so it is told.
+            + (f"\nทำเลเทียบกับที่ผู้ใช้ถาม: {p['area_note']}" if p.get("area_note") else "")
             for p in places
         )
         kb_context = "\n---\n".join(

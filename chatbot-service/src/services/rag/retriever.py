@@ -7,7 +7,8 @@ from sentence_transformers import SentenceTransformer
 from supabase import create_client
 from src.core.config import EMBEDDING_MODEL_NAME, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
 from src.core.db import supabase
-from src.services.rag.synonyms import alias_variants, expand_query, strip_filler
+from src.services.rag.area import area_candidates, is_specific, rank_in_area, resolve_area, split_area_query
+from src.services.rag.synonyms import alias_variants, expand_query, intent_categories, strip_filler
 
 # Replaces the old project's Chroma-query-then-Mongo-$in-fetch two-step --
 # match_places()/match_knowledge_base() (backend/supabase/migrations) do the
@@ -44,6 +45,11 @@ _RESTAURANT_COLUMNS = (
 _RESTAURANT_CACHE_TTL_S = 300
 _restaurant_cache: tuple[float, list] | None = None
 _category_cache: dict[tuple, tuple[float, list]] = {}
+_DIRECTORY_KEY = ("__all_active__",)
+# How many results the plain search hands search_chat_places to filter by
+# area/category: a few dozen, so a match ranked below the province-wide top
+# few still counts, without shipping hundreds of rows per question.
+_AREA_SEARCH_POOL = 30
 
 # agent.py runs these three hybrid-search RPCs concurrently (ThreadPoolExecutor)
 # to overlap their network time -- but doing that against the one shared
@@ -157,6 +163,61 @@ class PlaceRetriever:
                 if len(merged) >= limit:
                     return merged
         return merged
+
+    def _directory(self):
+        """Every active place with what the chat prompt and area.py need --
+        not the embedding. ~600 rows, cached like list_by_categories."""
+        now = time.monotonic()
+        cached = _category_cache.get(_DIRECTORY_KEY)
+        if cached and now - cached[0] < _RESTAURANT_CACHE_TTL_S:
+            return cached[1]
+        rows = (
+            supabase.table("places").select(_RESTAURANT_COLUMNS + ",subdistrict")
+            .eq("is_active", True).limit(5000).execute()
+        ).data or []
+        _category_cache[_DIRECTORY_KEY] = (now, rows)
+        return rows
+
+    def search_chat_places(self, query: str, limit: int = 3):
+        """The chatbot's place search: search_and_expand, plus two things a
+        name/tag/embedding match can't do (the trip planner, which searches
+        by interest tags, keeps calling search_and_expand directly):
+
+        - "แถว X" (area.py): when X is a ตำบล/อำเภอ or a place in the
+          table, only places in or around it are returned, each with an
+          `area_note` saying how it relates to X.
+        - A situation that implies a kind of place ("ฝนตก" -> indoor,
+          "ของฝาก" -> souvenir shops; synonyms.INTENT_CATEGORIES): results
+          are kept to those categories, topped up with the most-reviewed
+          places in them when the search found fewer than `limit`.
+
+        A database failure in either step falls back to the plain search."""
+        try:
+            split = split_area_query(query)
+            if split:
+                what, where = split
+                directory = self._directory()
+                area = resolve_area(where, directory)
+                if area:
+                    candidates = area_candidates(area, directory, limit)
+                    ranked = None
+                    if is_specific(what):
+                        ranked = [p["id"] for p in self.search_and_expand(query, limit=_AREA_SEARCH_POOL)]
+                    return rank_in_area(candidates, what, ranked, limit)
+
+            cats = intent_categories(query)
+            if cats:
+                found = [p for p in self.search_and_expand(query, limit=_AREA_SEARCH_POOL) if p.get("category") in cats]
+                popular = sorted(self.list_by_categories(cats), key=lambda p: p.get("review_count") or 0, reverse=True)
+                seen, out = set(), []
+                for p in found + popular:
+                    if p["id"] not in seen:
+                        seen.add(p["id"])
+                        out.append(p)
+                return out[:limit]
+        except Exception as e:
+            print(f"[!] area/intent place search failed, using the plain search: {e}")
+        return self.search_and_expand(query, limit=limit)
 
     def search_knowledge_base(self, query: str, limit: int = 3):
         query = expand_query(query)

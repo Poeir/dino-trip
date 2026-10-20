@@ -61,6 +61,11 @@ SYNONYMS: dict[str, list[str]] = {
     # Bars
     "เบียร์": ["บาร์"],
     "ค็อกเทล": ["บาร์"],
+    # "ร้านกินดื่มกลางคืน" / "ร้านนั่งดื่มตอนกลางคืน" returned a late-night
+    # restaurant and a milk shop but none of the 9 places tagged บาร์.
+    "กินดื่ม": ["บาร์"],
+    "นั่งดื่ม": ["บาร์"],
+    "ร้านเหล้า": ["บาร์"],
     # Trip-planner interest categories (TripFormPage) reuse this same tag
     # vocabulary, so these gaps affect both the chatbot and "what places match
     # my interests" trip planning -- found by probing each of the 7 interest
@@ -78,7 +83,9 @@ SYNONYMS: dict[str, list[str]] = {
     "ทำบุญ": ["วัฒนธรรม/ศาสนา"],
     "ขอพร": ["วัฒนธรรม/ศาสนา"],
     "ไหว้พระ": ["วัฒนธรรม/ศาสนา"],
-    "ของฝาก": ["ช้อปปิ้ง/หัตถกรรม"],
+    # ผ้าไหม: the knowledge-base article on Khon Kaen silk is the one
+    # souvenir answer the KB has, and "ซื้อของฝากที่ไหนดี" alone didn't reach it.
+    "ของฝาก": ["ช้อปปิ้ง/หัตถกรรม", "ผ้าไหม"],
     # Same short-name-vs-long-name gap as "วัด" above, found by probing every
     # place `category` value the same way: "อุทยานแห่งชาติ" (the category)
     # isn't itself in any place's `tags` (those places are tagged "ธรรมชาติ"),
@@ -100,6 +107,31 @@ ALIASES: dict[str, str] = {
     "วัดเก้าชั้น": "พระมหาธาตุแก่นนคร",
     "พระธาตุเก้าชั้น": "พระมหาธาตุแก่นนคร",
 }
+
+
+# Questions that name a *kind* of place by the situation rather than by a
+# word any place carries -- no place is tagged "ฝนตก" -- mapped to the
+# `category` values that answer them. Unlike SYNONYMS these restrict the
+# chatbot's place results to those categories (retriever.search_chat_places):
+# confirmed against the live retriever, "ฝนตกควรไปเที่ยวไหนดี" returned
+# three parks and "ที่เที่ยวในร่ม" three hillside spots at ภูผาม่าน, and
+# "ซื้อของฝากที่ไหนดี" a market and two hot-pot restaurants instead of
+# the souvenir shops.
+_INDOOR = ("พิพิธภัณฑ์", "ห้างสรรพสินค้า")
+INTENT_CATEGORIES: dict[str, tuple[str, ...]] = {
+    "ฝนตก": _INDOOR,
+    "หลบฝน": _INDOOR,
+    "ในร่ม": _INDOOR,
+    "indoor": _INDOOR,
+    "rainy": _INDOOR,
+    "ของฝาก": ("ร้านของฝาก",),
+    "souvenir": ("ร้านของฝาก",),
+}
+
+
+def intent_categories(query: str) -> list[str]:
+    lowered = query.lower()
+    return list(dict.fromkeys(c for keyword, cats in INTENT_CATEGORIES.items() if keyword in lowered for c in cats))
 
 
 def alias_variants(query: str) -> list[str]:

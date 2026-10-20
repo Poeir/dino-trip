@@ -56,3 +56,19 @@ def test_handicraft_query_maps_to_the_shopping_tag():
 def test_every_synonym_key_is_lowercase():
     # expand_query lowercases the query, so an uppercase key could never match.
     assert all(k == k.lower() for k in SYNONYMS)
+
+
+def test_drinking_out_maps_to_the_bar_tag():
+    assert "บาร์" in expand_query("ร้านนั่งดื่มตอนกลางคืน")
+    assert "บาร์" in expand_query("ร้านกินดื่มกลางคืน")
+
+
+def test_souvenir_query_also_reaches_the_silk_article():
+    assert "ผ้าไหม" in expand_query("ซื้อของฝากที่ไหนดี")
+
+
+def test_rain_and_souvenir_questions_name_place_categories():
+    from src.services.rag.synonyms import intent_categories
+    assert intent_categories("ฝนตกควรไปไหน") == ["พิพิธภัณฑ์", "ห้างสรรพสินค้า"]
+    assert intent_categories("ซื้อของฝากที่ไหนดี") == ["ร้านของฝาก"]
+    assert intent_categories("แนะนำร้านกาแฟ") == []
