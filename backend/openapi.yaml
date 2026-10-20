@@ -348,6 +348,14 @@ paths:
         - name: subcategory
           in: query
           schema: { type: string, example: ก๋วยเตี๋ยว }
+        - name: district
+          in: query
+          description: อำเภอ (ตรงทุกตัวอักษร ไม่มีคำว่า "อำเภอ" นำหน้า เช่น `เมืองขอนแก่น`) — ดูรายการจาก `/api/places/meta/areas`
+          schema: { type: string, example: ชุมแพ }
+        - name: subdistrict
+          in: query
+          description: ตำบล (ตรงทุกตัวอักษร ไม่มีคำว่า "ตำบล" นำหน้า)
+          schema: { type: string, example: ศิลา }
         - name: isActive
           in: query
           description: '`true` = เฉพาะที่แสดงต่อสาธารณะ (หน้าเว็บส่งค่านี้, admin ไม่ส่ง)'
@@ -406,6 +414,32 @@ paths:
                   properties:
                     id: { type: string, format: uuid }
                     name: { type: string }
+  /api/places/meta/areas:
+    get:
+      tags: [Places]
+      operationId: listPlaceAreas
+      summary: อำเภอ → ตำบล พร้อมจำนวนสถานที่
+      description: ใช้เป็นตัวเลือกกรองอำเภอ/ตำบลในหน้าจัดการสถานที่ · เรียงอำเภอจากมากไปน้อย · รวมสถานที่ที่ซ่อนอยู่ · cache 25 วินาที
+      x-auth: public
+      responses:
+        '200':
+          description: รายการอำเภอ
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    name: { type: string, example: เมืองขอนแก่น }
+                    count: { type: integer }
+                    subdistricts:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          name: { type: string, example: ศิลา }
+                          count: { type: integer }
   /api/places/describe:
     post:
       tags: [Places]
@@ -2920,6 +2954,165 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
         '502': { $ref: '#/components/responses/BadGateway' }
+  /api/admin/place-import/area-search:
+    post:
+      tags: [Admin Place Import]
+      operationId: adminSearchGooglePlacesByArea
+      summary: "[Admin] ค้นหาสถานที่ใกล้พื้นที่ที่ระบุ (ยังไม่นำเข้า)"
+      description: '**ค่าใช้จ่าย:** 1 คำขอหาพิกัดพื้นที่ + 1 คำขอต่อหมวดหมู่ (ไม่ดึงรายละเอียด) · ได้สูงสุด 20 แห่งต่อหมวด · ตัดร้านที่ปิดถาวรและรีวิวน้อยกว่าเกณฑ์ออกให้ · **Rate limit:** 30 ครั้ง/ชั่วโมง/admin'
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [area, radius, categories]
+              properties:
+                area: { type: string, minLength: 2, maxLength: 200, example: พระลับ ขอนแก่น }
+                radius: { type: integer, minimum: 500, maximum: 10000, description: เมตร, example: 3000 }
+                categories:
+                  type: array
+                  items: { type: string, enum: [cafe, restaurant, attraction, shopping] }
+                minReviews: { type: integer, minimum: 0, maximum: 10000, example: 5 }
+      responses:
+        '200':
+          description: ผลค้นหา
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  center:
+                    type: object
+                    properties:
+                      lat: { type: number }
+                      lng: { type: number }
+                      label: { type: string }
+                      address: { type: string }
+                  radius: { type: integer }
+                  found: { type: integer, description: จำนวนที่ Google ส่งกลับก่อนกรอง }
+                  hiddenClosed: { type: integer }
+                  hiddenFewReviews: { type: integer }
+                  results:
+                    type: array
+                    items: { $ref: '#/components/schemas/AreaSearchResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '502': { $ref: '#/components/responses/BadGateway' }
+        '503': { $ref: '#/components/responses/Error' }
+  /api/admin/place-import/publish:
+    post:
+      tags: [Admin Place Import]
+      operationId: adminPublishPlacesBatch
+      summary: "[Admin] เผยแพร่สถานที่ที่ซ่อนอยู่เป็นชุด แล้วสั่ง embed ให้"
+      description: 'เปลี่ยนเฉพาะรายการที่ซ่อนอยู่ (`is_active=false`) สูงสุด 100 แห่งต่อครั้ง จากนั้นเรียก reindex (เฉพาะแถวที่ยังไม่มี embedding) แบบ best-effort — `reindex` เป็น `started` | `busy` (กำลังรันอยู่ ให้กดซ้ำจากแดชบอร์ด) | `failed` | `skipped` · **Rate limit:** 30 ครั้ง/ชั่วโมง/admin'
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [placeIds]
+              properties:
+                placeIds:
+                  type: array
+                  minItems: 1
+                  maxItems: 100
+                  items: { type: string, format: uuid }
+      responses:
+        '200':
+          description: ผลการเผยแพร่
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  published: { type: integer }
+                  alreadyPublishedOrMissing: { type: integer }
+                  reindex: { type: string, enum: [started, busy, failed, skipped] }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /api/admin/place-import/batch:
+    post:
+      tags: [Admin Place Import]
+      operationId: adminStartPlaceImportBatch
+      summary: "[Admin] นำเข้าหลายสถานที่จาก Google เป็นร่าง (งานเบื้องหลัง)"
+      description: 'สูงสุด 50 แห่งต่อครั้ง ทีละงาน (ซ้อน → 409) · แต่ละแห่งคือ 1 คำขอ Places Details + รูป · **Rate limit:** 6 ครั้ง/ชั่วโมง/admin · ติดตามผลด้วย GET /batch/{id}'
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [googlePlaceIds]
+              properties:
+                googlePlaceIds:
+                  type: array
+                  minItems: 1
+                  maxItems: 50
+                  items: { type: string, maxLength: 300 }
+                describe:
+                  type: boolean
+                  description: 'true = สร้างคำอธิบายด้วย AI ให้แห่งที่นำเข้าใหม่ที่ยังไม่มีสรุปจาก Google (1 คำขอ Serper + 1 คำขอ LLM ต่อแห่ง) · เลือกได้สูงสุด 20 แห่ง · **Rate limit เพิ่มเติม:** 3 ครั้ง/ชั่วโมง/admin'
+      responses:
+        '202':
+          description: สร้างงานแล้ว
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImportBatchJob' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /api/admin/place-import/batch/{id}:
+    get:
+      tags: [Admin Place Import]
+      operationId: adminGetPlaceImportBatch
+      summary: "[Admin] ดูความคืบหน้างานนำเข้าเป็นชุด"
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: สถานะงาน
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImportBatchJob' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/admin/place-import/batch/{id}/cancel:
+    post:
+      tags: [Admin Place Import]
+      operationId: adminCancelPlaceImportBatch
+      summary: "[Admin] ยกเลิกงานนำเข้าเป็นชุดที่เหลือ"
+      description: 'รายการที่กำลังนำเข้าอยู่จะเสร็จก่อน แล้วงานจึงหยุด'
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: สถานะงาน
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImportBatchJob' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   # ---------------------------------------------------------------- Admin reindex
   /api/reindex:
@@ -3318,7 +3511,9 @@ components:
         reviews: { type: integer, description: จำนวนรีวิว }
         price: { type: string, nullable: true }
         address: { type: string, nullable: true }
-        district: { type: string, nullable: true }
+        district: { type: string, nullable: true, description: 'อำเภอ ไม่มีคำนำหน้า เช่น เมืองขอนแก่น' }
+        subdistrict: { type: string, nullable: true, description: 'ตำบล ไม่มีคำนำหน้า' }
+        province: { type: string, nullable: true }
         hours: { type: string, nullable: true }
         phone: { type: string, nullable: true }
         website: { type: string, nullable: true }
@@ -4001,6 +4196,43 @@ components:
         primaryType: { type: string, nullable: true }
         businessStatus: { type: string, nullable: true }
         existingPlaceId: { type: string, format: uuid, nullable: true, description: มีค่าเมื่อเคยนำเข้าแล้ว }
+    AreaSearchResult:
+      type: object
+      properties:
+        googlePlaceId: { type: string }
+        name: { type: string }
+        address: { type: string }
+        primaryType: { type: string, nullable: true }
+        businessStatus: { type: string, nullable: true }
+        rating: { type: number, nullable: true }
+        reviewCount: { type: integer }
+        category: { type: string, enum: [cafe, restaurant, attraction, shopping] }
+        existingPlaceId: { type: string, format: uuid, nullable: true }
+    ImportBatchJob:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        status: { type: string, enum: [running, completed, cancelled, failed] }
+        total: { type: integer }
+        done: { type: integer }
+        created: { type: integer }
+        existed: { type: integer }
+        failed: { type: integer }
+        describe: { type: boolean, description: ขอให้สร้างคำอธิบายด้วย AI ให้แห่งที่นำเข้าใหม่ }
+        described: { type: integer, description: จำนวนที่สร้างคำอธิบายสำเร็จ }
+        startedAt: { type: string, format: date-time }
+        finishedAt: { type: string, format: date-time, nullable: true }
+        results:
+          type: array
+          items:
+            type: object
+            properties:
+              googlePlaceId: { type: string }
+              status: { type: string, enum: [created, exists, failed] }
+              placeId: { type: string, format: uuid }
+              error: { type: string }
+              description: { type: string, enum: [updated, skipped, failed], description: ผลการสร้างคำอธิบาย (เมื่อ describe=true และนำเข้าใหม่) }
+              descriptionNote: { type: string }
 
     Option:
       type: object

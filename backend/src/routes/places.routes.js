@@ -14,7 +14,7 @@ import { rateLimit } from '../lib/rateLimit.js'
 
 // Excludes `embedding` (384-float pgvector column, RAG-only) and
 // `hours_periods`/`price_level` -- the frontend doesn't read them.
-export const PLACE_COLUMNS = 'id, source, google_place_id, name, category, rating, review_count, price, address, district, hours, phone, website, maps_url, lat, lng, description, amenities, tags, has_qr, qr_points, is_featured, popular_badge, subcategory, img, images, reviews, business_status, is_active, locked_fields, last_synced_at, google_diff, created_at, updated_at'
+export const PLACE_COLUMNS = 'id, source, google_place_id, name, category, rating, review_count, price, address, district, subdistrict, province, hours, phone, website, maps_url, lat, lng, description, amenities, tags, has_qr, qr_points, is_featured, popular_badge, subcategory, img, images, reviews, business_status, is_active, locked_fields, last_synced_at, google_diff, created_at, updated_at'
 
 // Matches fetch-places.js's own MAX_PHOTOS_PER_PLACE -- same gallery-size
 // convention for admin-uploaded photos as Google-imported ones.
@@ -96,6 +96,8 @@ export const placesRouter = crudRouter({
   filters: (query, q) => {
     if (q.category) query = query.where('category', q.category)
     if (q.subcategory) query = query.where('subcategory', q.subcategory)
+    if (q.district) query = query.where('district', q.district)
+    if (q.subdistrict) query = query.where('subdistrict', q.subdistrict)
     if (q.isActive != null) query = query.where('is_active', q.isActive === 'true')
     if (q.hasQR != null) query = query.where('has_qr', q.hasQR === 'true')
     if (q.ids) query = query.whereIn('id', String(q.ids).split(','))
@@ -116,6 +118,25 @@ placesRouter.get('/meta/names', asyncHandler(async (req, res) => {
   const rows = await db('places').select('id', 'name').orderBy('name')
   setCached(PLACES_NAMES_CACHE_KEY, rows)
   res.json(rows)
+}))
+
+// อำเภอ -> ตำบล (with place counts) for the admin list's area filters. Same
+// two-segment path + shared cache as /meta/names above.
+const PLACES_AREAS_CACHE_KEY = 'places/meta/areas'
+placesRouter.get('/meta/areas', asyncHandler(async (req, res) => {
+  const cached = getCached(PLACES_AREAS_CACHE_KEY)
+  if (cached) return res.json(cached)
+  const rows = await db('places').select('district', 'subdistrict').count('* as count').whereNotNull('district').groupBy('district', 'subdistrict').orderBy(['district', 'subdistrict'])
+  const byDistrict = new Map()
+  for (const r of rows) {
+    const d = byDistrict.get(r.district) || { name: r.district, count: 0, subdistricts: [] }
+    d.count += Number(r.count)
+    if (r.subdistrict) d.subdistricts.push({ name: r.subdistrict, count: Number(r.count) })
+    byDistrict.set(r.district, d)
+  }
+  const out = [...byDistrict.values()].sort((a, b) => b.count - a.count)
+  setCached(PLACES_AREAS_CACHE_KEY, out)
+  res.json(out)
 }))
 
 // Each call spends a serper.dev search plus an LLM request, so cap it per admin.

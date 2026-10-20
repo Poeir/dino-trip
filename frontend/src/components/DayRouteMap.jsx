@@ -6,19 +6,42 @@ import { loadGoogleMaps } from '../lib/googleMapsLoader.js'
 // work; the restriction, not secrecy, is what protects it). Separate from
 // the backend's GOOGLE_PLACES_API_KEY, which must never be exposed here.
 const API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY
+// Directions allows 25 waypoints + origin + destination per request.
+const MAX_DIRECTIONS_POINTS = 27
+
+// sessionStorage can be unavailable or full (private mode, quota), so both
+// helpers swallow errors -- a cache miss just means another Directions call.
+function readCachedPath(key) {
+  try {
+    const raw = sessionStorage.getItem(key)
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
+
+function writeCachedPath(key, path) {
+  try {
+    sessionStorage.setItem(key, JSON.stringify(path))
+  } catch { /* ignore */ }
+}
 
 export default function DayRouteMap({ items, onSelectPlace }) {
   const containerRef = useRef(null)
   const [loadError, setLoadError] = useState(false)
+  const [routeKind, setRouteKind] = useState(null) // 'road' | 'straight' once resolved
 
   // Free-time filler blocks aren't real stops -- skip them for the map,
   // same as the itinerary line-drawing logic doesn't need them either.
   const points = items.filter((it) => it.status !== 'Free Time' && it.place && it.place.location)
   const pointsKey = points.map((p) => `${p.placeId}:${p.time}`).join('|')
+  // Geometry depends only on the stop order and coordinates, not on times.
+  const routeCacheKey = 'dayRoute:' + points.map((p) => `${p.place.location.lat},${p.place.location.lng}`).join('|')
 
   useEffect(() => {
     if (!API_KEY || points.length < 2 || !containerRef.current) return
     let cancelled = false
+    setRouteKind(null)
 
     loadGoogleMaps(API_KEY)
       .then((maps) => {
@@ -34,13 +57,45 @@ export default function DayRouteMap({ items, onSelectPlace }) {
         points.forEach((p) => bounds.extend(p.place.location))
         map.fitBounds(bounds, 44)
 
-        new maps.Polyline({
-          path: points.map((p) => p.place.location),
-          map,
-          strokeColor: '#66BB6A',
-          strokeOpacity: 0.9,
-          strokeWeight: 3,
-        })
+        const lineStyle = { strokeColor: '#66BB6A', strokeOpacity: 0.9, strokeWeight: 4 }
+        const drawStraightLine = () => {
+          new maps.Polyline({ path: points.map((p) => p.place.location), map, ...lineStyle, strokeWeight: 3 })
+          if (!cancelled) setRouteKind('straight')
+        }
+
+        // Road geometry is for drawing only -- the schedule's travel times come
+        // from the planner's straight-line estimate, hence the caption below.
+        // Any failure (API not enabled, quota, too many stops) falls back to
+        // the straight line so the map never ends up empty.
+        const drawRoad = (path) => {
+          new maps.Polyline({ path, map, ...lineStyle })
+          setRouteKind('road')
+        }
+
+        if (points.length > MAX_DIRECTIONS_POINTS) {
+          drawStraightLine()
+        } else {
+          // Each Directions call is billed, so a path already fetched in this
+          // session (same stops in the same order) is reused instead.
+          const cached = readCachedPath(routeCacheKey)
+          if (cached) {
+            drawRoad(cached)
+          } else {
+            new maps.DirectionsService()
+              .route({
+                origin: points[0].place.location,
+                destination: points[points.length - 1].place.location,
+                waypoints: points.slice(1, -1).map((p) => ({ location: p.place.location, stopover: true })),
+                travelMode: maps.TravelMode.DRIVING,
+              })
+              .then((result) => {
+                const path = result.routes[0].overview_path.map((ll) => ({ lat: ll.lat(), lng: ll.lng() }))
+                writeCachedPath(routeCacheKey, path)
+                if (!cancelled) drawRoad(path)
+              })
+              .catch(drawStraightLine)
+          }
+        }
 
         points.forEach((p, i) => {
           const isHotel = p.status === 'End of Day (Return to Hotel)'
@@ -84,7 +139,9 @@ export default function DayRouteMap({ items, onSelectPlace }) {
         <div style={{ fontSize: 11.5, color: '#a33232', marginTop: 6 }}>โหลดแผนที่ไม่สำเร็จ ลองตรวจสอบ API key หรือลองรีเฟรชอีกครั้ง</div>
       )}
       <div style={{ fontSize: 10.5, color: '#626863', textAlign: 'center', marginTop: 6 }}>
-        เส้นทางเรียงตามลำดับการเดินทาง (เส้นตรง ไม่ใช่เส้นทางถนนจริง)
+        {routeKind === 'road'
+          ? 'เส้นทางถนนตามลำดับการเดินทาง · เวลาเดินทางในตารางเป็นค่าประมาณ อาจต่างจากเส้นทางจริง'
+          : 'เส้นทางเรียงตามลำดับการเดินทาง (เส้นตรง ไม่ใช่เส้นทางถนนจริง)'}
       </div>
     </div>
   )

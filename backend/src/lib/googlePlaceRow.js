@@ -3,6 +3,7 @@
 // Maps" flow (services/placeImport.js) so a place added later looks exactly
 // like a seeded one.
 import { mapCategory } from '../../scripts/place-category.js'
+import { mapAdminArea } from './placeAdminArea.js'
 
 const priceLevelLabel = {
   PRICE_LEVEL_FREE: 'ไม่มีค่าใช้จ่าย',
@@ -34,15 +35,6 @@ function mapPrice(p, category) {
 
 export function cleanAddress(address) {
   return (address || '').replace(/^[A-Z0-9]{4,8}\+[A-Z0-9]{2,3}\s+/, '')
-}
-
-// `administrative_area_level_2` is Google's อำเภอ (district) component --
-// more reliable than parsing/guessing it out of formattedAddress, and lets us
-// verify OUTLYING_DISTRICTS' text-search results actually landed in the
-// district they were searched for.
-function mapDistrict(addressComponents) {
-  const comp = (addressComponents || []).find((c) => c.types?.includes('administrative_area_level_2'))
-  return comp?.longText || null
 }
 
 export function summarizeHours(hours) {
@@ -222,7 +214,7 @@ export function placeToRow(p, { images = [], fallbackImg = null, qrPoints = 0 } 
     price_level: priceLevelRank[p.priceLevel] ?? null,
     price: mapPrice(p, category),
     address: cleanAddress(p.formattedAddress),
-    district: mapDistrict(p.addressComponents),
+    ...mapAdminArea(p.addressComponents, cleanAddress(p.formattedAddress)),
     hours: summarizeHours(p.regularOpeningHours),
     // jsonb columns are stringified explicitly -- node-postgres would otherwise
     // serialize a JS array as a Postgres array literal, which jsonb rejects.

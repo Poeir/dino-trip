@@ -392,6 +392,40 @@ test('admin: place-sync / place-import guards run before any Google call', async
   assert.equal(res.json.needsConfirm, true)
 })
 
+test('admin: area import validates input before any Google call', async () => {
+  as(admin)
+  const ok = { area: 'พระลับ', radius: 3000, categories: ['cafe'] }
+  let res = await call('POST', '/api/admin/place-import/area-search', { body: { ...ok, area: 'a' } })
+  assert.equal(res.status, 400)
+  res = await call('POST', '/api/admin/place-import/area-search', { body: { ...ok, radius: 50 } })
+  assert.equal(res.status, 400)
+  res = await call('POST', '/api/admin/place-import/area-search', { body: { ...ok, categories: ['spaceport'] } })
+  assert.equal(res.status, 400)
+  res = await call('POST', '/api/admin/place-import/area-search', { body: { ...ok, categories: [] } })
+  assert.equal(res.status, 400)
+  // Valid input, no API key in tests: stops at 503 instead of reaching Google.
+  res = await call('POST', '/api/admin/place-import/area-search', { body: ok })
+  assert.equal(res.status, 503)
+
+  res = await call('POST', '/api/admin/place-import/batch', { body: { googlePlaceIds: [] } })
+  assert.equal(res.status, 400)
+  res = await call('POST', '/api/admin/place-import/batch', { body: { googlePlaceIds: Array.from({ length: 51 }, (_, i) => `g${i}`) } })
+  assert.equal(res.status, 400)
+  // AI descriptions cost an LLM request per place, so that option has a lower cap (20) than a plain import (50).
+  res = await call('POST', '/api/admin/place-import/batch', { body: { describe: true, googlePlaceIds: Array.from({ length: 21 }, (_, i) => `g${i}`) } })
+  assert.equal(res.status, 400)
+  res = await call('POST', '/api/admin/place-import/publish', { body: { placeIds: [] } })
+  assert.equal(res.status, 400)
+  res = await call('POST', '/api/admin/place-import/publish', { body: { placeIds: ['nope'] } })
+  assert.equal(res.status, 400)
+  res = await call('POST', '/api/admin/place-import/publish', { body: { placeIds: Array.from({ length: 101 }, () => UUID) } })
+  assert.equal(res.status, 200) // duplicates collapse to one id, which is under the cap
+  res = await call('GET', '/api/admin/place-import/batch/00000000-0000-4000-8000-000000000000')
+  assert.equal(res.status, 404)
+  res = await call('POST', '/api/admin/place-import/batch/00000000-0000-4000-8000-000000000000/cancel')
+  assert.equal(res.status, 404)
+})
+
 test('admin survey: export is CSV with a BOM; deleting a missing response 404s', async () => {
   as(admin)
   let res = await call('GET', '/api/admin/survey/export')

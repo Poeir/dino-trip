@@ -9,16 +9,23 @@ const fixedFieldStyle = { ...fieldStyle, background: '#F5F4EE', color: '#5f6a63'
 // "ทั่วขอนแก่น" is districts of this one province, e.g. ภูเวียง/อุบลรัตน์), so
 // a full 77-province cascade like SignupPage.jsx's would be one extra,
 // pointless step here -- จังหวัด is fixed and shown as such, not hidden.
-// Composes into the same free-text `address` field the form already saves
-// (no schema change); that field stays directly editable below for existing
+// Composes the free-text `address` field the form saves, and reports the
+// structured อำเภอ/ตำบล/จังหวัด too (onCompose's second argument) so the place's
+// own district/subdistrict/province columns stay filled -- same bare names as
+// thaiAddress.json, which is what places.district etc. are normalized to.
+// `district`/`subdistrict` are controlled by the form (so an edited place shows
+// its current area); the address field stays directly editable for existing
 // free-form text (Google-imported addresses especially) this doesn't try to
 // parse back out.
 const PROVINCE_NAME = 'ขอนแก่น'
 
-export default function AddressComposer({ onCompose }) {
-  const [district, setDistrict] = useState('')
-  const [subdistrict, setSubdistrict] = useState('')
-  const [detail, setDetail] = useState('')
+// The street part of an existing address: everything before the first ตำบล/อำเภอ
+// ("437 บ้านโคกฟันโป่ง ตำบลบ้านเป็ด อำเภอ…" -> "437 บ้านโคกฟันโป่ง"), so editing the area
+// of a saved place keeps its street instead of rebuilding the address without it.
+const streetOf = (address) => (address || '').split(/\s*(?:ตำบล|อำเภอ)/)[0].trim()
+
+export default function AddressComposer({ address = '', district = '', subdistrict = '', onCompose }) {
+  const [detail, setDetail] = useState(() => streetOf(address))
 
   // The address table loads on demand (lib/thaiAddress.js): empty lists until it arrives.
   const thaiAddress = useThaiAddress()
@@ -26,8 +33,6 @@ export default function AddressComposer({ onCompose }) {
   const subdistrictOptions = districts.find((d) => d.name === district)?.subdistricts || []
 
   const apply = (d, sd, det) => {
-    setDistrict(d)
-    setSubdistrict(sd)
     setDetail(det)
     // Matches the format Google-imported addresses actually use in the DB
     // (checked directly: "437 บ้านโคกฟันโป่ง ตำบลบ้านเป็ด อำเภอเมืองขอนแก่น
@@ -39,7 +44,7 @@ export default function AddressComposer({ onCompose }) {
     if (sd) parts.push(`ตำบล${sd}`)
     if (d) parts.push(`อำเภอ${d}`)
     parts.push(PROVINCE_NAME)
-    onCompose(parts.join(' '))
+    onCompose(parts.join(' '), { district: d || null, subdistrict: sd || null, province: PROVINCE_NAME })
   }
 
   return (

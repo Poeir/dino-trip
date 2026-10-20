@@ -20,7 +20,7 @@ export default function PlaceDetailModal({ place, onClose, onEdit }) {
   const p = place
   const images = p?.images?.length ? p.images : (p?.img ? [p.img] : [])
   const rows = p ? [
-    ['ที่อยู่', p.address], ['อำเภอ/เขต', p.district], ['เบอร์โทร', p.phone],
+    ['ที่อยู่', p.address], ['ตำบล', p.subdistrict], ['อำเภอ/เขต', p.district], ['จังหวัด', p.province], ['เบอร์โทร', p.phone],
     ['เวลาเปิด-ปิด', typeof p.hours === 'string' ? p.hours : null],
     ['ระดับราคา', p.price],
     ['คะแนน', p.rating ? `${p.rating}${p.reviews ? ` (${p.reviews} รีวิว)` : ''}` : null],

@@ -162,15 +162,23 @@ export default function PlaceFormModal({ onChanged }) {
           </Field>
           <FormGroup legend="ที่อยู่และตำแหน่ง">
             <div className="ad-form-stack">
-              <AddressComposer onCompose={(addr) => actions.updateFormField('address', addr)} />
-              <Field label="ที่อยู่เต็ม (ประกอบอัตโนมัติจากด้านบน แก้ไขเองได้)">
-                <input className="ad-input" value={f.address || ''} onChange={actions.onField_address} />
+              <AddressComposer
+                key={state.editingId ?? 'new'}
+                address={f.address || ''}
+                district={f.district || ''}
+                subdistrict={f.subdistrict || ''}
+                onCompose={(addr, area) => {
+                  actions.updateFormField('address', addr)
+                  for (const [k, v] of Object.entries(area)) actions.updateFormField(k, v)
+                }}
+              />
+              <Field label="ที่อยู่เต็ม (ประกอบอัตโนมัติจากด้านบน)">
+                <input className="ad-input" value={f.address || ''} readOnly aria-readonly="true" style={{ background: '#F5F4EE', color: '#5f6a63', cursor: 'not-allowed' }} />
               </Field>
               <Field label="ปักหมุดบนแผนที่ (สำหรับแสดงแผนที่ในหน้ารายละเอียด)">
                 <LocationPicker
                   value={f.lat && f.lng ? { lat: parseFloat(f.lat), lng: parseFloat(f.lng) } : null}
                   onChange={(loc) => { actions.updateFormField('lat', loc.lat); actions.updateFormField('lng', loc.lng) }}
-                  onSelectPlace={(p) => { if (!f.address) actions.updateFormField('address', p.address) }}
                 />
               </Field>
             </div>

@@ -39,13 +39,13 @@ const MAX_PHOTOS_PER_PLACE = 5
 // names another province still finds its place.
 const KHON_KAEN_BIAS = { circle: { center: { latitude: 16.4322, longitude: 102.8236 }, radius: 50000 } }
 
-function apiKey() {
+export function apiKey() {
   const key = process.env.GOOGLE_PLACES_API_KEY
   if (!key) throw httpError(503, 'ยังไม่ได้ตั้งค่า GOOGLE_PLACES_API_KEY บนเซิร์ฟเวอร์')
   return key
 }
 
-async function googleError(res, what) {
+export async function googleError(res, what) {
   // Body can echo request details; log it, but keep the message user-safe.
   console.error(`Places API ${res.status} (${what}):`, await res.text().catch(() => ''))
   return httpError(502, `Google Places API ตอบกลับ ${res.status}`)

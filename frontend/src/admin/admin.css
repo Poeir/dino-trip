@@ -397,6 +397,9 @@ a.ad-stat:hover { border-color: var(--c-primary-border); box-shadow: 0 4px 14px 
 .ad-entity__media--tile { padding: var(--sp-4) var(--sp-4) 0; border-radius: 0; overflow: visible; }
 .ad-entity__media--tile > div:first-child { width: auto; height: auto; }
 .ad-entity__badge { position: absolute; top: 8px; left: 8px; background: var(--ad-ink-soft); color: var(--ad-on-fill); font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 8px; }
+.ad-entity__select { position: absolute; top: 6px; right: 6px; display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; background: var(--c-surface); border-radius: 8px; cursor: pointer; }
+.ad-entity__select input { width: 18px; height: 18px; cursor: pointer; }
+.ad-bulkbar { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; padding: var(--sp-3) var(--sp-4); margin-bottom: var(--sp-3); background: var(--c-primary-tint); border-radius: var(--r-md); font-size: var(--fs-sm); }
 .ad-entity__body { padding: var(--sp-3) var(--sp-4) 0; flex: 1 1 auto; min-width: 0; }
 .ad-entity__title { font-weight: 700; font-size: 14px; margin-bottom: 3px; overflow-wrap: anywhere; }
 .ad-entity__sub { font-size: var(--fs-xs); color: var(--c-text-subtle); margin-bottom: 8px; }

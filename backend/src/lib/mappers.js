@@ -4,6 +4,7 @@
 import { httpError } from '../middleware/errorHandler.js'
 import { eventDateLabel, formatDateRange, isPlainDateText } from './eventDate.js'
 import { SUBCATEGORIES, isValidSubcategory } from './placeSubcategory.js'
+import { normalizeDistrict } from './placeAdminArea.js'
 
 export function rowToPlace(row) {
   return {
@@ -17,6 +18,8 @@ export function rowToPlace(row) {
     price: row.price,
     address: row.address,
     district: row.district,
+    subdistrict: row.subdistrict ?? null,
+    province: row.province ?? null,
     hours: row.hours,
     phone: row.phone,
     website: row.website,
@@ -163,7 +166,13 @@ export function placePayload(body) {
     subcategory = body.subcategory === '' || body.subcategory == null || !SUBCATEGORIES[body.category] ? null : body.subcategory
     if (subcategory !== null && !isValidSubcategory(body.category, subcategory)) throw httpError(400, 'ประเภทย่อยไม่ถูกต้องสำหรับหมวดนี้')
   }
+  // อำเภอ/ตำบล/จังหวัด: same rule -- untouched when omitted. Stored bare (no
+  // "อำเภอ" prefix, Mueang as "เมืองขอนแก่น") like the Google-imported rows.
+  const areaText = (v) => (v == null ? null : String(v).trim().slice(0, 100) || null)
   return {
+    ...(body.district !== undefined ? { district: normalizeDistrict(areaText(body.district)) } : {}),
+    ...(body.subdistrict !== undefined ? { subdistrict: areaText(body.subdistrict)?.replace(/^(ตำบล|ต\.)\s*/, '') || null } : {}),
+    ...(body.province !== undefined ? { province: areaText(body.province)?.replace(/^จังหวัด\s*/, '') || null } : {}),
     ...(marketTime !== undefined ? { market_time: marketTime } : {}),
     ...(subcategory !== undefined ? { subcategory } : {}),
     name, category: body.category, rating: Number.isFinite(rating) && rating !== 0 ? rating : null,

@@ -45,6 +45,8 @@ const apiDelete = (path) => request(path, { method: 'DELETE' })
 // joined) instead returns exactly those rows, unpaginated -- see
 // AppContext.jsx's post-trip-plan QR-points lookup.
 export const fetchPlaces = (params) => apiGet('/api/places', params)
+// อำเภอ -> ตำบล with place counts, for the admin places list's area filters.
+export const fetchPlaceAreas = () => apiGet('/api/places/meta/areas')
 // Places with a live, scannable QR (active + unexpired), `qrPoints` being what
 // scanning really awards -- see qrs.routes.js's `/meta/places`.
 export const fetchScannablePlaces = () => apiGet('/api/qrs/meta/places')
@@ -346,3 +348,12 @@ export const deleteMyAccount = (password) => request('/api/profile', { method: '
 // import creates a hidden draft + its photos and returns { created, place }.
 export const searchGooglePlaces = (q) => apiGet('/api/admin/place-import/search', { q })
 export const importGooglePlace = (googlePlaceId) => apiPost('/api/admin/place-import', { googlePlaceId })
+// Area import: search around a named area (nothing is imported), then import the
+// ticked results as a background job (poll fetchPlaceImportBatch).
+export const searchGooglePlacesByArea = (body) => apiPost('/api/admin/place-import/area-search', body)
+// `describe` also writes an AI description per newly imported place (max 20 places per job).
+export const startPlaceImportBatch = (googlePlaceIds, { describe = false } = {}) => apiPost('/api/admin/place-import/batch', { googlePlaceIds, describe })
+export const fetchPlaceImportBatch = (id) => apiGet(`/api/admin/place-import/batch/${id}`)
+// Publishes hidden drafts in bulk and kicks a reindex -> { published, alreadyPublishedOrMissing, reindex }.
+export const publishPlacesBatch =(placeIds) => apiPost('/api/admin/place-import/publish', { placeIds })
+export const cancelPlaceImportBatch =(id) => apiPost(`/api/admin/place-import/batch/${id}/cancel`, {})

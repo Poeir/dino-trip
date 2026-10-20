@@ -11,15 +11,26 @@ const CLOSED_LABEL = { CLOSED_PERMANENTLY: 'ปิดถาวร', CLOSED_TEMPO
 
 // One place in the admin grid. Edit is the primary action, hide/show sits beside it and delete lives
 // in the "⋯" menu behind a confirmation.
-export default function PlaceAdminCard({ place, onView, onEdit, onDelete, onToggleActive }) {
+// `selection` ({ checked, onChange }) is only passed for hidden places, so they can be
+// ticked for the bulk publish in PlacesTab.
+export default function PlaceAdminCard({ place, onView, onEdit, onDelete, onToggleActive, selection }) {
   const p = place
   return (
     <EntityCard
       dim={!p.isActive}
       media={<ImageSlot src={p.img} shape="rect" placeholder="ภาพสถานที่" icon={placeCategoryIcon(p.category)} />}
-      mediaOverlay={!p.isActive && <span className="ad-entity__badge">ซ่อนอยู่</span>}
+      mediaOverlay={(
+        <>
+          {!p.isActive && <span className="ad-entity__badge">ซ่อนอยู่</span>}
+          {selection && (
+            <label className="ad-entity__select">
+              <input type="checkbox" checked={selection.checked} onChange={selection.onChange} aria-label={`เลือก ${p.name} เพื่อเผยแพร่`} />
+            </label>
+          )}
+        </>
+      )}
       title={p.name}
-      subtitle={<>{p.category}{p.rating ? <> · <StarGlyph /> {p.rating}</> : ''}</>}
+      subtitle={<>{p.category}{p.rating ? <> · <StarGlyph /> {p.rating}</> : ''}{(p.subdistrict || p.district) ? ` · ${[p.subdistrict && `ต.${p.subdistrict}`, p.district && `อ.${p.district}`].filter(Boolean).join(' ')}` : ''}</>}
       itemName={p.name}
       deleteMessage={`“${p.name}” จะถูกลบถาวรและกู้คืนไม่ได้ ถ้าแค่ต้องการซ่อนจากหน้าเว็บ ให้ใช้ “ซ่อนจากหน้าเว็บ” แทน`}
       onView={onView}
