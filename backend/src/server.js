@@ -3,6 +3,7 @@ import { app } from './app.js'
 import { db } from './lib/db.js'
 import { startCleanupJob } from './lib/cleanup.js'
 import { failOrphanedJobs } from './services/placeSyncJobs.js'
+import { startAutoSyncScheduler } from './services/placeAutoSync.js'
 
 const PORT = process.env.PORT || 4000
 
@@ -18,5 +19,6 @@ db.raw('select 1')
     app.listen(PORT, () => {
       console.log(`Dino Khon Kaen API listening on http://localhost:${PORT}`)
       startCleanupJob()
+      startAutoSyncScheduler()
     })
   })

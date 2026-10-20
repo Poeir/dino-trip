@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext.jsx'
 import Modal from '../components/Modal.jsx'
 import Button from './ui/Button.jsx'
 import Badge from './ui/Badge.jsx'
+import { costTag, FREE_ALLOWANCE_NOTE } from './hooks/useCostEstimates.js'
 import FormSection, { FormError } from './ui/FormSection.jsx'
 import { previewPlaceSync, startPlaceSyncJob, fetchPlaceSyncJob, cancelPlaceSyncJob, fetchPlaces } from '../lib/apiClient.js'
 import { SYNC_FIELDS, SYNC_FIELD_LABEL, describeFieldValue } from '../data/placeSync.js'
@@ -137,7 +138,7 @@ export default function PlaceSyncModal({ open, onClose, onFinished }) {
     <>
       <Button variant="secondary" onClick={onClose} disabled={busy}>ปิด</Button>
       <Button variant="soft" onClick={doPreview} loading={busy && !preview}>{busy && !preview ? 'กำลังตรวจสอบ...' : 'ตรวจสอบจำนวน'}</Button>
-      <Button onClick={start} disabled={busy || !canStart}>{dryRun ? 'เริ่มทดลองรัน' : 'เริ่มซิงก์'}</Button>
+      <Button onClick={start} disabled={busy || !canStart} title={FREE_ALLOWANCE_NOTE}>{dryRun ? 'เริ่มทดลองรัน' : 'เริ่มซิงก์'}{preview ? costTag(preview.estimatedCostThb) : ''}</Button>
     </>
   ) : (
     <>
@@ -241,7 +242,7 @@ export default function PlaceSyncModal({ open, onClose, onFinished }) {
               <div className="ad-sync-preview" aria-live="polite">
                 {preview.count === 0 ? 'ไม่พบสถานที่ที่ตรงกับเงื่อนไข' : (
                   <>
-                    จะซิงก์ <strong>{preview.count}</strong> แห่ง{preview.capped ? ` (ตรงเงื่อนไขทั้งหมด ${preview.matched} แห่ง — เลือกที่ซิงก์นานที่สุดก่อน)` : ''} · เรียก Google Places API ประมาณ {preview.count} ครั้ง (คิดค่าใช้จ่ายตามแพ็กเกจ API ของคุณ)
+                    จะซิงก์ <strong>{preview.count}</strong> แห่ง{preview.capped ? ` (ตรงเงื่อนไขทั้งหมด ${preview.matched} แห่ง — เลือกที่ซิงก์นานที่สุดก่อน)` : ''} · เรียก Google Places API ประมาณ {preview.count} ครั้ง ≈ ฿{Math.ceil(preview.estimatedCostThb)} (ก่อนหักโควตาฟรีรายเดือนของ Google)
                     {preview.sample.length > 0 && <div className="ad-sync-preview__sample">เช่น {preview.sample.map((s) => s.name).join(', ')}{preview.count > preview.sample.length ? ' ...' : ''}</div>}
                     {preview.needsConfirm && (
                       <label className="ad-sync-preview__confirm">

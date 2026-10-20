@@ -1,10 +1,11 @@
-import { MapPin, Plus, RefreshCw } from 'lucide-react'
+import { CalendarClock, MapPin, Plus, RefreshCw } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useApp } from '../../context/AppContext.jsx'
 import PageControls from '../../components/PageControls.jsx'
 import { fetchPlaceAreas, fetchPlaces, publishPlacesBatch } from '../../lib/apiClient.js'
 import { usePagedList } from '../../lib/usePagedList.js'
 import AreaImportModal from '../AreaImportModal.jsx'
+import AutoSyncSettingsModal from '../AutoSyncSettingsModal.jsx'
 import GooglePlaceImportModal from '../GooglePlaceImportModal.jsx'
 import PlaceSyncModal from '../PlaceSyncModal.jsx'
 import AdminPageHeader from '../ui/AdminPageHeader.jsx'
@@ -67,6 +68,7 @@ export default function PlacesTab() {
   const [viewing, setViewing] = useState(null)
   const [importOpen, setImportOpen] = useState(false)
   const [areaImportOpen, setAreaImportOpen] = useState(false)
+  const [autoSyncOpen, setAutoSyncOpen] = useState(false)
 
   return (
     <>
@@ -75,6 +77,7 @@ export default function PlacesTab() {
         actions={(
           <>
             <Button variant="secondary" onClick={() => setSyncOpen(true)}><RefreshCw size={15} aria-hidden="true" />ซิงก์จาก Google</Button>
+            <Button variant="secondary" onClick={() => setAutoSyncOpen(true)}><CalendarClock size={15} aria-hidden="true" />ตั้งค่าซิงก์อัตโนมัติ</Button>
             <Button variant="secondary" onClick={() => setImportOpen(true)}><Plus size={16} aria-hidden="true" />เพิ่มจาก Google Maps</Button>
             <Button variant="secondary" onClick={() => setAreaImportOpen(true)}><MapPin size={15} aria-hidden="true" />นำเข้าตามพื้นที่</Button>
             <Button onClick={actions.onNewPlace}><Plus size={16} aria-hidden="true" />เพิ่มสถานที่ใหม่</Button>
@@ -92,6 +95,7 @@ export default function PlacesTab() {
         }}
       />
       <AreaImportModal open={areaImportOpen} onClose={() => setAreaImportOpen(false)} onFinished={paged.refetch} />
+      <AutoSyncSettingsModal open={autoSyncOpen} onClose={() => setAutoSyncOpen(false)} onChanged={paged.refetch} />
       <PlaceSyncModal open={syncOpen} onClose={() => setSyncOpen(false)} onFinished={paged.refetch} />
       <PlaceDetailModal place={viewing} onClose={() => setViewing(null)} onEdit={(p) => actions.openEditForm('place', p)} />
       <PlaceFormModal onChanged={paged.refetch} />

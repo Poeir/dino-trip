@@ -4,6 +4,7 @@ import Modal from '../components/Modal.jsx'
 import Button from './ui/Button.jsx'
 import Badge from './ui/Badge.jsx'
 import FormSection, { FormError } from './ui/FormSection.jsx'
+import { useCostEstimates, costTag, formatBaht, FREE_ALLOWANCE_NOTE } from './hooks/useCostEstimates.js'
 import { searchGooglePlacesByArea, startPlaceImportBatch, fetchPlaceImportBatch, cancelPlaceImportBatch } from '../lib/apiClient.js'
 
 const CATEGORIES = [
@@ -36,6 +37,7 @@ export default function AreaImportModal({ open, onClose, onFinished }) {
   const [found, setFound] = useState(null)
   const [picked, setPicked] = useState(() => new Set())
   const [describe, setDescribe] = useState(false)
+  const est = useCostEstimates()
   const [searching, setSearching] = useState(false)
   const [starting, setStarting] = useState(false)
   const [error, setError] = useState('')
@@ -95,6 +97,11 @@ export default function AreaImportModal({ open, onClose, onFinished }) {
   // Off by default: each description is a Serper search + an LLM request per new place.
   const describeAllowed = picked.size <= MAX_DESCRIBE
   const describeOk = describe && describeAllowed
+  // Ceiling for what the import will cost (Details + up to 5 photos per place, plus the AI description if ticked),
+  // before the monthly free allowance -- from the server's price table so there is one source of truth.
+  const importCostThb = est ? picked.size * (est.importPerPlaceThb + (describeOk ? est.describePerPlaceThb : 0)) : null
+  // One area lookup + one nearby request per ticked category.
+  const searchCostThb = est ? est.textSearchThb + est.nearbySearchThb * categories.length : null
   const importable = found?.results.filter((r) => !r.existingPlaceId) || []
   const allTicked = importable.length > 0 && importable.slice(0, MAX_BATCH).every((r) => picked.has(r.googlePlaceId))
   const toggleAll = () => setPicked(allTicked ? new Set() : new Set(importable.slice(0, MAX_BATCH).map((r) => r.googlePlaceId)))
@@ -120,8 +127,8 @@ export default function AreaImportModal({ open, onClose, onFinished }) {
   ) : (
     <>
       <Button variant="secondary" onClick={onClose} disabled={searching || starting}>ปิด</Button>
-      <Button onClick={start} loading={starting} disabled={searching || starting || picked.size === 0}>
-        {starting ? 'กำลังเริ่ม...' : `นำเข้า ${picked.size} แห่ง`}
+      <Button onClick={start} title={FREE_ALLOWANCE_NOTE} loading={starting} disabled={searching || starting || picked.size === 0}>
+        {starting ? 'กำลังเริ่ม...' : `นำเข้า ${picked.size} แห่ง${costTag(importCostThb)}`}
       </Button>
     </>
   )
@@ -153,7 +160,7 @@ export default function AreaImportModal({ open, onClose, onFinished }) {
               </div>
               <p className="ad-hint ad-hint--block">การค้นหาแสดงเฉพาะรายชื่อ (ยังไม่ดึงรายละเอียด) แต่ละหมวดได้สูงสุด 20 แห่ง ค่าใช้จ่ายหลักเกิดตอนกดนำเข้า — แห่งละ 1 คำขอ</p>
               <div>
-                <Button type="submit" variant="soft" loading={searching} disabled={searching || area.trim().length < 2 || categories.length === 0}>{searching ? 'กำลังค้นหา...' : 'ค้นหา'}</Button>
+                <Button type="submit" variant="soft" title={FREE_ALLOWANCE_NOTE} loading={searching} disabled={searching || area.trim().length < 2 || categories.length === 0}>{searching ? 'กำลังค้นหา...' : `ค้นหา${costTag(searchCostThb)}`}</Button>
               </div>
             </FormSection>
           </form>
@@ -191,13 +198,14 @@ export default function AreaImportModal({ open, onClose, onFinished }) {
                     </div>
                     <label className="ad-check">
                       <input type="checkbox" checked={describeOk} disabled={!describeAllowed} onChange={(e) => setDescribe(e.target.checked)} />
-                      สร้างคำอธิบายด้วย AI ให้แห่งที่นำเข้าใหม่
+                      สร้างคำอธิบายด้วย AI ให้แห่งที่นำเข้าใหม่{est ? ` (+${formatBaht(est.describePerPlaceThb)} ต่อแห่ง)` : ''}
                     </label>
                     <p className="ad-hint ad-hint--block">
                       {describeAllowed
                         ? 'สรุปจากรีวิวและผลค้นหา Google ทำเฉพาะแห่งที่ Google ไม่มีคำอธิบายให้ (ใช้ Serper + LLM แห่งละ 1 ครั้ง และใช้เวลานานขึ้น) ผลอยู่ในฉบับร่างให้ตรวจก่อนเผยแพร่'
                         : `ตัวเลือกนี้ใช้ได้เมื่อเลือกไม่เกิน ${MAX_DESCRIBE} แห่ง (ตอนนี้เลือก ${picked.size})`}
                     </p>
+                    {importCostThb != null && <p className="ad-hint ad-hint--block">นำเข้า {picked.size} แห่ง ค่าใช้จ่ายสูงสุดประมาณ {formatBaht(importCostThb)} (รายละเอียด + รูปสูงสุด 5 รูปต่อแห่ง{describeOk ? ' + คำอธิบาย AI' : ''}) · {FREE_ALLOWANCE_NOTE}</p>}
                   </>
                 )}
             </FormSection>

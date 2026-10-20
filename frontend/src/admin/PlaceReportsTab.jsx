@@ -8,6 +8,7 @@ import { fmtDateTime } from '../lib/format.js'
 import { REPORT_FIELD_LABEL, REPORT_TO_SYNC_FIELD, SYNC_FIELD_LABEL, describeFieldValue, BUSINESS_STATUS_LABEL } from '../data/placeSync.js'
 import Badge from './ui/Badge.jsx'
 import Button from './ui/Button.jsx'
+import { useCostEstimates, costTag, FREE_ALLOWANCE_NOTE } from './hooks/useCostEstimates.js'
 import ReportQueueCard, { ReportQueue, ReportFieldSection } from './ReportQueueCard.jsx'
 
 const STATUS_FILTERS = [
@@ -25,6 +26,7 @@ const RESOLUTION_LABEL = { edited: 'แก้ไขเอง', synced: 'ซิ�
 // "Google updated".
 export function PlaceReportsPanel() {
   const { actions } = useApp()
+  const estimates = useCostEstimates()
   const navigate = useNavigate()
   const [status, setStatus] = useState('pending')
   const paged = usePagedList(fetchAdminPlaceReports, { pageSize: 10, extraParams: { status } })
@@ -134,8 +136,8 @@ export function PlaceReportsPanel() {
                   actions={pending && (
                     <>
                       {syncKey && g.place.hasGoogleId && (
-                        <Button size="sm" variant="soft" disabled={!!busyKey} loading={busyKey === `${g.place.id}:${field}:sync`} onClick={() => syncField(g, field)}>
-                          {busyKey === `${g.place.id}:${field}:sync` ? 'กำลังซิงก์...' : 'ซิงก์จาก Google'}
+                        <Button size="sm" variant="soft" title={FREE_ALLOWANCE_NOTE} disabled={!!busyKey} loading={busyKey === `${g.place.id}:${field}:sync`} onClick={() => syncField(g, field)}>
+                          {busyKey === `${g.place.id}:${field}:sync` ? 'กำลังซิงก์...' : `ซิงก์จาก Google${costTag(estimates?.syncPerPlaceThb)}`}
                         </Button>
                       )}
                       <Button size="sm" variant="secondary" disabled={!!busyKey} onClick={() => resolve(g, field, { status: 'resolved', resolution: 'no_change' }, 'ปิดรายงาน: ไม่ต้องแก้ไข')}>ข้อมูลถูกต้องแล้ว</Button>

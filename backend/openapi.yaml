@@ -80,6 +80,10 @@ tags:
     description: "[Admin] ซิงก์ข้อมูลจาก Google Places และล็อกฟิลด์ (ทุกการซิงก์คือ 1 คำขอ Places API ที่มีค่าใช้จ่าย)"
   - name: Admin Place Import
     description: "[Admin] เพิ่มสถานที่จาก Google Maps"
+  - name: Admin Place Auto Sync
+    description: "[Admin] ตั้งค่าและดูสถานะการซิงก์ข้อมูลจาก Google อัตโนมัติ (คุมงบด้วยเพดานคำขอต่อเดือน)"
+  - name: Admin Cost Estimates
+    description: "[Admin] ประมาณค่าใช้จ่ายต่อการกดปุ่มที่เรียก API เสียเงิน (ไม่เก็บอะไรลงฐานข้อมูล)"
   - name: Admin Reindex
     description: "[Admin] สั่ง embed ข้อมูลใหม่ใน chatbot-service"
 
@@ -2623,6 +2627,95 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
 
   # ---------------------------------------------------------------- Admin place sync
+  /api/admin/cost-estimates:
+    get:
+      tags: [Admin Cost Estimates]
+      operationId: adminGetCostEstimates
+      summary: "[Admin] ประมาณค่าใช้จ่ายต่อครั้งของปุ่มที่เรียก API เสียเงิน"
+      description: 'ตัวเลขเป็นบาทต่อ 1 หน่วย ก่อนหักโควตาฟรีรายเดือนของ Google (ประมาณการ — ยอดจริงดู Google Cloud Billing) · ไม่ใช้ฐานข้อมูล'
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200':
+          description: ค่าประมาณ
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CostEstimates' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/admin/place-auto-sync:
+    get:
+      tags: [Admin Place Auto Sync]
+      operationId: adminGetPlaceAutoSync
+      summary: "[Admin] ดูการตั้งค่าและสถานะซิงก์อัตโนมัติ"
+      description: 'ค่าที่ตั้ง การใช้คำขอของเดือนนี้เทียบเพดาน ประมาณการต่อเดือนตามความถี่ที่ตั้ง รอบถัดไป และรอบล่าสุด · ยังไม่รัน migration → 503'
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200':
+          description: การตั้งค่าและสถานะ
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AutoSyncStatus' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/Error' }
+    put:
+      tags: [Admin Place Auto Sync]
+      operationId: adminUpdatePlaceAutoSync
+      summary: "[Admin] บันทึกการตั้งค่าซิงก์อัตโนมัติ"
+      description: 'ส่งเฉพาะค่าที่ต้องการเปลี่ยนได้ · ค่าเกินช่วงที่อนุญาต → 400 · คืนสถานะล่าสุด'
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AutoSyncSettings' }
+      responses:
+        '200':
+          description: การตั้งค่าและสถานะหลังบันทึก
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AutoSyncStatus' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/Error' }
+  /api/admin/place-auto-sync/run:
+    post:
+      tags: [Admin Place Auto Sync]
+      operationId: adminRunPlaceAutoSync
+      summary: "[Admin] สั่งซิงก์อัตโนมัติทันที (1 รอบ)"
+      description: 'เลือกสถานที่และเคารพเพดานต่อวัน/ต่อเดือนเหมือนรอบตามเวลา · เริ่มงาน → 202 · ไม่มีอะไรต้องซิงก์/ครบเพดาน → 200 `started: false` · มีงานซิงก์อื่นอยู่ → 409 · **Rate limit:** 6 ครั้ง/ชั่วโมง/admin · ต้องตั้ง `GOOGLE_PLACES_API_KEY`'
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200':
+          description: ไม่ได้เริ่มงาน
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  started: { type: boolean }
+                  reason: { type: string, enum: [cap_reached, nothing_due] }
+                  message: { type: string }
+        '202':
+          description: เริ่มงานแล้ว
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  started: { type: boolean }
+                  jobId: { type: string, format: uuid }
+                  total: { type: integer }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '503': { $ref: '#/components/responses/Error' }
   /api/admin/place-sync/preview:
     post:
       tags: [Admin Place Sync]
@@ -2709,6 +2802,7 @@ paths:
                   - type: object
                     properties:
                       needsConfirm: { type: boolean }
+                      estimatedCostThb: { type: number, description: ค่าใช้จ่ายโดยประมาณของรอบนี้ (ก่อนหักโควตาฟรีรายเดือน) }
                       count: { type: integer }
         '429': { $ref: '#/components/responses/TooManyRequests' }
   /api/admin/place-sync/jobs/{id}:
@@ -4196,6 +4290,75 @@ components:
         primaryType: { type: string, nullable: true }
         businessStatus: { type: string, nullable: true }
         existingPlaceId: { type: string, format: uuid, nullable: true, description: มีค่าเมื่อเคยนำเข้าแล้ว }
+    CostEstimates:
+      type: object
+      description: บาทต่อ 1 หน่วย ก่อนหักโควตาฟรีรายเดือน
+      properties:
+        syncPerPlaceThb: { type: number, description: ซิงก์ 1 แห่ง }
+        importPerPlaceThb: { type: number, description: นำเข้า 1 แห่ง (รายละเอียด + รูปสูงสุด 5 รูป) }
+        describePerPlaceThb: { type: number, description: สร้างคำอธิบาย AI 1 แห่ง }
+        textSearchThb: { type: number, description: ค้นหาข้อความ 1 ครั้ง }
+        nearbySearchThb: { type: number, description: ค้นหาใกล้เคียง 1 ครั้ง (1 หมวด) }
+        thbPerUsd: { type: number }
+        checkedAt: { type: string, description: วันที่ตรวจราคา Google }
+        freeCallsPerMonth: { type: integer, description: โควตาฟรีรายเดือนของการซิงก์ }
+    AutoSyncSettings:
+      type: object
+      properties:
+        enabled: { type: boolean }
+        runHour: { type: integer, minimum: 0, maximum: 23, description: ชั่วโมง (เวลาไทย) ที่รอบของวันเริ่มได้ }
+        normalIntervalDays: { type: integer, minimum: 1, maximum: 365 }
+        priorityIntervalDays: { type: integer, minimum: 1, maximum: 365 }
+        priorityFeatured: { type: boolean }
+        priorityQr: { type: boolean }
+        priorityWithReports: { type: boolean, description: มีรายงานจากผู้ใช้ค้างอยู่ }
+        monthlyCallCap: { type: integer, minimum: 0, maximum: 100000, description: คำขอต่อเดือน (รวมซิงก์มือ) }
+        dailyMaxItems: { type: integer, minimum: 1, maximum: 500 }
+        autoHideClosed: { type: boolean, description: ซ่อนอัตโนมัติเมื่อ Google บอกว่าปิดถาวร (ไม่ลบ) }
+        includeInactive: { type: boolean }
+        updatedAt: { type: string, format: date-time }
+    AutoSyncStatus:
+      type: object
+      properties:
+        settings: { $ref: '#/components/schemas/AutoSyncSettings' }
+        usage:
+          type: object
+          properties:
+            usedThisMonth: { type: integer }
+            cap: { type: integer }
+            remaining: { type: integer }
+            costSoFarThb: { type: integer, description: ประมาณ หลังหักโควตาฟรี }
+            maxCostAtCapThb: { type: integer }
+        projection:
+          type: object
+          description: ประมาณการต่อเดือนจากความถี่ที่ตั้ง (เพดานยังจำกัดสิ่งที่รันจริง)
+          properties:
+            eligible: { type: integer }
+            priority: { type: integer }
+            monthlyCalls: { type: integer }
+            monthlyCostThb: { type: integer }
+        dueNow: { type: integer, description: จำนวนที่ถึงรอบซิงก์แล้ว }
+        running: { type: boolean }
+        nextRunAt: { type: string, format: date-time, nullable: true }
+        lastRun:
+          type: object
+          nullable: true
+          properties:
+            id: { type: string, format: uuid }
+            status: { type: string }
+            total: { type: integer }
+            done: { type: integer }
+            failed: { type: integer }
+            autoHidden: { type: integer }
+            runNow: { type: boolean }
+            createdAt: { type: string, format: date-time }
+            finishedAt: { type: string, format: date-time, nullable: true }
+        pricing:
+          type: object
+          properties:
+            freeCallsPerMonth: { type: integer }
+            usdPer1000: { type: number }
+            thbPerUsd: { type: number }
     AreaSearchResult:
       type: object
       properties:

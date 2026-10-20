@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { useApp } from '../../context/AppContext.jsx'
 import { generatePlaceDescription } from '../../lib/apiClient.js'
 import Button from '../ui/Button.jsx'
+import { useCostEstimates, costTag } from '../hooks/useCostEstimates.js'
 
 const SOURCE_NOTE = {
   search_assisted: 'สรุปจากรีวิว Google Maps และผลค้นหา Google',
@@ -19,6 +20,7 @@ export default function PlaceAiDescription({ getInput, onApply, canGenerate }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [suggestion, setSuggestion] = useState(null)
+  const estimates = useCostEstimates()
 
   const handleGenerate = async () => {
     setLoading(true)
@@ -38,7 +40,7 @@ export default function PlaceAiDescription({ getInput, onApply, canGenerate }) {
       <div className="ad-row">
         <Button size="sm" onClick={handleGenerate} loading={loading} disabled={!canGenerate}>
           <Sparkles size={14} aria-hidden="true" />
-          {loading ? 'กำลังสร้างคำอธิบาย...' : 'สร้างคำอธิบายด้วย AI'}
+          {loading ? 'กำลังสร้างคำอธิบาย...' : `สร้างคำอธิบายด้วย AI${costTag(estimates?.describePerPlaceThb)}`}
         </Button>
         <span className="ad-ai-box__note">
           {canGenerate ? 'ใช้รีวิวและผลค้นหา Google อาจใช้เวลาสักครู่ — ตรวจสอบก่อนบันทึกเสมอ' : 'กรอกชื่อและเลือกหมวดหมู่ก่อน'}

@@ -297,6 +297,12 @@ export const resolveAdminPlaceReports = (body) => apiPost('/api/admin/place-repo
 
 // Admin: Google sync (backend/src/routes/adminPlaceSync.routes.js). Selection
 // input is { scope: single|selected|filter|all, ids, filters, maxItems }.
+// Scheduled Google sync settings + status (backend/src/routes/adminPlaceAutoSync.routes.js).
+// Per-click cost ceilings (baht) shown next to the buttons that call a paid API.
+export const fetchCostEstimates = () => apiGet('/api/admin/cost-estimates')
+export const fetchAutoSyncStatus = () => apiGet('/api/admin/place-auto-sync')
+export const saveAutoSyncSettings = (settings) => apiPut('/api/admin/place-auto-sync', settings)
+export const runAutoSyncNow = () => apiPost('/api/admin/place-auto-sync/run', {})
 export const previewPlaceSync = (selection) => apiPost('/api/admin/place-sync/preview', selection)
 // Starts a background job; rejects with `err.needsConfirm`-style 409 when the
 // run is large (retry with confirm: true after showing the count).

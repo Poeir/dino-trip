@@ -392,6 +392,27 @@ test('admin: place-sync / place-import guards run before any Google call', async
   assert.equal(res.json.needsConfirm, true)
 })
 
+test('admin: cost estimates need no DB and give per-click baht figures', async () => {
+  as(admin)
+  const res = await call('GET', '/api/admin/cost-estimates')
+  assert.equal(res.status, 200)
+  for (const k of ['syncPerPlaceThb', 'importPerPlaceThb', 'describePerPlaceThb', 'textSearchThb', 'nearbySearchThb']) {
+    assert.equal(typeof res.json[k], 'number', k)
+    assert.ok(res.json[k] >= 0, k)
+  }
+  assert.ok(res.json.importPerPlaceThb > res.json.syncPerPlaceThb) // details+atmosphere+photos vs details only
+})
+
+test('admin: auto-sync settings are validated before anything is saved', async () => {
+  as(admin)
+  let res = await call('PUT', '/api/admin/place-auto-sync', { body: { runHour: 99 } })
+  assert.equal(res.status, 400)
+  res = await call('PUT', '/api/admin/place-auto-sync', { body: { monthlyCallCap: '900' } })
+  assert.equal(res.status, 400)
+  res = await call('PUT', '/api/admin/place-auto-sync', { body: {} })
+  assert.equal(res.status, 400)
+})
+
 test('admin: area import validates input before any Google call', async () => {
   as(admin)
   const ok = { area: 'พระลับ', radius: 3000, categories: ['cafe'] }

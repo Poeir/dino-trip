@@ -5,6 +5,7 @@ import { fetchPlaceSyncInfo, syncOnePlace, resolvePlaceGoogleDiff, setPlaceLocke
 import { SYNC_FIELD_LABEL, REPORT_FIELD_LABEL, describeFieldValue } from '../data/placeSync.js'
 import { fmtDateTime } from '../lib/format.js'
 import Button from './ui/Button.jsx'
+import { useCostEstimates, costTag, FREE_ALLOWANCE_NOTE } from './hooks/useCostEstimates.js'
 import { useConfirm } from './ui/ConfirmDialog.jsx'
 
 // Sync state of one Google-sourced place, inside its edit form: which fields
@@ -14,6 +15,7 @@ import { useConfirm } from './ui/ConfirmDialog.jsx'
 // value straight back (and re-lock the field).
 export default function PlaceSyncInfo({ placeId, dirty, onChanged }) {
   const { actions } = useApp()
+  const estimates = useCostEstimates()
   const { confirm, confirmDialog } = useConfirm()
   const [info, setInfo] = useState(null)
   const [error, setError] = useState(false)
@@ -62,12 +64,13 @@ export default function PlaceSyncInfo({ placeId, dirty, onChanged }) {
         <Button
           variant="soft"
           size="sm"
+          title={FREE_ALLOWANCE_NOTE}
           disabled={anyBusy}
           loading={busy === 'sync'}
           onClick={() => act('sync', () => syncOnePlace(placeId), (r) => (r.changedFields.length ? `อัปเดตจาก Google แล้ว: ${r.changedFields.map((f) => SYNC_FIELD_LABEL[f]).join(', ')}` : r.skippedLocked.length ? 'Google มีค่าใหม่ในฟิลด์ที่ล็อกไว้ — ดูด้านล่าง' : 'ข้อมูลตรงกับ Google แล้ว'))}
         >
           {busy !== 'sync' && <RefreshCw size={14} aria-hidden="true" />}
-          {busy === 'sync' ? 'กำลังซิงก์...' : 'ซิงก์จาก Google ตอนนี้'}
+          {busy === 'sync' ? 'กำลังซิงก์...' : `ซิงก์จาก Google ตอนนี้${costTag(estimates?.syncPerPlaceThb)}`}
         </Button>
       </div>
 

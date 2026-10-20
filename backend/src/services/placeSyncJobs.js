@@ -2,6 +2,7 @@ import { db } from '../lib/db.js'
 import { httpError } from '../middleware/errorHandler.js'
 import { SYNC_FIELDS } from '../lib/placeFields.js'
 import { syncPlace } from './placeSync.js'
+import { grossCostThb } from '../lib/apiPricing.js'
 
 export const SCOPES = ['single', 'selected', 'filter', 'all']
 export const MAX_JOB_ITEMS = 500
@@ -72,6 +73,8 @@ export async function previewSelection(input) {
     matched: Number(count),
     capped: Number(count) > rows.length,
     needsConfirm: input.scope === 'all' || rows.length > CONFIRM_THRESHOLD,
+    // Before the monthly free allowance; see lib/apiPricing.js.
+    estimatedCostThb: grossCostThb({ 'places.details.enterprise': rows.length }),
     sample: rows.slice(0, 5).map((r) => ({ id: r.id, name: r.name })),
   }
 }
@@ -121,6 +124,41 @@ export async function createJob(input, actorId) {
   runJob(job, ids, actorId).catch((err) => console.error('Place sync job crashed:', err)).finally(() => { runningJobId = null })
   return job
 }
+
+// The scheduler's entry point (placeAutoSync.js): same runner and the same
+// one-job-at-a-time slot as an admin's job, but no actor and no dry run.
+// Returns null (and does nothing) if a job is already running, so a manual run is
+// never overlapped. `onFinished(job)` runs after the last place, before the slot is released.
+export async function startAutoJob(ids, { onFinished, runNow = false } = {}) {
+  if (runningJobId) return null
+  runningJobId = 'pending'
+  let job
+  try {
+    ;[job] = await db('place_sync_jobs').insert({
+      created_by: null,
+      triggered_by: 'auto',
+      scope: 'filter',
+      // runNow = started by hand from the settings dialog; the scheduler ignores those when
+      // deciding whether today's scheduled run already happened.
+      filters: JSON.stringify({ auto: true, runNow }),
+      fields: SYNC_FIELDS,
+      dry_run: false,
+      max_items: ids.length,
+      total: ids.length,
+    }).returning('*')
+  } catch (err) {
+    runningJobId = null
+    throw err
+  }
+  runningJobId = job.id
+  runJob(job, ids, null)
+    .then(() => onFinished?.(job))
+    .catch((err) => console.error('Auto place sync job failed:', err))
+    .finally(() => { runningJobId = null })
+  return job
+}
+
+export const isJobRunning = () => runningJobId != null
 
 async function runJob(job, ids, actorId) {
   await db('place_sync_jobs').where('id', job.id).update({ status: 'running', started_at: db.fn.now() })

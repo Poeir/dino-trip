@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import Modal from '../components/Modal.jsx'
 import Button from './ui/Button.jsx'
 import Badge from './ui/Badge.jsx'
+import { useCostEstimates, costTag, FREE_ALLOWANCE_NOTE } from './hooks/useCostEstimates.js'
 import { searchGooglePlaces, importGooglePlace } from '../lib/apiClient.js'
 
 // Admin picks a place found on Google Maps; the server creates it (with photos)
@@ -13,6 +14,7 @@ export default function GooglePlaceImportModal({ open, onClose, onImported }) {
   const [searching, setSearching] = useState(false)
   const [importingId, setImportingId] = useState(null)
   const [error, setError] = useState('')
+  const estimates = useCostEstimates()
 
   useEffect(() => {
     if (open) { setQuery(''); setResults(null); setError(''); setImportingId(null) }
@@ -53,7 +55,7 @@ export default function GooglePlaceImportModal({ open, onClose, onImported }) {
     >
       <form onSubmit={search} className="ad-import-form">
         <input className="ad-input" aria-label="ชื่อสถานที่ที่จะค้นหา" value={query} onChange={(e) => setQuery(e.target.value)} disabled={busy} autoFocus placeholder="พิมพ์ชื่อสถานที่ เช่น คาเฟ่ xxx ขอนแก่น" />
-        <Button type="submit" loading={searching} disabled={busy || query.trim().length < 2}>{searching ? 'กำลังค้นหา...' : 'ค้นหา'}</Button>
+        <Button type="submit" loading={searching} disabled={busy || query.trim().length < 2} title={FREE_ALLOWANCE_NOTE}>{searching ? 'กำลังค้นหา...' : `ค้นหา${costTag(estimates?.textSearchThb)}`}</Button>
       </form>
       <p className="ad-hint ad-hint--block">ผลลัพธ์จาก Google Maps — เมื่อเลือกแล้วระบบจะดึงข้อมูลและรูป (สูงสุด 5 รูป) มาสร้างเป็นฉบับร่างที่ซ่อนอยู่ ให้ตรวจแก้ก่อนเผยแพร่</p>
       {error && <div className="ad-error-text ad-mb" role="alert">{error}</div>}
@@ -68,7 +70,7 @@ export default function GooglePlaceImportModal({ open, onClose, onImported }) {
             </div>
             {r.existingPlaceId
               ? <Badge>มีในระบบแล้ว</Badge>
-              : <Button variant="soft" size="sm" disabled={busy} loading={importingId === r.googlePlaceId} onClick={() => pick(r)}>{importingId === r.googlePlaceId ? 'กำลังนำเข้า...' : 'เลือก'}</Button>}
+              : <Button variant="soft" size="sm" title={FREE_ALLOWANCE_NOTE} disabled={busy} loading={importingId === r.googlePlaceId} onClick={() => pick(r)}>{importingId === r.googlePlaceId ? 'กำลังนำเข้า...' : `เลือก${costTag(estimates?.importPerPlaceThb)}`}</Button>}
           </div>
         ))}
       </div>
