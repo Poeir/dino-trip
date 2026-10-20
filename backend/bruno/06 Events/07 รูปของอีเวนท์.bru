@@ -1,0 +1,23 @@
+meta {
+  name: รูปของอีเวนท์
+  type: http
+  seq: 7
+}
+
+get {
+  url: {{baseUrl}}/api/events/{{eventId}}/photos
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## รูปของอีเวนท์
+
+  `GET /api/events/{id}/photos` · สิทธิ์: ไม่ต้องล็อกอิน
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

@@ -1,0 +1,41 @@
+meta {
+  name: Admin สร้างคำอธิบายสถานที่ด้วย AI
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/places/describe
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "placeId": "{{placeId}}",
+    "name": "<name>",
+    "category": "<category>",
+    "district": "<district>",
+    "tags": [
+      "<tags>"
+    ],
+    "amenities": [
+      "<amenities>"
+    ]
+  }
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## [Admin] สร้างคำอธิบายสถานที่ด้วย AI
+
+  `POST /api/places/describe` · สิทธิ์: ต้องล็อกอินเป็น admin (รัน "Auth / Login (admin)" ก่อน)
+
+  ส่งต่อไปยัง chatbot-service (`/admin/places/describe`) ใช้รีวิว + ผลค้นหา Google สรุปด้วย LLM
+  ไม่บันทึกอะไร — คืนข้อความให้ admin ตรวจ · **Rate limit:** 60 ครั้ง/ชั่วโมง/admin
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

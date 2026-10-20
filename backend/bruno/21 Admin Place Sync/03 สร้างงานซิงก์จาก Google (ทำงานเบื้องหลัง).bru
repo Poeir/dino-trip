@@ -1,0 +1,37 @@
+meta {
+  name: Admin สร้างงานซิงก์จาก Google (ทำงานเบื้องหลัง)
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/admin/place-sync/jobs
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "scope": "single",
+    "ids": [
+      "{{placeId}}"
+    ],
+    "dryRun": true
+  }
+}
+
+assert {
+  res.status: eq 202
+}
+
+docs {
+  ## [Admin] สร้างงานซิงก์จาก Google (ทำงานเบื้องหลัง)
+
+  `POST /api/admin/place-sync/jobs` · สิทธิ์: ต้องล็อกอินเป็น admin (รัน "Auth / Login (admin)" ก่อน)
+
+  ทำได้ทีละ 1 งาน (มีงานค้าง → 409) · สูงสุด 500 แห่ง · มากกว่า 100 แห่ง หรือ scope `all` ต้องส่ง `confirm: true`
+  ไม่งั้นได้ 409 พร้อม `needsConfirm` และ `count` · ตอบ 202 แล้วให้ client poll `GET /jobs/{id}`
+  **ค่าใช้จ่าย:** 1 แห่ง = 1 คำขอ Places API · **Rate limit:** 20 งาน/ชั่วโมง/admin
+
+  คาดหวัง: HTTP 202 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

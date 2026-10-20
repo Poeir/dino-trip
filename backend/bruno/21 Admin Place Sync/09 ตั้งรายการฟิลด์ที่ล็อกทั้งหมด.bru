@@ -1,0 +1,34 @@
+meta {
+  name: Admin ตั้งรายการฟิลด์ที่ล็อกทั้งหมด
+  type: http
+  seq: 9
+}
+
+put {
+  url: {{baseUrl}}/api/admin/place-sync/places/{{placeId}}/locked-fields
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "lockedFields": [
+      "hours",
+      "phone"
+    ]
+  }
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## [Admin] ตั้งรายการฟิลด์ที่ล็อกทั้งหมด
+
+  `PUT /api/admin/place-sync/places/{id}/locked-fields` · สิทธิ์: ต้องล็อกอินเป็น admin (รัน "Auth / Login (admin)" ก่อน)
+
+  ฟิลด์ที่ปลดล็อกจะล้างค่า Google ที่พักไว้ของฟิลด์นั้น
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

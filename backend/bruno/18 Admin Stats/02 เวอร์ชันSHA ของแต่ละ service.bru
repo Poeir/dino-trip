@@ -1,0 +1,25 @@
+meta {
+  name: Admin เวอร์ชันSHA ของแต่ละ service
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/admin/stats/system
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## [Admin] เวอร์ชัน/SHA ของแต่ละ service
+
+  `GET /api/admin/stats/system` · สิทธิ์: ต้องล็อกอินเป็น admin (รัน "Auth / Login (admin)" ก่อน)
+
+  `chatbot` เป็น null เมื่อ chatbot-service ล่ม (ไม่ทำให้ทั้งคำขอล้ม)
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

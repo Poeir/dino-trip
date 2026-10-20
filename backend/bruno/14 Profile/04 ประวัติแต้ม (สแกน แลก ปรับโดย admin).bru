@@ -1,0 +1,31 @@
+meta {
+  name: ประวัติแต้ม (สแกน แลก ปรับโดย admin)
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/api/profile/history
+  body: none
+  auth: none
+}
+
+params:query {
+  ~type: all
+  ~page: 1
+  ~limit: 1
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## ประวัติแต้ม (สแกน / แลก / ปรับโดย admin)
+
+  `GET /api/profile/history` · สิทธิ์: ต้องล็อกอิน (รัน "Auth / Login (user)" ก่อน)
+
+  ใหม่สุดก่อน · ค่าเริ่มต้น 20 ต่อหน้า (สูงสุด 50)
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

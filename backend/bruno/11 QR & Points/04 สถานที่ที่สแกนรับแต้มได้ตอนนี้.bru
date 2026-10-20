@@ -1,0 +1,25 @@
+meta {
+  name: สถานที่ที่สแกนรับแต้มได้ตอนนี้
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/api/qrs/meta/places
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## สถานที่ที่สแกนรับแต้มได้ตอนนี้
+
+  `GET /api/qrs/meta/places` · สิทธิ์: ไม่ต้องล็อกอิน
+
+  QR ที่เปิดใช้และยังไม่หมดอายุ บนสถานที่ที่เปิดใช้ · `qrPoints` มาจาก QR จริง (ไม่ใช่ `places.qr_points`)
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

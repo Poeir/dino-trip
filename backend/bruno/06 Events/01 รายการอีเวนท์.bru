@@ -1,0 +1,36 @@
+meta {
+  name: รายการอีเวนท์
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/events
+  body: none
+  auth: none
+}
+
+params:query {
+  ~page: 1
+  ~limit: 1
+  ~search: <search>
+  ~status: upcoming
+  ~sort: name
+  ~dir: asc
+  ~ids: <ids>
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## รายการอีเวนท์
+
+  `GET /api/events` · สิทธิ์: ไม่ต้องล็อกอิน
+
+  เรียง: กำลังจัด → กำลังจะมา → จบแล้ว → ไม่มีวันที่/ยกเลิก · `status` กรองตามสถานะที่คำนวณจากวันที่ (เขตเวลาไทย)
+  ไม่ส่ง `page`/`limit` → array · cache 25 วินาที
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

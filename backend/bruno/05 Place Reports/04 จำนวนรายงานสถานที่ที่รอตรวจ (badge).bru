@@ -1,0 +1,23 @@
+meta {
+  name: Admin จำนวนรายงานสถานที่ที่รอตรวจ (badge)
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/api/admin/place-reports/count
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## [Admin] จำนวนรายงานสถานที่ที่รอตรวจ (badge)
+
+  `GET /api/admin/place-reports/count` · สิทธิ์: ต้องล็อกอินเป็น admin (รัน "Auth / Login (admin)" ก่อน)
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

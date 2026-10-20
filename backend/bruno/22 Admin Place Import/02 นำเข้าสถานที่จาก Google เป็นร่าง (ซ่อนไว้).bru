@@ -1,0 +1,31 @@
+meta {
+  name: Admin นำเข้าสถานที่จาก Google เป็นร่าง (ซ่อนไว้)
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/admin/place-import
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "googlePlaceId": "ChIJxxxxxxxxxxxxxxxx"
+  }
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## [Admin] นำเข้าสถานที่จาก Google เป็นร่าง (ซ่อนไว้)
+
+  `POST /api/admin/place-import` · สิทธิ์: ต้องล็อกอินเป็น admin (รัน "Auth / Login (admin)" ก่อน)
+
+  เคยนำเข้าแล้ว → 200 `created: false` · ใหม่ → 201 · **Rate limit:** 40 ครั้ง/ชั่วโมง/admin
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

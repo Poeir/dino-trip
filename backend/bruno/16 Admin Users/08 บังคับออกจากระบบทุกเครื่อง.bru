@@ -1,0 +1,23 @@
+meta {
+  name: Admin บังคับออกจากระบบทุกเครื่อง
+  type: http
+  seq: 8
+}
+
+post {
+  url: {{baseUrl}}/api/admin/users/{{userId}}/revoke-sessions
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## [Admin] บังคับออกจากระบบทุกเครื่อง
+
+  `POST /api/admin/users/{id}/revoke-sessions` · สิทธิ์: ต้องล็อกอินเป็น admin (รัน "Auth / Login (admin)" ก่อน)
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

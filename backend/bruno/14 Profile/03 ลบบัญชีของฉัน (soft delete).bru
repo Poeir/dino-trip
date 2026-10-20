@@ -1,0 +1,31 @@
+meta {
+  name: ลบบัญชีของฉัน (soft delete)
+  type: http
+  seq: 3
+}
+
+delete {
+  url: {{baseUrl}}/api/profile
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "password": "{{userPassword}}"
+  }
+}
+
+assert {
+  res.status: eq 204
+}
+
+docs {
+  ## ลบบัญชีของฉัน (soft delete)
+
+  `DELETE /api/profile` · สิทธิ์: ต้องล็อกอิน (รัน "Auth / Login (user)" ก่อน)
+
+  ยืนยันด้วยรหัสผ่าน · admin คนสุดท้ายลบตัวเองไม่ได้ (409) · ล้าง cookie · **Rate limit:** 5 ครั้ง/15 นาที/ผู้ใช้
+
+  คาดหวัง: HTTP 204 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

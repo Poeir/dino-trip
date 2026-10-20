@@ -1,0 +1,23 @@
+meta {
+  name: ข้อมูลชื่อ API
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## ข้อมูลชื่อ API
+
+  `GET /` · สิทธิ์: ไม่ต้องล็อกอิน
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

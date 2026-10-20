@@ -1,0 +1,25 @@
+meta {
+  name: sitemap.xml
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/sitemap.xml
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## sitemap.xml
+
+  `GET /sitemap.xml` · สิทธิ์: ไม่ต้องล็อกอิน
+
+  หน้าหลัก + สถานที่ที่เปิดใช้งาน + อีเวนท์ที่ยังไม่จบ/ไม่ยกเลิก · cache ในเซิร์ฟเวอร์ 10 นาที
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

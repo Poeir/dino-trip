@@ -1,0 +1,25 @@
+meta {
+  name: ผู้ใช้ปัจจุบันจาก cookie
+  type: http
+  seq: 9
+}
+
+get {
+  url: {{baseUrl}}/api/auth/me
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## ผู้ใช้ปัจจุบันจาก cookie
+
+  `GET /api/auth/me` · สิทธิ์: ล็อกอินหรือไม่ก็ได้
+
+  ไม่ได้ล็อกอิน (หรือ session หมดอายุ/บัญชีถูกระงับ) → `{ "user": null }` ไม่ใช่ 401
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

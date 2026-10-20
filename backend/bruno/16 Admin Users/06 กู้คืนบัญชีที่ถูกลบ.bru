@@ -1,0 +1,23 @@
+meta {
+  name: Admin กู้คืนบัญชีที่ถูกลบ
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/api/admin/users/{{userId}}/restore
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## [Admin] กู้คืนบัญชีที่ถูกลบ
+
+  `POST /api/admin/users/{id}/restore` · สิทธิ์: ต้องล็อกอินเป็น admin (รัน "Auth / Login (admin)" ก่อน)
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

@@ -1,0 +1,32 @@
+meta {
+  name: แผนทริปของฉัน
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/trips
+  body: none
+  auth: none
+}
+
+params:query {
+  ~page: 1
+  ~limit: 1
+  ~search: <search>
+  ~favorite: 1
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## แผนทริปของฉัน
+
+  `GET /api/trips` · สิทธิ์: ต้องล็อกอิน (รัน "Auth / Login (user)" ก่อน)
+
+  ใหม่สุดก่อน · ค่าเริ่มต้น 12 ต่อหน้า (สูงสุด 50) · `search` ค้นชื่อทริป · `favorite=1` เฉพาะที่ติดดาว
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

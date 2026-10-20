@@ -1,0 +1,23 @@
+meta {
+  name: Admin สถานะล็อก ค่าจาก Google ที่พักไว้ และจำนวนรายงาน ของสถานที่
+  type: http
+  seq: 6
+}
+
+get {
+  url: {{baseUrl}}/api/admin/place-sync/places/{{placeId}}
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## [Admin] สถานะล็อก ค่าจาก Google ที่พักไว้ และจำนวนรายงาน ของสถานที่
+
+  `GET /api/admin/place-sync/places/{id}` · สิทธิ์: ต้องล็อกอินเป็น admin (รัน "Auth / Login (admin)" ก่อน)
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

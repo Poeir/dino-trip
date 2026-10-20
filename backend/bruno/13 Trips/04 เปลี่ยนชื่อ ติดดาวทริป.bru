@@ -1,0 +1,30 @@
+meta {
+  name: เปลี่ยนชื่อ ติดดาวทริป
+  type: http
+  seq: 4
+}
+
+patch {
+  url: {{baseUrl}}/api/trips/{{tripId}}
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "title": "เที่ยวขอนแก่นกับครอบครัว",
+    "isFavorite": false
+  }
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## เปลี่ยนชื่อ / ติดดาวทริป
+
+  `PATCH /api/trips/{id}` · สิทธิ์: ต้องล็อกอิน (รัน "Auth / Login (user)" ก่อน)
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

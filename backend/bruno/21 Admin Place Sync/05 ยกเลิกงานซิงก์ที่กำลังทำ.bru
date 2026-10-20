@@ -1,0 +1,23 @@
+meta {
+  name: Admin ยกเลิกงานซิงก์ที่กำลังทำ
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/api/admin/place-sync/jobs/{{syncJobId}}/cancel
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## [Admin] ยกเลิกงานซิงก์ที่กำลังทำ
+
+  `POST /api/admin/place-sync/jobs/{id}/cancel` · สิทธิ์: ต้องล็อกอินเป็น admin (รัน "Auth / Login (admin)" ก่อน)
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

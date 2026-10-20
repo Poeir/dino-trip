@@ -1,0 +1,31 @@
+meta {
+  name: Admin รับปัดตกค่าใหม่จาก Google ของฟิลด์ที่ล็อก
+  type: http
+  seq: 8
+}
+
+post {
+  url: {{baseUrl}}/api/admin/place-sync/places/{{placeId}}/diff/name
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "action": "accept"
+  }
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## [Admin] รับ/ปัดตกค่าใหม่จาก Google ของฟิลด์ที่ล็อก
+
+  `POST /api/admin/place-sync/places/{id}/diff/{field}` · สิทธิ์: ต้องล็อกอินเป็น admin (รัน "Auth / Login (admin)" ก่อน)
+
+  `accept` = ใช้ค่า Google และปลดล็อก · `dismiss` = คงค่าของ admin (ยังล็อก)
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

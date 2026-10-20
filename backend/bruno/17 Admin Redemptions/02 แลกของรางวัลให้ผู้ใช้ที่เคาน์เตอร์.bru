@@ -1,0 +1,32 @@
+meta {
+  name: Admin แลกของรางวัลให้ผู้ใช้ที่เคาน์เตอร์
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/admin/redemptions
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "userId": "{{userId}}",
+    "rewardId": "{{rewardId}}"
+  }
+}
+
+assert {
+  res.status: eq 201
+}
+
+docs {
+  ## [Admin] แลกของรางวัลให้ผู้ใช้ที่เคาน์เตอร์
+
+  `POST /api/admin/redemptions` · สิทธิ์: ต้องล็อกอินเป็น admin (รัน "Auth / Login (admin)" ก่อน)
+
+  หักแต้ม ลดสต็อก และบันทึกรายการในฟังก์ชัน `admin_redeem_reward()` · แต้มไม่พอ → 402 · ของหมด → 409
+
+  คาดหวัง: HTTP 201 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

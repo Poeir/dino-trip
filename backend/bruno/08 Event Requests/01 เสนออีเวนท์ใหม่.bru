@@ -1,0 +1,45 @@
+meta {
+  name: เสนออีเวนท์ใหม่
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/event-requests
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "name": "งานไหมขอนแก่น",
+    "category": "เทศกาล",
+    "dateRange": "4-8 พ.ย. 2569",
+    "venueName": "ศาลากลางจังหวัดขอนแก่น",
+    "admission": "เข้าฟรี",
+    "organizer": "<organizer>",
+    "suitableFor": [
+      "<suitableFor>"
+    ],
+    "desc": "<desc>",
+    "status": "upcoming",
+    "eventStartDate": "2026-11-04",
+    "eventEndDate": "2026-11-08",
+    "placeId": "{{placeId}}"
+  }
+}
+
+assert {
+  res.status: eq 201
+}
+
+docs {
+  ## เสนออีเวนท์ใหม่
+
+  `POST /api/event-requests` · สิทธิ์: ต้องล็อกอิน (รัน "Auth / Login (user)" ก่อน)
+
+  ตรวจข้อมูลแบบเดียวกับฟอร์ม admin · มีคำขอรออนุมัติได้สูงสุด 5 รายการต่อคน (เกิน → 429)
+  **Rate limit:** 10 ครั้ง/ชั่วโมง/ผู้ใช้
+
+  คาดหวัง: HTTP 201 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

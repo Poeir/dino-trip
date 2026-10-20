@@ -1,0 +1,42 @@
+meta {
+  name: Admin เพิ่มอีเวนท์
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/events
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "name": "งานไหมขอนแก่น",
+    "category": "เทศกาล",
+    "dateRange": "4-8 พ.ย. 2569",
+    "venueName": "ศาลากลางจังหวัดขอนแก่น",
+    "admission": "เข้าฟรี",
+    "organizer": "<organizer>",
+    "suitableFor": [
+      "<suitableFor>"
+    ],
+    "desc": "<desc>",
+    "status": "upcoming",
+    "eventStartDate": "2026-11-04",
+    "eventEndDate": "2026-11-08",
+    "placeId": "{{placeId}}"
+  }
+}
+
+assert {
+  res.status: eq 201
+}
+
+docs {
+  ## [Admin] เพิ่มอีเวนท์
+
+  `POST /api/events` · สิทธิ์: ต้องล็อกอินเป็น admin (รัน "Auth / Login (admin)" ก่อน)
+
+  คาดหวัง: HTTP 201 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

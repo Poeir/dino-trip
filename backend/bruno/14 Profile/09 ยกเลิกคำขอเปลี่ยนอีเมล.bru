@@ -1,0 +1,23 @@
+meta {
+  name: ยกเลิกคำขอเปลี่ยนอีเมล
+  type: http
+  seq: 9
+}
+
+delete {
+  url: {{baseUrl}}/api/profile/email
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 204
+}
+
+docs {
+  ## ยกเลิกคำขอเปลี่ยนอีเมล
+
+  `DELETE /api/profile/email` · สิทธิ์: ต้องล็อกอิน (รัน "Auth / Login (user)" ก่อน)
+
+  คาดหวัง: HTTP 204 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

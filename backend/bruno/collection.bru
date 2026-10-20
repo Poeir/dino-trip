@@ -1,0 +1,19 @@
+script:pre-request {
+  // ส่ง session cookie ที่ได้จาก Login ต่อให้ทุก request (สำหรับ bru run / CLI)
+  // ใน Bruno GUI cookie jar ก็ส่งให้อยู่แล้ว ค่าซ้ำกันไม่เป็นปัญหา
+  const c = bru.getVar("sessionCookie");
+  if (c && !req.getHeader("cookie")) req.setHeader("cookie", c);
+}
+
+docs {
+  # Dino Khon Kaen API (Bruno)
+
+  สร้างจาก backend/openapi.yaml ด้วย `npm run bruno:generate`
+
+  1. เลือก environment **local** แล้วกรอก userEmail/userPassword/adminEmail/adminPassword
+  2. รัน **Auth / Login (user)** หรือ **Auth / Login (admin)** ก่อน — cookie session_token จะถูกเก็บใน cookie jar
+  3. ใส่ id จริงในตัวแปร (placeId, eventId, ...) ก่อนเรียก endpoint ที่มี id
+
+  ⚠️ request ที่เป็น POST/PUT/PATCH/DELETE เปลี่ยนข้อมูลจริง อย่ารันทั้ง collection กับ production
+  โฟลเดอร์ **00 Smoke** อ่านอย่างเดียว ใช้กับ `bru run "00 Smoke" --env local` ได้อย่างปลอดภัย
+}

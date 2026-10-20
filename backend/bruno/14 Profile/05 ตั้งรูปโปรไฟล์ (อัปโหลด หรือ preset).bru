@@ -1,0 +1,32 @@
+meta {
+  name: ตั้งรูปโปรไฟล์ (อัปโหลด หรือ preset)
+  type: http
+  seq: 5
+}
+
+put {
+  url: {{baseUrl}}/api/profile/avatar
+  body: multipartForm
+  auth: none
+}
+
+body:multipart-form {
+  ~avatarFile: @file()
+  ~avatarUrl: preset:dino1
+  ~avatarPosition: 50% 50%
+  ~avatarScale: 1
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## ตั้งรูปโปรไฟล์ (อัปโหลด หรือ preset)
+
+  `PUT /api/profile/avatar` · สิทธิ์: ต้องล็อกอิน (รัน "Auth / Login (user)" ก่อน)
+
+  ส่ง `avatarFile` (≤2MB) หรือ `avatarUrl: "preset:<key>"` — ตั้งอย่างหนึ่งจะล้างอีกอย่าง · **Rate limit:** 30 ครั้ง/นาที/ผู้ใช้
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

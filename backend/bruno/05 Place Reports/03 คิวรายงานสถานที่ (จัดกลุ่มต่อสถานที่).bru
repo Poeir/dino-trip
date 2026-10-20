@@ -1,0 +1,31 @@
+meta {
+  name: Admin คิวรายงานสถานที่ (จัดกลุ่มต่อสถานที่)
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/admin/place-reports
+  body: none
+  auth: none
+}
+
+params:query {
+  ~status: pending
+  ~page: 1
+  ~limit: 1
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## [Admin] คิวรายงานสถานที่ (จัดกลุ่มต่อสถานที่)
+
+  `GET /api/admin/place-reports` · สิทธิ์: ต้องล็อกอินเป็น admin (รัน "Auth / Login (admin)" ก่อน)
+
+  ค่าเริ่มต้น `status=pending` · 20 กลุ่มต่อหน้า (สูงสุด 50) · เรียงจำนวนรายงานมากสุดก่อน
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

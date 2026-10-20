@@ -1,0 +1,29 @@
+meta {
+  name: อัปโหลดรูปให้คำขอที่ยังรออนุมัติ
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{baseUrl}}/api/event-requests/{{eventRequestId}}/photos
+  body: multipartForm
+  auth: none
+}
+
+body:multipart-form {
+  photoFile: @file()
+}
+
+assert {
+  res.status: eq 201
+}
+
+docs {
+  ## อัปโหลดรูปให้คำขอที่ยังรออนุมัติ
+
+  `POST /api/event-requests/{id}/photos` · สิทธิ์: ต้องล็อกอิน (รัน "Auth / Login (user)" ก่อน)
+
+  สูงสุด 5 รูป · ≤2MB · **Rate limit:** 60 ครั้ง/ชั่วโมง/ผู้ใช้
+
+  คาดหวัง: HTTP 201 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

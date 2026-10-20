@@ -1,0 +1,4117 @@
+openapi: 3.0.3
+info:
+  title: Dino Khon Kaen API
+  version: 0.1.0
+  description: |
+    REST API ของ backend (Express) สำหรับเว็บ Dino Khon Kaen — สถานที่ อีเวนท์ ฐานความรู้แชทบอท QR สะสมแต้ม
+    ของรางวัล แผนทริป โปรไฟล์ แบบสอบถาม และหน้าผู้ดูแลระบบ
+
+    **การยืนยันตัวตน:** ใช้ session cookie ชื่อ `session_token` (httpOnly, `sameSite: lax`, อายุ 30 วัน)
+    ซึ่งได้จาก `POST /api/auth/login` (หรือ `/confirm`, `/reset-password`) — frontend เรียกด้วย
+    `credentials: 'include'` ไม่มี bearer token
+    - `x-auth: public` — ไม่ต้องล็อกอิน
+    - `x-auth: optional` — ล็อกอินหรือไม่ก็ได้ (ผลลัพธ์ต่างกัน)
+    - `x-auth: user` — ต้องล็อกอิน (ไม่มี cookie → 401 `กรุณาเข้าสู่ระบบก่อน`)
+    - `x-auth: admin` — ต้องล็อกอินและ role = `admin` (ไม่ใช่ admin → 403 `ไม่มีสิทธิ์เข้าถึงส่วนนี้`)
+
+    **รูปแบบ error:** ทุก error ตอบเป็น JSON `{ "error": { "message": "<ข้อความภาษาไทย>" } }`
+    (ยกเว้น 404 ของ `/api/users/{id}/avatar` ที่ไม่มี body และหน้า SEO ที่ตอบเป็น HTML)
+    - 400 ข้อมูลไม่ถูกต้อง (รวมถึง id ที่ไม่ใช่ uuid → `ข้อมูลที่ส่งมาไม่ถูกต้อง`)
+    - 401/403 สิทธิ์ · 404 ไม่พบ · 409 ขัดแย้ง · 429 เรียกถี่เกินไป (มี header `Retry-After`)
+    - 500 `เกิดข้อผิดพลาดของระบบ กรุณาลองใหม่อีกครั้ง` · 502 ติดต่อบริการภายนอกไม่ได้
+    - 503 `ฐานข้อมูลยังไม่เป็นปัจจุบัน ...` เมื่อยังไม่ได้รัน migration ล่าสุด
+
+    **Rate limit:** ทุก `/api/*` มีเพดานรวม 1200 ครั้ง/นาที/IP และบาง endpoint มีเพดานเฉพาะ (ระบุในคำอธิบาย)
+    นับในหน่วยความจำของ process เดียว
+
+    **Cache:** รายการจาก crudRouter (places, events, knowledge-base, qrs, rewards) cache ในหน่วยความจำ 25 วินาที
+    ต่อชุด query string — ข้อมูลที่เพิ่งแก้ผ่านช่องทางอื่นอาจเห็นช้าไม่เกิน 25 วินาที
+  contact:
+    name: Dino Khon Kaen
+servers:
+  - url: http://localhost:4000
+    description: Local dev (npm run dev)
+  - url: https://dinokhonkaen.app
+    description: Production (Caddy proxy /api → backend)
+# Default = public. Operations that need a session declare their own `security`.
+security: []
+tags:
+  - name: Health
+    description: ตรวจสุขภาพระบบ
+  - name: SEO
+    description: robots.txt, sitemap และหน้า pre-render สำหรับ crawler (Caddy ส่งเฉพาะ bot มาที่นี่)
+  - name: Auth
+    description: สมัครสมาชิก ยืนยันอีเมล ล็อกอิน/ออก รีเซ็ตรหัสผ่าน
+  - name: Places
+    description: สถานที่ท่องเที่ยว (อ่านได้ทุกคน แก้ไขได้เฉพาะ admin)
+  - name: Place Reports
+    description: ผู้ใช้แจ้งข้อมูลสถานที่ผิด และคิวตรวจสอบของ admin
+  - name: Events
+    description: อีเวนท์/กิจกรรม
+  - name: Event Reports
+    description: ผู้ใช้แจ้งข้อมูลอีเวนท์ผิด และคิวตรวจสอบของ admin
+  - name: Event Requests
+    description: ผู้ใช้เสนออีเวนท์ใหม่ให้ admin อนุมัติ
+  - name: Survey
+    description: แบบสอบถามความพึงพอใจ (ไม่ระบุตัวตน)
+  - name: Knowledge Base
+    description: ฐานความรู้ของแชทบอท (RAG)
+  - name: QR & Points
+    description: QR สะสมแต้ม การสแกน และยอดแต้ม
+  - name: Rewards
+    description: ของรางวัลสำหรับแลกแต้ม
+  - name: Trips
+    description: แผนทริปที่บันทึกไว้ของผู้ใช้
+  - name: Profile
+    description: บัญชีของผู้ใช้ที่ล็อกอินอยู่
+  - name: Users
+    description: รูปโปรไฟล์สาธารณะ
+  - name: Admin Users
+    description: "[Admin] จัดการบัญชีผู้ใช้"
+  - name: Admin Redemptions
+    description: "[Admin] แลกของรางวัลที่เคาน์เตอร์"
+  - name: Admin Stats
+    description: "[Admin] สถิติแดชบอร์ด และเวอร์ชันระบบ"
+  - name: Admin Trips
+    description: "[Admin] ดูแผนทริปทั้งหมด"
+  - name: Admin Survey
+    description: "[Admin] สรุปผลแบบสอบถาม"
+  - name: Admin Place Sync
+    description: "[Admin] ซิงก์ข้อมูลจาก Google Places และล็อกฟิลด์ (ทุกการซิงก์คือ 1 คำขอ Places API ที่มีค่าใช้จ่าย)"
+  - name: Admin Place Import
+    description: "[Admin] เพิ่มสถานที่จาก Google Maps"
+  - name: Admin Reindex
+    description: "[Admin] สั่ง embed ข้อมูลใหม่ใน chatbot-service"
+
+paths:
+  # ---------------------------------------------------------------- Health
+  /:
+    get:
+      tags: [Health]
+      operationId: getRoot
+      summary: ข้อมูลชื่อ API
+      x-auth: public
+      responses:
+        '200':
+          description: ชื่อ API
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name: { type: string, example: Dino Khon Kaen API }
+                  docs: { type: string, example: /api }
+  /health:
+    get:
+      tags: [Health]
+      operationId: getHealth
+      summary: Health check (ภายใน)
+      description: รัน `select 1` กับฐานข้อมูลจริง ตอบ 503 เมื่อเชื่อมต่อฐานข้อมูลไม่ได้
+      x-auth: public
+      responses:
+        '200': { $ref: '#/components/responses/HealthOk' }
+        '503': { $ref: '#/components/responses/HealthDown' }
+  /api/health:
+    get:
+      tags: [Health]
+      operationId: getApiHealth
+      summary: Health check (ผ่าน reverse proxy)
+      description: เหมือน `/health` แต่อยู่ใต้ `/api` เพื่อให้เรียกผ่าน Caddy ได้
+      x-auth: public
+      responses:
+        '200': { $ref: '#/components/responses/HealthOk' }
+        '503': { $ref: '#/components/responses/HealthDown' }
+
+  # ---------------------------------------------------------------- SEO
+  /robots.txt:
+    get:
+      tags: [SEO]
+      operationId: getRobotsTxt
+      summary: robots.txt
+      description: บล็อกหน้าส่วนตัว (admin, profile, ผลทริป ฯลฯ) และชี้ไปที่ sitemap · Cache-Control 1 ชั่วโมง
+      x-auth: public
+      responses:
+        '200':
+          description: ไฟล์ข้อความ
+          content:
+            text/plain:
+              schema: { type: string }
+  /sitemap.xml:
+    get:
+      tags: [SEO]
+      operationId: getSitemap
+      summary: sitemap.xml
+      description: หน้าหลัก + สถานที่ที่เปิดใช้งาน + อีเวนท์ที่ยังไม่จบ/ไม่ยกเลิก · cache ในเซิร์ฟเวอร์ 10 นาที
+      x-auth: public
+      responses:
+        '200':
+          description: XML sitemap
+          content:
+            application/xml:
+              schema: { type: string }
+  /api/seo/page/{path}:
+    get:
+      tags: [SEO]
+      operationId: getSeoPage
+      summary: หน้า HTML pre-render สำหรับ crawler
+      description: |
+        Caddy rewrite มาที่นี่เฉพาะเมื่อ User-Agent เป็น bot/link preview — คนทั่วไปได้ SPA
+        `path` คือ path ของเว็บ เช่น `places/<uuid>`, `events/<uuid>`, `places`, `events`, `trip`
+        (ส่วน `/` ของหน้าแรกคือ `/api/seo/page/`) · cache 5 นาที · ไม่พบ → 404 พร้อมหน้า HTML "ไม่พบหน้า"
+      x-auth: public
+      parameters:
+        - name: path
+          in: path
+          required: true
+          description: path ของหน้าเว็บ (อาจมี `/` ได้)
+          schema: { type: string, example: places/28d1ae32-daa7-401a-8f95-028644a42a1d }
+      responses:
+        '200':
+          description: หน้า HTML พร้อม meta/OG/JSON-LD
+          content:
+            text/html:
+              schema: { type: string }
+        '404':
+          description: ไม่มีหน้าสาธารณะที่ path นี้
+          content:
+            text/html:
+              schema: { type: string }
+
+  # ---------------------------------------------------------------- Auth
+  /api/auth/signup:
+    post:
+      tags: [Auth]
+      operationId: signup
+      summary: สมัครสมาชิก
+      description: |
+        ส่งแบบ `multipart/form-data` เพื่อแนบรูปโปรไฟล์ (`avatarFile`, ≤2MB, jpg/png/webp/gif) ได้ในคำขอเดียว
+        หรือเลือก preset ผ่าน `avatarUrl: "preset:<key>"` · สำเร็จแล้วระบบส่งอีเมลยืนยัน — ยังล็อกอินไม่ได้จนกว่าจะยืนยัน
+        **Rate limit:** 20 ครั้ง/ชั่วโมง/IP
+      x-auth: public
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { $ref: '#/components/schemas/SignupInput' }
+          application/json:
+            schema: { $ref: '#/components/schemas/SignupInput' }
+      responses:
+        '201':
+          description: สร้างบัญชีแล้ว รอยืนยันอีเมล
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pendingConfirmation: { type: boolean, example: true }
+                  email: { type: string, format: email }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /api/auth/confirm:
+    post:
+      tags: [Auth]
+      operationId: confirmEmail
+      summary: ยืนยันอีเมลจากลิงก์
+      description: รับ token จากลิงก์ในอีเมล (`/confirm?token=`) ยืนยันแล้วล็อกอินทันที (ตั้ง cookie) · **Rate limit:** 30 ครั้ง/15 นาที/IP
+      x-auth: public
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TokenInput' }
+      responses:
+        '200': { $ref: '#/components/responses/UserWithCookie' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      operationId: login
+      summary: เข้าสู่ระบบ
+      description: |
+        สำเร็จ → ตั้ง cookie `session_token` (httpOnly) — ใช้ cookie นี้กับทุก endpoint ที่ต้องล็อกอิน
+        อีเมลผิด/รหัสผิด/บัญชีถูกลบ ตอบเหมือนกัน (401) · บัญชีถูกระงับหรือยังไม่ยืนยันอีเมล → 403
+        **Rate limit:** 100 ครั้ง/15 นาที/IP และ 10 ครั้ง/15 นาที ต่อ IP+อีเมล
+      x-auth: public
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email, example: tourist@example.com }
+                password: { type: string, format: password, example: Passw0rd! }
+      responses:
+        '200': { $ref: '#/components/responses/UserWithCookie' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /api/auth/forgot-password:
+    post:
+      tags: [Auth]
+      operationId: forgotPassword
+      summary: ขอลิงก์รีเซ็ตรหัสผ่าน
+      description: ตอบข้อความเดียวกันเสมอไม่ว่าอีเมลจะมีในระบบหรือไม่ (กันการเดาบัญชี) · **Rate limit:** 10 ครั้ง/ชั่วโมง/IP และ 3 ครั้ง/ชั่วโมง/อีเมล
+      x-auth: public
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        '200': { $ref: '#/components/responses/Message' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /api/auth/reset-password:
+    post:
+      tags: [Auth]
+      operationId: resetPassword
+      summary: ตั้งรหัสผ่านใหม่ด้วย token
+      description: ตั้งรหัสผ่านใหม่ ยืนยันอีเมลให้ ยกเลิก session อื่นทั้งหมด แล้วล็อกอิน (ตั้ง cookie) · **Rate limit:** 30 ครั้ง/15 นาที/IP
+      x-auth: public
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, password]
+              properties:
+                token: { type: string }
+                password: { type: string, format: password, description: 'อย่างน้อย 8 ตัว มีตัวพิมพ์ใหญ่ ตัวพิมพ์เล็ก และตัวเลข' }
+      responses:
+        '200': { $ref: '#/components/responses/UserWithCookie' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /api/auth/logout:
+    post:
+      tags: [Auth]
+      operationId: logout
+      summary: ออกจากระบบ
+      description: ลบ session ปัจจุบันและล้าง cookie (เรียกได้แม้ไม่ได้ล็อกอิน)
+      x-auth: public
+      responses:
+        '204': { description: ออกจากระบบแล้ว }
+  /api/auth/me:
+    get:
+      tags: [Auth]
+      operationId: getMe
+      summary: ผู้ใช้ปัจจุบันจาก cookie
+      description: 'ไม่ได้ล็อกอิน (หรือ session หมดอายุ/บัญชีถูกระงับ) → `{ "user": null }` ไม่ใช่ 401'
+      x-auth: optional
+      security: [{}, { cookieAuth: [] }]
+      responses:
+        '200':
+          description: ผู้ใช้ หรือ null
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    type: object
+                    allOf: [{ $ref: '#/components/schemas/User' }]
+                    nullable: true
+
+  # ---------------------------------------------------------------- Places
+  /api/places:
+    get:
+      tags: [Places]
+      operationId: listPlaces
+      summary: รายการสถานที่
+      description: |
+        ไม่ส่ง `page`/`limit` → ได้ array ทั้งหมด (ใช้ตอนโหลดหน้าแรก) · ส่ง `page` หรือ `limit` → ได้ object แบ่งหน้า
+        เรียงตามคะแนนถ่วงน้ำหนัก (ปักหมุดก่อน) เว้นแต่ส่ง `sort=name|rating` · ผลลัพธ์ cache 25 วินาที
+        `?ids=` (คั่นด้วย comma) ไม่ถูก cache
+      x-auth: public
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Search'
+        - name: sort
+          in: query
+          description: '`name`/`rating` = เรียงตามคอลัมน์ (เฉพาะโหมดแบ่งหน้า) · `popular`/`topRated` = รูปแบบการจัดอันดับ'
+          schema: { type: string, enum: [name, rating, popular, topRated] }
+        - $ref: '#/components/parameters/Dir'
+        - name: category
+          in: query
+          schema: { type: string, example: ร้านอาหาร }
+        - name: subcategory
+          in: query
+          schema: { type: string, example: ก๋วยเตี๋ยว }
+        - name: isActive
+          in: query
+          description: '`true` = เฉพาะที่แสดงต่อสาธารณะ (หน้าเว็บส่งค่านี้, admin ไม่ส่ง)'
+          schema: { type: string, enum: ['true', 'false'] }
+        - name: hasQR
+          in: query
+          schema: { type: string, enum: ['true', 'false'] }
+        - $ref: '#/components/parameters/Ids'
+      responses:
+        '200':
+          description: array (ไม่แบ่งหน้า) หรือ object แบ่งหน้า
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: array
+                    items: { $ref: '#/components/schemas/Place' }
+                  - $ref: '#/components/schemas/PlacePage'
+    post:
+      tags: [Places]
+      operationId: createPlace
+      summary: "[Admin] เพิ่มสถานที่"
+      description: สร้างสถานที่ใหม่ (ล้าง `embedding` — ต้อง reindex เพื่อให้แชทบอทค้นเจอ)
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PlaceInput' }
+      responses:
+        '201':
+          description: สร้างแล้ว
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Place' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/places/meta/names:
+    get:
+      tags: [Places]
+      operationId: listPlaceNames
+      summary: รายชื่อสถานที่แบบย่อ (id + name)
+      description: ใช้ใน datalist เลือกสถานที่จัดงานของฟอร์มอีเวนท์ · รวมสถานที่ที่ซ่อนอยู่ · cache 25 วินาที
+      x-auth: public
+      responses:
+        '200':
+          description: รายชื่อเรียงตามชื่อ
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id: { type: string, format: uuid }
+                    name: { type: string }
+  /api/places/describe:
+    post:
+      tags: [Places]
+      operationId: describePlace
+      summary: "[Admin] สร้างคำอธิบายสถานที่ด้วย AI"
+      description: |
+        ส่งต่อไปยัง chatbot-service (`/admin/places/describe`) ใช้รีวิว + ผลค้นหา Google สรุปด้วย LLM
+        ไม่บันทึกอะไร — คืนข้อความให้ admin ตรวจ · **Rate limit:** 60 ครั้ง/ชั่วโมง/admin
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, category]
+              properties:
+                placeId: { type: string, format: uuid, nullable: true }
+                name: { type: string, maxLength: 200 }
+                category: { type: string, maxLength: 100 }
+                district: { type: string, nullable: true }
+                tags: { type: array, items: { type: string }, maxItems: 30 }
+                amenities: { type: array, items: { type: string }, maxItems: 50 }
+      responses:
+        '200':
+          description: คำอธิบายที่สร้าง
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  description: { type: string }
+                  source: { type: string }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '502': { $ref: '#/components/responses/BadGateway' }
+  /api/places/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Places]
+      operationId: getPlace
+      summary: สถานที่ 1 แห่ง
+      description: 'คืนแม้สถานที่ถูกซ่อน (`isActive: false`) · cache 25 วินาที'
+      x-auth: public
+      responses:
+        '200':
+          description: สถานที่
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Place' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Places]
+      operationId: updatePlace
+      summary: "[Admin] แก้ไขสถานที่"
+      description: |
+        ส่งข้อมูลทั้งฟอร์ม · ถ้าสถานที่มาจาก Google และ admin แก้ฟิลด์ที่ซิงก์ได้ (name, address, location, hours, phone,
+        website, business_status) ฟิลด์นั้นจะถูก **ล็อก** อัตโนมัติ และรายงานของผู้ใช้เกี่ยวกับฟิลด์นั้นจะถูกปิดเป็น `edited`
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PlaceInput' }
+      responses:
+        '200':
+          description: สถานที่หลังแก้ไข
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Place' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Places]
+      operationId: deletePlace
+      summary: "[Admin] ลบสถานที่"
+      description: ลบถาวร พร้อมลบรูปใน Cloudinary (ทำหลังลบสำเร็จ)
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      responses:
+        '204': { description: ลบแล้ว }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/places/{id}/photos:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Places]
+      operationId: listPlacePhotos
+      summary: รูปที่ admin อัปโหลดของสถานที่
+      x-auth: public
+      responses:
+        '200':
+          description: รายการรูปเรียงตามลำดับ
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Photo' }
+    post:
+      tags: [Places]
+      operationId: uploadPlacePhoto
+      summary: "[Admin] อัปโหลดรูปสถานที่"
+      description: สูงสุด 5 รูปต่อสถานที่ · ไฟล์ ≤2MB · รูปที่อัปโหลดจะใช้แทนแกลเลอรีจาก Google ทั้งหมด
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { $ref: '#/components/schemas/PhotoUpload' }
+      responses:
+        '201':
+          description: สถานที่หลังเพิ่มรูป
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Place' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/places/{id}/photos/{photoId}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+      - $ref: '#/components/parameters/PhotoId'
+    delete:
+      tags: [Places]
+      operationId: deletePlacePhoto
+      summary: "[Admin] ลบรูปสถานที่"
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200':
+          description: สถานที่หลังลบรูป
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Place' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/places/{id}/reports:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Place Reports]
+      operationId: reportPlace
+      summary: แจ้งข้อมูลสถานที่ไม่ถูกต้อง
+      description: |
+        1 ฟิลด์ = 1 รายงาน (ส่งหลายฟิลด์พร้อมกันได้ ใช้หมายเหตุร่วมกัน) · ฟิลด์ที่ผู้ใช้รายงานค้างอยู่แล้วจะถูกข้าม
+        ถ้าเลือก `other` ต้องมี `note` · **Rate limit:** 20 ครั้ง/ชั่วโมง/ผู้ใช้
+      x-auth: user
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                fields:
+                  type: array
+                  items: { $ref: '#/components/schemas/PlaceReportField' }
+                  example: [hours, phone]
+                field: { $ref: '#/components/schemas/PlaceReportField' }
+                note: { type: string, maxLength: 500, example: ร้านเปิด 10 โมงแล้ว }
+      responses:
+        '201': { $ref: '#/components/responses/ReportCreated' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /api/places/{id}/reports/mine:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Place Reports]
+      operationId: myPlaceReports
+      summary: ฟิลด์ที่ฉันรายงานค้างไว้
+      x-auth: user
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/PendingFields' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  # ---------------------------------------------------------------- Events
+  /api/events:
+    get:
+      tags: [Events]
+      operationId: listEvents
+      summary: รายการอีเวนท์
+      description: |
+        เรียง: กำลังจัด → กำลังจะมา → จบแล้ว → ไม่มีวันที่/ยกเลิก · `status` กรองตามสถานะที่คำนวณจากวันที่ (เขตเวลาไทย)
+        ไม่ส่ง `page`/`limit` → array · cache 25 วินาที
+      x-auth: public
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Search'
+        - name: status
+          in: query
+          schema: { type: string, enum: [upcoming, ongoing, ended, cancelled] }
+        - name: sort
+          in: query
+          schema: { type: string, enum: [name, status] }
+        - $ref: '#/components/parameters/Dir'
+        - $ref: '#/components/parameters/Ids'
+      responses:
+        '200':
+          description: array หรือ object แบ่งหน้า
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: array
+                    items: { $ref: '#/components/schemas/Event' }
+                  - $ref: '#/components/schemas/EventPage'
+    post:
+      tags: [Events]
+      operationId: createEvent
+      summary: "[Admin] เพิ่มอีเวนท์"
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EventInput' }
+      responses:
+        '201':
+          description: สร้างแล้ว
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Event' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/events/extract:
+    post:
+      tags: [Events]
+      operationId: extractEventAdmin
+      summary: "[Admin] ดึงข้อมูลอีเวนท์จากข้อความโพสต์ด้วย AI"
+      description: ส่งต่อไปยัง chatbot-service `/events/extract` · คืนค่าฟิลด์ฟอร์มอีเวนท์ที่ LLM ดึงได้
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ExtractInput' }
+      responses:
+        '200': { $ref: '#/components/responses/ExtractResult' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '502': { $ref: '#/components/responses/BadGateway' }
+  /api/events/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Events]
+      operationId: getEvent
+      summary: อีเวนท์ 1 รายการ
+      x-auth: public
+      responses:
+        '200':
+          description: อีเวนท์
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Event' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Events]
+      operationId: updateEvent
+      summary: "[Admin] แก้ไขอีเวนท์"
+      description: รายงานของผู้ใช้เกี่ยวกับฟิลด์ที่ถูกแก้จะถูกปิดเป็น `edited` อัตโนมัติ
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EventInput' }
+      responses:
+        '200':
+          description: อีเวนท์หลังแก้ไข
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Event' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Events]
+      operationId: deleteEvent
+      summary: "[Admin] ลบอีเวนท์"
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      responses:
+        '204': { description: ลบแล้ว }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/events/{id}/photos:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Events]
+      operationId: listEventPhotos
+      summary: รูปของอีเวนท์
+      x-auth: public
+      responses:
+        '200':
+          description: รายการรูป
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Photo' }
+    post:
+      tags: [Events]
+      operationId: uploadEventPhoto
+      summary: "[Admin] อัปโหลดรูปอีเวนท์"
+      description: สูงสุด 5 รูปต่ออีเวนท์ · ไฟล์ ≤2MB
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { $ref: '#/components/schemas/PhotoUpload' }
+      responses:
+        '201':
+          description: อีเวนท์หลังเพิ่มรูป
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Event' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/events/{id}/photos/{photoId}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+      - $ref: '#/components/parameters/PhotoId'
+    delete:
+      tags: [Events]
+      operationId: deleteEventPhoto
+      summary: "[Admin] ลบรูปอีเวนท์"
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200':
+          description: อีเวนท์หลังลบรูป
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Event' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/events/{id}/reports:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Event Reports]
+      operationId: reportEvent
+      summary: แจ้งข้อมูลอีเวนท์ไม่ถูกต้อง
+      description: เหมือนรายงานสถานที่ · **Rate limit:** 20 ครั้ง/ชั่วโมง/ผู้ใช้
+      x-auth: user
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                fields:
+                  type: array
+                  items: { $ref: '#/components/schemas/EventReportField' }
+                  example: [date]
+                field: { $ref: '#/components/schemas/EventReportField' }
+                note: { type: string, maxLength: 500 }
+      responses:
+        '201': { $ref: '#/components/responses/ReportCreated' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /api/events/{id}/reports/mine:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Event Reports]
+      operationId: myEventReports
+      summary: ฟิลด์ที่ฉันรายงานค้างไว้
+      x-auth: user
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/PendingFields' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  # ---------------------------------------------------------------- Event Requests
+  /api/event-requests:
+    post:
+      tags: [Event Requests]
+      operationId: createEventRequest
+      summary: เสนออีเวนท์ใหม่
+      description: |
+        ตรวจข้อมูลแบบเดียวกับฟอร์ม admin · มีคำขอรออนุมัติได้สูงสุด 5 รายการต่อคน (เกิน → 429)
+        **Rate limit:** 10 ครั้ง/ชั่วโมง/ผู้ใช้
+      x-auth: user
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EventInput' }
+      responses:
+        '201':
+          description: สร้างคำขอแล้ว (status = pending)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventRequest' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /api/event-requests/extract:
+    post:
+      tags: [Event Requests]
+      operationId: extractEventRequest
+      summary: ดึงข้อมูลอีเวนท์จากโพสต์ด้วย AI (ผู้ใช้ทั่วไป)
+      description: ข้อความ ≤5000 ตัวอักษร · **Rate limit:** 20 ครั้ง/ชั่วโมง/ผู้ใช้
+      x-auth: user
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ExtractInput' }
+      responses:
+        '200': { $ref: '#/components/responses/ExtractResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '502': { $ref: '#/components/responses/BadGateway' }
+  /api/event-requests/mine:
+    get:
+      tags: [Event Requests]
+      operationId: myEventRequests
+      summary: คำขอของฉัน
+      description: ทุกสถานะ ใหม่สุดก่อน · ค่าเริ่มต้น 20 ต่อหน้า (สูงสุด 50)
+      x-auth: user
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/RequestStatus' }
+      responses:
+        '200':
+          description: คำขอแบ่งหน้า
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventRequestPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/event-requests/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    put:
+      tags: [Event Requests]
+      operationId: updateEventRequest
+      summary: แก้ไขคำขอที่ยังรออนุมัติ
+      x-auth: user
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EventInput' }
+      responses:
+        '200':
+          description: คำขอหลังแก้ไข
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventRequest' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+    delete:
+      tags: [Event Requests]
+      operationId: deleteEventRequest
+      summary: ถอนคำขอที่ยังรออนุมัติ
+      x-auth: user
+      security: [{ cookieAuth: [] }]
+      responses:
+        '204': { description: ถอนแล้ว }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/event-requests/{id}/photos:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Event Requests]
+      operationId: listEventRequestPhotos
+      summary: รูปของคำขอ (เฉพาะเจ้าของ)
+      x-auth: user
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200':
+          description: รายการรูป
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Photo' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [Event Requests]
+      operationId: uploadEventRequestPhoto
+      summary: อัปโหลดรูปให้คำขอที่ยังรออนุมัติ
+      description: สูงสุด 5 รูป · ≤2MB · **Rate limit:** 60 ครั้ง/ชั่วโมง/ผู้ใช้
+      x-auth: user
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { $ref: '#/components/schemas/PhotoUpload' }
+      responses:
+        '201':
+          description: คำขอหลังเพิ่มรูป
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventRequest' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /api/event-requests/{id}/photos/{photoId}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+      - $ref: '#/components/parameters/PhotoId'
+    delete:
+      tags: [Event Requests]
+      operationId: deleteEventRequestPhoto
+      summary: ลบรูปของคำขอ
+      x-auth: user
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200':
+          description: คำขอหลังลบรูป
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ---------------------------------------------------------------- Survey
+  /api/survey/questions:
+    get:
+      tags: [Survey]
+      operationId: getSurveyQuestions
+      summary: คำถามแบบสอบถาม
+      description: ไม่แตะฐานข้อมูล — ข้อมูลจาก `lib/surveyQuestions.js`
+      x-auth: public
+      responses:
+        '200':
+          description: สเกล มิติ คำถาม 16 ข้อ ข้อมูลประชากร และประสบการณ์
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SurveyQuestions' }
+  /api/survey/status:
+    get:
+      tags: [Survey]
+      operationId: getSurveyStatus
+      summary: เครื่องนี้ตอบแล้วหรือยัง
+      description: ดูจาก cookie `survey_done`
+      x-auth: public
+      responses:
+        '200':
+          description: สถานะ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  submitted: { type: boolean }
+  /api/survey:
+    post:
+      tags: [Survey]
+      operationId: submitSurvey
+      summary: ส่งแบบสอบถาม
+      description: |
+        ไม่ระบุตัวตน 1 คำตอบต่อเบราว์เซอร์ (ตั้ง cookie `survey_done` อายุ 1 ปี) · ช่อง `website` คือ honeypot
+        (ถ้ามีค่า → ตอบ 201 แต่ไม่บันทึก) · **Rate limit:** 40 ครั้ง/ชั่วโมง/IP
+      x-auth: public
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SurveySubmission' }
+      responses:
+        '201': { $ref: '#/components/responses/Ok' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  # ---------------------------------------------------------------- Knowledge base
+  /api/knowledge-base:
+    get:
+      tags: [Knowledge Base]
+      operationId: listKnowledgeBase
+      summary: รายการฐานความรู้
+      description: 'รวมรายการที่ปิดใช้งาน (`isActive: false`) ด้วย · ไม่ส่ง `page`/`limit` → array · cache 25 วินาที'
+      x-auth: public
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Search'
+        - name: sort
+          in: query
+          schema: { type: string, enum: [title, category] }
+        - $ref: '#/components/parameters/Dir'
+      responses:
+        '200':
+          description: array หรือ object แบ่งหน้า
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: array
+                    items: { $ref: '#/components/schemas/KbEntry' }
+                  - $ref: '#/components/schemas/KbPage'
+    post:
+      tags: [Knowledge Base]
+      operationId: createKnowledgeBase
+      summary: "[Admin] เพิ่มความรู้"
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/KbInput' }
+      responses:
+        '201':
+          description: สร้างแล้ว
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KbEntry' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/knowledge-base/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Knowledge Base]
+      operationId: getKnowledgeBase
+      summary: ความรู้ 1 รายการ
+      x-auth: public
+      responses:
+        '200':
+          description: รายการ
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KbEntry' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Knowledge Base]
+      operationId: updateKnowledgeBase
+      summary: "[Admin] แก้ไขความรู้"
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/KbInput' }
+      responses:
+        '200':
+          description: หลังแก้ไข
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KbEntry' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Knowledge Base]
+      operationId: deleteKnowledgeBase
+      summary: "[Admin] ลบความรู้"
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      responses:
+        '204': { description: ลบแล้ว }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ---------------------------------------------------------------- QR & Points
+  /api/qrs:
+    get:
+      tags: [QR & Points]
+      operationId: listQrs
+      summary: รายการ QR
+      description: ไม่ส่ง `page`/`limit` → array · cache 25 วินาที
+      x-auth: public
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: array หรือ object แบ่งหน้า
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: array
+                    items: { $ref: '#/components/schemas/Qr' }
+                  - $ref: '#/components/schemas/QrPage'
+    post:
+      tags: [QR & Points]
+      operationId: createQr
+      summary: "[Admin] สร้าง QR ให้สถานที่"
+      description: 1 QR ต่อสถานที่ (ซ้ำ → 409)
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/QrInput' }
+      responses:
+        '201':
+          description: สร้างแล้ว
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Qr' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/qrs/meta/stats:
+    get:
+      tags: [QR & Points]
+      operationId: qrStats
+      summary: "[Admin] จำนวนสแกนและแต้มที่แจกต่อ QR"
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200':
+          description: สถิติต่อ QR
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    qrId: { type: string, format: uuid }
+                    scans: { type: integer }
+                    pointsTotal: { type: integer }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/qrs/meta/places:
+    get:
+      tags: [QR & Points]
+      operationId: qrPlaces
+      summary: สถานที่ที่สแกนรับแต้มได้ตอนนี้
+      description: QR ที่เปิดใช้และยังไม่หมดอายุ บนสถานที่ที่เปิดใช้ · `qrPoints` มาจาก QR จริง (ไม่ใช่ `places.qr_points`)
+      x-auth: public
+      responses:
+        '200':
+          description: สถานที่พร้อมข้อมูล QR
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  allOf:
+                    - $ref: '#/components/schemas/Place'
+                    - type: object
+                      properties:
+                        qrRadiusM: { type: integer, nullable: true, description: 'null เมื่อสถานที่ไม่มีพิกัด (ไม่ตรวจระยะ)' }
+                        qrExpiresAt: { type: string, format: date-time, nullable: true }
+  /api/qrs/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [QR & Points]
+      operationId: getQr
+      summary: QR 1 รายการ
+      x-auth: public
+      responses:
+        '200':
+          description: QR
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Qr' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [QR & Points]
+      operationId: updateQr
+      summary: "[Admin] แก้ไข QR"
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/QrInput' }
+      responses:
+        '200':
+          description: หลังแก้ไข
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Qr' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+    delete:
+      tags: [QR & Points]
+      operationId: deleteQr
+      summary: "[Admin] ลบ QR"
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      responses:
+        '204': { description: ลบแล้ว }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/qrs/{id}/scan:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [QR & Points]
+      operationId: scanQr
+      summary: สแกน QR รับแต้ม
+      description: |
+        แต้มและชื่อสถานที่อ่านจากฐานข้อมูลในฟังก์ชัน `claim_qr_scan()` (atomic, 1 ครั้งต่อผู้ใช้ต่อ QR)
+        ถ้าสถานที่มีพิกัด ต้องส่ง `lat`/`lng` และอยู่ในรัศมี · **Rate limit:** 20 ครั้ง/นาที/ผู้ใช้
+        error: 404 ไม่พบ QR · 403 QR ปิดใช้/อยู่ไกลเกิน/บัญชีใช้ไม่ได้ · 409 เคยสแกนแล้ว · 410 หมดอายุ · 422 ต้องเปิดตำแหน่ง
+      x-auth: user
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                lat: { type: number, minimum: -90, maximum: 90, example: 16.4419 }
+                lng: { type: number, minimum: -180, maximum: 180, example: 102.8359 }
+      responses:
+        '200':
+          description: ได้แต้มแล้ว
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  points: { type: integer, example: 10 }
+                  placeName: { type: string }
+                  balance: { type: integer, example: 120 }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '410': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /api/points/me:
+    get:
+      tags: [QR & Points]
+      operationId: myPoints
+      summary: ยอดแต้มของฉัน
+      description: การแลกของรางวัลทำโดย admin ที่เคาน์เตอร์เท่านั้น (ไม่มี endpoint แลกฝั่งผู้ใช้)
+      x-auth: user
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200':
+          description: ยอดคงเหลือ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  balance: { type: integer }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  # ---------------------------------------------------------------- Rewards
+  /api/rewards:
+    get:
+      tags: [Rewards]
+      operationId: listRewards
+      summary: รายการของรางวัล
+      description: เรียงตามแต้มที่ใช้ · ไม่ส่ง `page`/`limit` → array · cache 25 วินาที
+      x-auth: public
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Search'
+        - name: sort
+          in: query
+          schema: { type: string, enum: [name, cost] }
+        - $ref: '#/components/parameters/Dir'
+      responses:
+        '200':
+          description: array หรือ object แบ่งหน้า
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: array
+                    items: { $ref: '#/components/schemas/Reward' }
+                  - $ref: '#/components/schemas/RewardPage'
+    post:
+      tags: [Rewards]
+      operationId: createReward
+      summary: "[Admin] เพิ่มของรางวัล"
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RewardInput' }
+      responses:
+        '201':
+          description: สร้างแล้ว
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Reward' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/rewards/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Rewards]
+      operationId: getReward
+      summary: ของรางวัล 1 รายการ
+      x-auth: public
+      responses:
+        '200':
+          description: ของรางวัล
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Reward' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Rewards]
+      operationId: updateReward
+      summary: "[Admin] แก้ไขของรางวัล"
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RewardInput' }
+      responses:
+        '200':
+          description: หลังแก้ไข
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Reward' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Rewards]
+      operationId: deleteReward
+      summary: "[Admin] ลบของรางวัล"
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      responses:
+        '204': { description: ลบแล้ว }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/rewards/{id}/image:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Rewards]
+      operationId: uploadRewardImage
+      summary: "[Admin] อัปโหลด/เปลี่ยนรูปของรางวัล"
+      description: 1 รูปต่อของรางวัล อัปโหลดใหม่จะแทนที่ (ลบรูปเก่าใน Cloudinary) · ไฟล์ฟิลด์ `imageFile` ≤2MB
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [imageFile]
+              properties:
+                imageFile: { type: string, format: binary }
+      responses:
+        '200':
+          description: ของรางวัลหลังเปลี่ยนรูป
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Reward' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '502': { $ref: '#/components/responses/BadGateway' }
+    delete:
+      tags: [Rewards]
+      operationId: deleteRewardImage
+      summary: "[Admin] ลบรูปของรางวัล"
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200':
+          description: ของรางวัลหลังลบรูป
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Reward' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ---------------------------------------------------------------- Trips
+  /api/trips:
+    get:
+      tags: [Trips]
+      operationId: listMyTrips
+      summary: แผนทริปของฉัน
+      description: ใหม่สุดก่อน · ค่าเริ่มต้น 12 ต่อหน้า (สูงสุด 50) · `search` ค้นชื่อทริป · `favorite=1` เฉพาะที่ติดดาว
+      x-auth: user
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Search'
+        - name: favorite
+          in: query
+          schema: { type: string, enum: ['1'] }
+      responses:
+        '200':
+          description: ทริปแบ่งหน้า
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TripSummaryPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Trips]
+      operationId: saveTrip
+      summary: บันทึกแผนทริป
+      description: |
+        รับแผนที่ได้จาก chatbot-service (`/trip/llm`) — ตรวจทุกค่า และยืนยันว่า placeId มีอยู่จริง (ชื่อสถานที่อ่านจากตาราง)
+        **ล็อกอิน** → บันทึกเป็นของผู้ใช้ (สูงสุด 50 แผน) ตอบ 201 พร้อมแผนเต็ม
+        **ไม่ล็อกอิน** → บันทึกไว้ทำสถิติเท่านั้น ตอบ 202 `{ "id": null }`
+        **Rate limit:** 30 ครั้ง/ชั่วโมง/IP
+      x-auth: optional
+      security: [{}, { cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TripSaveInput' }
+      responses:
+        '201':
+          description: บันทึกเป็นของผู้ใช้แล้ว
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TripDetail' }
+        '202':
+          description: บันทึกแบบไม่ระบุเจ้าของ (ไม่ได้ล็อกอิน)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, nullable: true, example: null }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /api/trips/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Trips]
+      operationId: getMyTrip
+      summary: แผนทริปของฉัน 1 แผน
+      description: ทริปของคนอื่นตอบ 404 เหมือนไม่มีอยู่ · แต่ละ stop มี `place` ปัจจุบัน (null ถ้าถูกลบ)
+      x-auth: user
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200':
+          description: แผนเต็ม
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TripDetail' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Trips]
+      operationId: updateMyTrip
+      summary: เปลี่ยนชื่อ / ติดดาวทริป
+      x-auth: user
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string, maxLength: 120, example: เที่ยวขอนแก่นกับครอบครัว }
+                isFavorite: { type: boolean }
+      responses:
+        '200':
+          description: สรุปทริปหลังแก้ไข
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TripSummary' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Trips]
+      operationId: deleteMyTrip
+      summary: ลบทริป
+      x-auth: user
+      security: [{ cookieAuth: [] }]
+      responses:
+        '204': { description: ลบแล้ว }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/trips/{id}/items/{itemId}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+      - name: itemId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [Trips]
+      operationId: rateTripItem
+      summary: กดชอบ/ไม่ชอบ stop ในทริป
+      x-auth: user
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [liked]
+              properties:
+                liked: { type: boolean, nullable: true, description: 'null = ล้างการโหวต' }
+      responses:
+        '200':
+          description: ค่าใหม่
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  liked: { type: boolean, nullable: true }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/trips/{id}/duplicate:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Trips]
+      operationId: duplicateMyTrip
+      summary: ทำสำเนาทริป
+      description: ชื่อใหม่ต่อท้าย " (สำเนา)" · นับรวมเพดาน 50 แผน · **Rate limit:** 30 ครั้ง/ชั่วโมง/IP (ร่วมกับการบันทึก)
+      x-auth: user
+      security: [{ cookieAuth: [] }]
+      responses:
+        '201':
+          description: สรุปทริปที่สร้างใหม่
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TripSummary' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  # ---------------------------------------------------------------- Profile
+  /api/profile:
+    get:
+      tags: [Profile]
+      operationId: getProfile
+      summary: โปรไฟล์ของฉัน
+      x-auth: user
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200':
+          description: โปรไฟล์ + สถิติแต้ม + อีเมลที่รอยืนยัน
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Profile'
+                  - type: object
+                    properties:
+                      stats:
+                        type: object
+                        properties:
+                          scans: { type: integer }
+                          pointsEarned: { type: integer }
+                          redemptions: { type: integer }
+                          pointsSpent: { type: integer }
+                      pendingEmail: { type: string, format: email, nullable: true }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    patch:
+      tags: [Profile]
+      operationId: updateProfile
+      summary: แก้ข้อมูลส่วนตัว
+      description: ต้องส่งครบทุกช่อง (เหมือนตอนสมัคร) · แก้ role/แต้ม/อีเมลผ่านทางนี้ไม่ได้ · **Rate limit:** 30 ครั้ง/นาที/ผู้ใช้
+      x-auth: user
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProfileFieldsInput' }
+      responses:
+        '200': { $ref: '#/components/responses/ProfileOk' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+    delete:
+      tags: [Profile]
+      operationId: deleteMyAccount
+      summary: ลบบัญชีของฉัน (soft delete)
+      description: ยืนยันด้วยรหัสผ่าน · admin คนสุดท้ายลบตัวเองไม่ได้ (409) · ล้าง cookie · **Rate limit:** 5 ครั้ง/15 นาที/ผู้ใช้
+      x-auth: user
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PasswordConfirm' }
+      responses:
+        '204': { description: ลบบัญชีแล้ว }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /api/profile/history:
+    get:
+      tags: [Profile]
+      operationId: pointsHistory
+      summary: ประวัติแต้ม (สแกน / แลก / ปรับโดย admin)
+      description: ใหม่สุดก่อน · ค่าเริ่มต้น 20 ต่อหน้า (สูงสุด 50)
+      x-auth: user
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - name: type
+          in: query
+          schema: { type: string, enum: [all, scan, redeem, adjust], default: all }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: ประวัติแบ่งหน้า
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PageMeta'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id: { type: string, example: 'scan:5b1c...' }
+                            type: { type: string, enum: [scan, redeem, adjust] }
+                            at: { type: string, format: date-time }
+                            delta: { type: integer }
+                            title: { type: string }
+                            note: { type: string, nullable: true }
+                            status: { type: string, nullable: true }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/profile/avatar:
+    put:
+      tags: [Profile]
+      operationId: setAvatar
+      summary: ตั้งรูปโปรไฟล์ (อัปโหลด หรือ preset)
+      description: 'ส่ง `avatarFile` (≤2MB) หรือ `avatarUrl: "preset:<key>"` — ตั้งอย่างหนึ่งจะล้างอีกอย่าง · **Rate limit:** 30 ครั้ง/นาที/ผู้ใช้'
+      x-auth: user
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { $ref: '#/components/schemas/AvatarInput' }
+          application/json:
+            schema: { $ref: '#/components/schemas/AvatarInput' }
+      responses:
+        '200': { $ref: '#/components/responses/ProfileOk' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+    delete:
+      tags: [Profile]
+      operationId: removeAvatar
+      summary: ลบรูปโปรไฟล์
+      x-auth: user
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/ProfileOk' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /api/profile/password:
+    post:
+      tags: [Profile]
+      operationId: changePassword
+      summary: เปลี่ยนรหัสผ่าน
+      description: ออกจากระบบทุกเครื่องยกเว้นเครื่องนี้ · **Rate limit:** 5 ครั้ง/15 นาที/ผู้ใช้
+      x-auth: user
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [currentPassword, newPassword]
+              properties:
+                currentPassword: { type: string, format: password }
+                newPassword: { type: string, format: password }
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /api/profile/email:
+    post:
+      tags: [Profile]
+      operationId: requestEmailChange
+      summary: ขอเปลี่ยนอีเมล
+      description: ส่งลิงก์ยืนยันไปอีเมลใหม่ และแจ้งเตือนอีเมลเดิม · ยืนยันด้วยรหัสผ่าน · **Rate limit:** 5 ครั้ง/15 นาที/ผู้ใช้
+      x-auth: user
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, format: password }
+      responses:
+        '200':
+          description: รอยืนยันอีเมลใหม่
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pendingEmail: { type: string, format: email }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+    delete:
+      tags: [Profile]
+      operationId: cancelEmailChange
+      summary: ยกเลิกคำขอเปลี่ยนอีเมล
+      x-auth: user
+      security: [{ cookieAuth: [] }]
+      responses:
+        '204': { description: ยกเลิกแล้ว }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /api/profile/email/confirm:
+    post:
+      tags: [Profile]
+      operationId: confirmEmailChange
+      summary: ยืนยันอีเมลใหม่จากลิงก์
+      description: ไม่ต้องล็อกอิน (เปิดลิงก์จากเครื่องไหนก็ได้) — token คือหลักฐาน · **Rate limit:** 20 ครั้ง/15 นาที/IP
+      x-auth: public
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TokenInput' }
+      responses:
+        '200':
+          description: อีเมลใหม่
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  email: { type: string, format: email }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  # ---------------------------------------------------------------- Users
+  /api/users/{id}/avatar:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Users]
+      operationId: getUserAvatar
+      summary: รูปโปรไฟล์ที่อัปโหลด (ไบต์รูป)
+      description: สาธารณะ · Cache-Control `private, max-age=86400` (frontend ต่อท้าย `?v=` เมื่อรูปเปลี่ยน) · ไม่มีรูป/บัญชีถูกลบ → 404 ไม่มี body
+      x-auth: public
+      parameters:
+        - name: v
+          in: query
+          description: cache buster
+          schema: { type: string }
+      responses:
+        '200':
+          description: รูปภาพ
+          content:
+            image/*:
+              schema: { type: string, format: binary }
+        '404': { description: ไม่มีรูป }
+
+  # ---------------------------------------------------------------- Admin users
+  /api/admin/users:
+    get:
+      tags: [Admin Users]
+      operationId: adminListUsers
+      summary: "[Admin] รายชื่อผู้ใช้"
+      description: ค่าเริ่มต้น 20 ต่อหน้า (สูงสุด 100) · `status=visible` (ค่าเริ่มต้น) ซ่อนบัญชีที่ถูกลบ · search ค้นอีเมล ชื่อ เบอร์โทร
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Search'
+        - name: status
+          in: query
+          schema: { type: string, enum: [visible, active, suspended, deleted, all], default: visible }
+        - name: role
+          in: query
+          schema: { type: string, enum: [admin, tourist] }
+        - name: verified
+          in: query
+          schema: { type: string, enum: ['true', 'false'] }
+        - name: sort
+          in: query
+          schema: { type: string, enum: [created, name, points, lastLogin], default: created }
+        - name: dir
+          in: query
+          schema: { type: string, enum: [asc, desc], default: desc }
+      responses:
+        '200':
+          description: ผู้ใช้แบ่งหน้า
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PageMeta'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/AdminUserRow' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/admin/users/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Admin Users]
+      operationId: adminGetUser
+      summary: "[Admin] รายละเอียดผู้ใช้"
+      description: ข้อมูลส่วนตัว + ยอดรวม + สแกน/แลก/ปรับแต้มล่าสุด 50 รายการ + audit log 30 รายการ
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200':
+          description: รายละเอียด
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminUserDetail' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/admin/users/{id}/suspend:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Admin Users]
+      operationId: adminSuspendUser
+      summary: "[Admin] ระงับบัญชี"
+      description: ต้องระบุเหตุผล · ระงับตัวเอง/admin คนสุดท้ายไม่ได้ · ยกเลิกทุก session ของผู้ใช้
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReasonRequired' }
+      responses:
+        '200': { $ref: '#/components/responses/AdminUserOk' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/admin/users/{id}/unsuspend:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Admin Users]
+      operationId: adminUnsuspendUser
+      summary: "[Admin] ยกเลิกการระงับ"
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/AdminUserOk' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/admin/users/{id}/delete:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Admin Users]
+      operationId: adminDeleteUser
+      summary: "[Admin] ลบบัญชี (soft delete)"
+      description: ใช้ POST เพื่อส่งเหตุผลใน body · แถว/ประวัติยังอยู่ อีเมลยังสงวนไว้
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReasonOptional' }
+      responses:
+        '200': { $ref: '#/components/responses/AdminUserOk' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/admin/users/{id}/restore:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Admin Users]
+      operationId: adminRestoreUser
+      summary: "[Admin] กู้คืนบัญชีที่ถูกลบ"
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/AdminUserOk' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/admin/users/{id}/points:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Admin Users]
+      operationId: adminAdjustPoints
+      summary: "[Admin] ปรับแต้มผู้ใช้"
+      description: '`delta` เป็นจำนวนเต็มไม่ใช่ 0 และ |delta| ≤ 100000 · ต้องระบุเหตุผล · แต้มไม่พอให้หัก → 400'
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [delta, reason]
+              properties:
+                delta: { type: integer, example: 50 }
+                reason: { type: string, maxLength: 500, example: ชดเชยสแกนไม่ผ่าน }
+      responses:
+        '200': { $ref: '#/components/responses/AdminUserOk' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/admin/users/{id}/revoke-sessions:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Admin Users]
+      operationId: adminRevokeSessions
+      summary: "[Admin] บังคับออกจากระบบทุกเครื่อง"
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/AdminUserOk' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/admin/users/{id}/resend-verification:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Admin Users]
+      operationId: adminResendVerification
+      summary: "[Admin] ส่งอีเมลยืนยันอีกครั้ง"
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/AdminUserOk' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '502': { $ref: '#/components/responses/BadGateway' }
+
+  # ---------------------------------------------------------------- Admin redemptions
+  /api/admin/redemptions:
+    get:
+      tags: [Admin Redemptions]
+      operationId: adminListRedemptions
+      summary: "[Admin] รายการแลกของรางวัลล่าสุด 100 รายการ"
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [completed, cancelled] }
+      responses:
+        '200':
+          description: รายการแลก
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Redemption' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Admin Redemptions]
+      operationId: adminRedeem
+      summary: "[Admin] แลกของรางวัลให้ผู้ใช้ที่เคาน์เตอร์"
+      description: หักแต้ม ลดสต็อก และบันทึกรายการในฟังก์ชัน `admin_redeem_reward()` · แต้มไม่พอ → 402 · ของหมด → 409
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userId, rewardId]
+              properties:
+                userId: { type: string, format: uuid }
+                rewardId: { type: string, format: uuid }
+      responses:
+        '201':
+          description: แลกแล้ว
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  redemptionId: { type: string, format: uuid }
+                  balance: { type: integer }
+                  remainingStock: { type: integer, nullable: true }
+                  rewardName: { type: string }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '402': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/admin/redemptions/{id}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Admin Redemptions]
+      operationId: adminCancelRedemption
+      summary: "[Admin] ยกเลิกการแลก (คืนแต้ม)"
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReasonRequired' }
+      responses:
+        '200':
+          description: ยอดแต้มใหม่ของผู้ใช้
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  balance: { type: integer }
+                  userId: { type: string, format: uuid }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  # ---------------------------------------------------------------- Admin stats
+  /api/admin/stats:
+    get:
+      tags: [Admin Stats]
+      operationId: adminStats
+      summary: "[Admin] ตัวเลขแดชบอร์ด (ผู้ใช้ แต้ม การแลก)"
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200':
+          description: สถิติ
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminStats' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/admin/stats/system:
+    get:
+      tags: [Admin Stats]
+      operationId: adminSystemVersion
+      summary: "[Admin] เวอร์ชัน/SHA ของแต่ละ service"
+      description: '`chatbot` เป็น null เมื่อ chatbot-service ล่ม (ไม่ทำให้ทั้งคำขอล้ม)'
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200':
+          description: เวอร์ชัน
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  backend: { $ref: '#/components/schemas/ServiceVersion' }
+                  chatbot:
+                    type: object
+                    allOf: [{ $ref: '#/components/schemas/ServiceVersion' }]
+                    nullable: true
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/admin/stats/trips:
+    get:
+      tags: [Admin Stats]
+      operationId: adminTripStats
+      summary: "[Admin] สถิติการวางแผนทริป"
+      description: นับทุกแผน (รวมผู้ไม่ล็อกอิน) ในช่วง `days` วันล่าสุดตามปฏิทินไทย
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - name: days
+          in: query
+          schema: { type: integer, enum: [7, 30, 90, 365], default: 30 }
+      responses:
+        '200':
+          description: สถิติ
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TripStats' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  # ---------------------------------------------------------------- Admin trips
+  /api/admin/trips:
+    get:
+      tags: [Admin Trips]
+      operationId: adminListTrips
+      summary: "[Admin] แผนทริปทั้งหมด"
+      description: ค่าเริ่มต้น 20 ต่อหน้า (สูงสุด 100) · `issue=1` เฉพาะทริปที่มีสถานที่ถูกปิด/ซ่อน/ลบ
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Search'
+        - name: owner
+          in: query
+          schema: { type: string, enum: [user, anonymous] }
+        - name: issue
+          in: query
+          schema: { type: string, enum: ['1'] }
+      responses:
+        '200':
+          description: ทริปแบ่งหน้า
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PageMeta'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          allOf:
+                            - $ref: '#/components/schemas/TripSummary'
+                            - type: object
+                              properties:
+                                owner: { $ref: '#/components/schemas/TripOwner' }
+                                hasIssue: { type: boolean }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/admin/trips/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Admin Trips]
+      operationId: adminGetTrip
+      summary: "[Admin] แผนทริป 1 แผน"
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200':
+          description: แผนเต็ม + เจ้าของ
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/TripDetail'
+                  - type: object
+                    properties:
+                      owner: { $ref: '#/components/schemas/TripOwner' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/admin/trips/{id}/delete:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Admin Trips]
+      operationId: adminDeleteTrip
+      summary: "[Admin] ลบแผนทริปถาวร"
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReasonOptional' }
+      responses:
+        '204': { description: ลบแล้ว }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ---------------------------------------------------------------- Admin reports
+  /api/admin/place-reports:
+    get:
+      tags: [Place Reports]
+      operationId: adminListPlaceReports
+      summary: "[Admin] คิวรายงานสถานที่ (จัดกลุ่มต่อสถานที่)"
+      description: ค่าเริ่มต้น `status=pending` · 20 กลุ่มต่อหน้า (สูงสุด 50) · เรียงจำนวนรายงานมากสุดก่อน
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [pending, resolved, rejected, superseded], default: pending }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: กลุ่มรายงาน
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PlaceReportGroupPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/admin/place-reports/count:
+    get:
+      tags: [Place Reports]
+      operationId: adminCountPlaceReports
+      summary: "[Admin] จำนวนรายงานสถานที่ที่รอตรวจ (badge)"
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/PendingCount' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/admin/place-reports/resolve:
+    post:
+      tags: [Place Reports]
+      operationId: adminResolvePlaceReports
+      summary: "[Admin] ปิดรายงานทั้งหมดของสถานที่ + ฟิลด์"
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [placeId, field, status]
+              properties:
+                placeId: { type: string, format: uuid }
+                field: { $ref: '#/components/schemas/PlaceReportField' }
+                status: { type: string, enum: [resolved, rejected] }
+                resolution: { type: string, enum: [edited, synced, no_change], description: 'ต้องมีเมื่อ status = resolved' }
+      responses:
+        '200': { $ref: '#/components/responses/Closed' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/admin/event-reports:
+    get:
+      tags: [Event Reports]
+      operationId: adminListEventReports
+      summary: "[Admin] คิวรายงานอีเวนท์ (จัดกลุ่มต่ออีเวนท์)"
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [pending, resolved, rejected], default: pending }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: กลุ่มรายงาน
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventReportGroupPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/admin/event-reports/count:
+    get:
+      tags: [Event Reports]
+      operationId: adminCountEventReports
+      summary: "[Admin] จำนวนรายงานอีเวนท์ที่รอตรวจ"
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/PendingCount' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/admin/event-reports/resolve:
+    post:
+      tags: [Event Reports]
+      operationId: adminResolveEventReports
+      summary: "[Admin] ปิดรายงานทั้งหมดของอีเวนท์ + ฟิลด์"
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [eventId, field, status]
+              properties:
+                eventId: { type: string, format: uuid }
+                field: { $ref: '#/components/schemas/EventReportField' }
+                status: { type: string, enum: [resolved, rejected] }
+                resolution: { type: string, enum: [edited, no_change] }
+      responses:
+        '200': { $ref: '#/components/responses/Closed' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ---------------------------------------------------------------- Admin event requests
+  /api/admin/event-requests:
+    get:
+      tags: [Event Requests]
+      operationId: adminListEventRequests
+      summary: "[Admin] คิวคำขออีเวนท์"
+      description: '`pending` เรียงเก่าสุดก่อน สถานะอื่นใหม่สุดก่อน'
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/RequestStatus' }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: คำขอแบ่งหน้า
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PageMeta'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          allOf:
+                            - $ref: '#/components/schemas/EventRequest'
+                            - type: object
+                              properties:
+                                requester: { type: string }
+                                requesterEmail: { type: string, nullable: true }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/admin/event-requests/count:
+    get:
+      tags: [Event Requests]
+      operationId: adminCountEventRequests
+      summary: "[Admin] จำนวนคำขอที่รออนุมัติ"
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/PendingCount' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/admin/event-requests/{id}/approve:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Event Requests]
+      operationId: adminApproveEventRequest
+      summary: "[Admin] อนุมัติคำขอ → สร้างอีเวนท์"
+      description: คัดลอกเป็นอีเวนท์ใหม่ (status upcoming) และย้ายรูปไปแกลเลอรีของอีเวนท์ ใน transaction เดียว
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200':
+          description: id คำขอและอีเวนท์ใหม่
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  eventId: { type: string, format: uuid }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/admin/event-requests/{id}/reject:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Event Requests]
+      operationId: adminRejectEventRequest
+      summary: "[Admin] ปฏิเสธคำขอ"
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReasonRequired' }
+      responses:
+        '200':
+          description: ปฏิเสธแล้ว
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  status: { type: string, enum: [rejected] }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  # ---------------------------------------------------------------- Admin survey
+  /api/admin/survey/summary:
+    get:
+      tags: [Admin Survey]
+      operationId: adminSurveySummary
+      summary: "[Admin] สรุปผลแบบสอบถาม (mean / S.D. / ระดับ)"
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200':
+          description: สรุปผล
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SurveySummary' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/admin/survey/responses:
+    get:
+      tags: [Admin Survey]
+      operationId: adminSurveyResponses
+      summary: "[Admin] คำตอบรายคน"
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - name: comments
+          in: query
+          description: '`1` = เฉพาะที่มีข้อเสนอแนะ'
+          schema: { type: string, enum: ['1'] }
+      responses:
+        '200':
+          description: คำตอบแบ่งหน้า
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PageMeta'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id: { type: string, format: uuid }
+                            gender: { type: string }
+                            age: { type: integer, nullable: true }
+                            ageGroup: { type: string }
+                            occupation: { type: string }
+                            occupationOther: { type: string, nullable: true }
+                            average: { type: number }
+                            strengths: { type: string, nullable: true }
+                            improvements: { type: string, nullable: true }
+                            createdAt: { type: string, format: date-time }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/admin/survey/export:
+    get:
+      tags: [Admin Survey]
+      operationId: adminSurveyExport
+      summary: "[Admin] ดาวน์โหลด CSV ทุกคำตอบ"
+      description: UTF-8 พร้อม BOM (Excel อ่านภาษาไทยได้) · ป้องกัน CSV formula injection
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200':
+          description: ไฟล์ CSV
+          content:
+            text/csv:
+              schema: { type: string }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/admin/survey/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    delete:
+      tags: [Admin Survey]
+      operationId: adminDeleteSurveyResponse
+      summary: "[Admin] ลบคำตอบ (เช่นข้อมูลทดสอบ)"
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      responses:
+        '204': { description: ลบแล้ว }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ---------------------------------------------------------------- Admin place sync
+  /api/admin/place-sync/preview:
+    post:
+      tags: [Admin Place Sync]
+      operationId: adminSyncPreview
+      summary: "[Admin] ดูตัวอย่างว่าจะซิงก์กี่แห่ง (ไม่เรียก Google)"
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SyncSelection' }
+      responses:
+        '200':
+          description: จำนวนและตัวอย่าง
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SyncPreview' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/admin/place-sync/jobs:
+    get:
+      tags: [Admin Place Sync]
+      operationId: adminListSyncJobs
+      summary: "[Admin] งานซิงก์ล่าสุด 20 งาน"
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200':
+          description: รายการงาน
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  allOf:
+                    - $ref: '#/components/schemas/SyncJob'
+                    - type: object
+                      properties:
+                        createdByName: { type: string, nullable: true }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Admin Place Sync]
+      operationId: adminCreateSyncJob
+      summary: "[Admin] สร้างงานซิงก์จาก Google (ทำงานเบื้องหลัง)"
+      description: |
+        ทำได้ทีละ 1 งาน (มีงานค้าง → 409) · สูงสุด 500 แห่ง · มากกว่า 100 แห่ง หรือ scope `all` ต้องส่ง `confirm: true`
+        ไม่งั้นได้ 409 พร้อม `needsConfirm` และ `count` · ตอบ 202 แล้วให้ client poll `GET /jobs/{id}`
+        **ค่าใช้จ่าย:** 1 แห่ง = 1 คำขอ Places API · **Rate limit:** 20 งาน/ชั่วโมง/admin
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/SyncSelection'
+                - type: object
+                  properties:
+                    fields:
+                      type: array
+                      items: { $ref: '#/components/schemas/SyncField' }
+                    dryRun: { type: boolean, default: false }
+                    confirm: { type: boolean }
+      responses:
+        '202':
+          description: งานเข้าคิวแล้ว
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SyncJob' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: มีงานค้างอยู่ หรือ ต้องยืนยันก่อน
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Error'
+                  - type: object
+                    properties:
+                      needsConfirm: { type: boolean }
+                      count: { type: integer }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /api/admin/place-sync/jobs/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Admin Place Sync]
+      operationId: adminGetSyncJob
+      summary: "[Admin] สถานะงานซิงก์ + ผลรายสถานที่ (สูงสุด 500)"
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200':
+          description: งานและผล
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SyncJob'
+                  - type: object
+                    properties:
+                      results:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            placeId: { type: string, format: uuid }
+                            placeName: { type: string }
+                            status: { type: string, enum: [updated, unchanged, skipped, failed] }
+                            changedFields: { type: array, items: { $ref: '#/components/schemas/SyncField' } }
+                            skippedLocked: { type: array, items: { $ref: '#/components/schemas/SyncField' } }
+                            diff: { type: object, additionalProperties: true }
+                            error: { type: string, nullable: true }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/admin/place-sync/jobs/{id}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Admin Place Sync]
+      operationId: adminCancelSyncJob
+      summary: "[Admin] ยกเลิกงานซิงก์ที่กำลังทำ"
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200':
+          description: งานหลังยกเลิก
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SyncJob' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/admin/place-sync/places/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Admin Place Sync]
+      operationId: adminGetPlaceSyncState
+      summary: "[Admin] สถานะล็อก ค่าจาก Google ที่พักไว้ และจำนวนรายงาน ของสถานที่"
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200':
+          description: สถานะ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  name: { type: string }
+                  hasGoogleId: { type: boolean }
+                  lockedFields: { type: array, items: { $ref: '#/components/schemas/SyncField' } }
+                  googleDiff: { type: object, additionalProperties: true }
+                  lastSyncedAt: { type: string, format: date-time, nullable: true }
+                  pendingReports: { type: object, additionalProperties: { type: integer } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/admin/place-sync/places/{id}/sync:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Admin Place Sync]
+      operationId: adminSyncOnePlace
+      summary: "[Admin] ซิงก์สถานที่ 1 แห่งทันที"
+      description: |
+        ฟิลด์ที่ล็อกไว้จะไม่ถูกเขียนทับ แต่ค่าใหม่ของ Google จะพักไว้ใน diff · `dryRun: true` ดูผลโดยไม่บันทึก
+        **ค่าใช้จ่าย:** 1 คำขอ Places API · **Rate limit:** 120 ครั้ง/ชั่วโมง/admin
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                fields:
+                  type: array
+                  items: { $ref: '#/components/schemas/SyncField' }
+                dryRun: { type: boolean }
+      responses:
+        '200':
+          description: ผลการซิงก์
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SyncOutcome' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '502': { $ref: '#/components/responses/BadGateway' }
+        '503': { $ref: '#/components/responses/Error' }
+  /api/admin/place-sync/places/{id}/diff/{field}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+      - name: field
+        in: path
+        required: true
+        schema: { $ref: '#/components/schemas/SyncField' }
+    post:
+      tags: [Admin Place Sync]
+      operationId: adminResolveGoogleDiff
+      summary: "[Admin] รับ/ปัดตกค่าใหม่จาก Google ของฟิลด์ที่ล็อก"
+      description: '`accept` = ใช้ค่า Google และปลดล็อก · `dismiss` = คงค่าของ admin (ยังล็อก)'
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action: { type: string, enum: [accept, dismiss] }
+      responses:
+        '200':
+          description: ผล
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  placeId: { type: string, format: uuid }
+                  field: { $ref: '#/components/schemas/SyncField' }
+                  action: { type: string, enum: [accept, dismiss] }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/admin/place-sync/places/{id}/locked-fields:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    put:
+      tags: [Admin Place Sync]
+      operationId: adminSetLockedFields
+      summary: "[Admin] ตั้งรายการฟิลด์ที่ล็อกทั้งหมด"
+      description: ฟิลด์ที่ปลดล็อกจะล้างค่า Google ที่พักไว้ของฟิลด์นั้น
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [lockedFields]
+              properties:
+                lockedFields:
+                  type: array
+                  items: { $ref: '#/components/schemas/SyncField' }
+                  example: [hours, phone]
+      responses:
+        '200':
+          description: รายการใหม่
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  lockedFields: { type: array, items: { $ref: '#/components/schemas/SyncField' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ---------------------------------------------------------------- Admin place import
+  /api/admin/place-import/search:
+    get:
+      tags: [Admin Place Import]
+      operationId: adminSearchGooglePlaces
+      summary: "[Admin] ค้นหาสถานที่ใน Google Maps"
+      description: '**ค่าใช้จ่าย:** 1 คำขอ Places API · **Rate limit:** 120 ครั้ง/ชั่วโมง/admin · ต้องตั้ง `GOOGLE_PLACES_API_KEY` (ไม่มี → 503)'
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string, minLength: 2, maxLength: 200, example: คาเฟ่ ขอนแก่น }
+      responses:
+        '200':
+          description: ผลค้นหา
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/GoogleSearchResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '502': { $ref: '#/components/responses/BadGateway' }
+        '503': { $ref: '#/components/responses/Error' }
+  /api/admin/place-import:
+    post:
+      tags: [Admin Place Import]
+      operationId: adminImportGooglePlace
+      summary: "[Admin] นำเข้าสถานที่จาก Google เป็นร่าง (ซ่อนไว้)"
+      description: 'เคยนำเข้าแล้ว → 200 `created: false` · ใหม่ → 201 · **Rate limit:** 40 ครั้ง/ชั่วโมง/admin'
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [googlePlaceId]
+              properties:
+                googlePlaceId: { type: string, maxLength: 300, example: ChIJxxxxxxxxxxxxxxxx }
+      responses:
+        '200': { $ref: '#/components/responses/ImportResult' }
+        '201': { $ref: '#/components/responses/ImportResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '502': { $ref: '#/components/responses/BadGateway' }
+
+  # ---------------------------------------------------------------- Admin reindex
+  /api/reindex:
+    post:
+      tags: [Admin Reindex]
+      operationId: adminStartReindex
+      summary: "[Admin] เริ่ม embed รายการที่ยังไม่มี embedding"
+      description: ส่งต่อไป chatbot-service `/admin/reindex` · กำลังรันอยู่ → 409
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/ReindexStatus' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '502': { $ref: '#/components/responses/BadGateway' }
+  /api/reindex/status:
+    get:
+      tags: [Admin Reindex]
+      operationId: adminReindexStatus
+      summary: "[Admin] สถานะการ embed"
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/ReindexStatus' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '502': { $ref: '#/components/responses/BadGateway' }
+  /api/reindex/pending:
+    get:
+      tags: [Admin Reindex]
+      operationId: adminReindexPending
+      summary: "[Admin] รายการที่รอ embed"
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200':
+          description: รายการจาก chatbot-service
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '502': { $ref: '#/components/responses/BadGateway' }
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: session_token
+      description: httpOnly session cookie ที่ได้จาก POST /api/auth/login (อายุ 30 วัน)
+
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    PhotoId:
+      name: photoId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Page:
+      name: page
+      in: query
+      description: หน้าที่ (เริ่ม 1) — ส่ง page หรือ limit เพื่อเปิดโหมดแบ่งหน้า
+      schema: { type: integer, minimum: 1, default: 1 }
+    Limit:
+      name: limit
+      in: query
+      description: จำนวนต่อหน้า (ค่าเริ่มต้น/สูงสุดต่างกันตาม endpoint)
+      schema: { type: integer, minimum: 1, maximum: 100 }
+    Search:
+      name: search
+      in: query
+      description: ค้นหาแบบไม่สนตัวพิมพ์ (ILIKE)
+      schema: { type: string }
+    Dir:
+      name: dir
+      in: query
+      schema: { type: string, enum: [asc, desc], default: asc }
+    Ids:
+      name: ids
+      in: query
+      description: id คั่นด้วย comma (ไม่ cache)
+      schema: { type: string }
+
+  responses:
+    Error:
+      description: error
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    BadRequest:
+      description: ข้อมูลไม่ถูกต้อง
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: { message: ข้อมูลที่ส่งมาไม่ถูกต้อง } }
+    Unauthorized:
+      description: ยังไม่ได้ล็อกอิน / session หมดอายุ
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: { message: กรุณาเข้าสู่ระบบก่อน } }
+    Forbidden:
+      description: ไม่มีสิทธิ์
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: { message: ไม่มีสิทธิ์เข้าถึงส่วนนี้ } }
+    NotFound:
+      description: ไม่พบ
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: { message: ไม่พบข้อมูล } }
+    Conflict:
+      description: สถานะขัดแย้ง (ซ้ำ/ทำไปแล้ว)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    TooManyRequests:
+      description: เรียกถี่เกินไป
+      headers:
+        Retry-After:
+          description: วินาทีที่ต้องรอ
+          schema: { type: integer }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: { message: ลองบ่อยเกินไป กรุณารอสักครู่แล้วลองใหม่อีกครั้ง } }
+    BadGateway:
+      description: ติดต่อบริการภายนอก (chatbot-service / Google / Cloudinary / อีเมล) ไม่ได้
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: { message: ติดต่อ chatbot-service ไม่ได้ } }
+    HealthOk:
+      description: ฐานข้อมูลตอบ
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status: { type: string, enum: [ok] }
+    HealthDown:
+      description: ฐานข้อมูลไม่ตอบ
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status: { type: string, enum: [error] }
+    UserWithCookie:
+      description: สำเร็จ — ตั้ง cookie `session_token`
+      headers:
+        Set-Cookie:
+          description: session_token=...; HttpOnly; SameSite=Lax; Path=/ (Secure ใน production)
+          schema: { type: string }
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              user: { $ref: '#/components/schemas/User' }
+    Message:
+      description: ข้อความ
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: { type: string }
+    Ok:
+      description: สำเร็จ
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              ok: { type: boolean, example: true }
+    ProfileOk:
+      description: โปรไฟล์หลังแก้ไข
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Profile' }
+    AdminUserOk:
+      description: แถวผู้ใช้หลังดำเนินการ
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/AdminUserRow' }
+    ReportCreated:
+      description: สร้างรายงานแล้ว
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              ok: { type: boolean }
+              created: { type: integer, description: จำนวนรายงานที่สร้างใหม่ }
+              skipped: { type: integer, description: จำนวนฟิลด์ที่ข้าม (รายงานค้างอยู่แล้ว) }
+    PendingFields:
+      description: ฟิลด์ที่มีรายงานค้าง
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              pendingFields: { type: array, items: { type: string } }
+    PendingCount:
+      description: จำนวนที่รอ
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              pending: { type: integer }
+    Closed:
+      description: จำนวนรายงานที่ปิด
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              closed: { type: integer }
+    ExtractResult:
+      description: ฟิลด์ฟอร์มอีเวนท์ที่ LLM ดึงได้ (รูปแบบตาม chatbot-service)
+      content:
+        application/json:
+          schema: { type: object, additionalProperties: true }
+    ReindexStatus:
+      description: สถานะ embedder จาก chatbot-service
+      content:
+        application/json:
+          schema: { type: object, additionalProperties: true }
+    ImportResult:
+      description: ผลการนำเข้า
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              created: { type: boolean }
+              place: { $ref: '#/components/schemas/Place' }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [message]
+          properties:
+            message: { type: string, example: กรุณาเข้าสู่ระบบก่อน }
+    PageMeta:
+      type: object
+      properties:
+        total: { type: integer }
+        page: { type: integer }
+        pageSize: { type: integer }
+        totalPages: { type: integer }
+    Photo:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        url: { type: string, format: uri }
+    PhotoUpload:
+      type: object
+      required: [photoFile]
+      properties:
+        photoFile:
+          type: string
+          format: binary
+          description: jpg/png/webp/gif ≤2MB
+    TokenInput:
+      type: object
+      required: [token]
+      properties:
+        token: { type: string }
+    PasswordConfirm:
+      type: object
+      required: [password]
+      properties:
+        password: { type: string, format: password }
+    ReasonRequired:
+      type: object
+      required: [reason]
+      properties:
+        reason: { type: string, maxLength: 500, example: ทำผิดกติกา }
+    ReasonOptional:
+      type: object
+      properties:
+        reason: { type: string, maxLength: 500 }
+    ExtractInput:
+      type: object
+      required: [text]
+      properties:
+        text: { type: string, maxLength: 5000, example: 'งานไหมขอนแก่น 4-8 พ.ย. 2569 ณ ศาลากลาง เข้าฟรี' }
+    Role:
+      type: string
+      enum: [tourist, admin]
+    Title:
+      type: string
+      enum: [mr, mrs, miss]
+    Gender:
+      type: string
+      enum: [male, female, unspecified]
+    Occupation:
+      type: string
+      enum: [student, government, private_employee, business_owner, farmer, freelance, homemaker, retired, unemployed, other]
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        displayName: { type: string }
+        phone: { type: string, nullable: true }
+        title:
+          type: string
+          enum: [mr, mrs, miss, null]
+          nullable: true
+        avatarUrl: { type: string, nullable: true, description: '"preset:<key>" หรือ /api/users/{id}/avatar?v=...' }
+        avatarPosition: { type: string, nullable: true, example: 50% 50% }
+        avatarScale: { type: number, nullable: true }
+        role: { $ref: '#/components/schemas/Role' }
+    Profile:
+      allOf:
+        - $ref: '#/components/schemas/User'
+        - type: object
+          properties:
+            firstName: { type: string, nullable: true }
+            lastName: { type: string, nullable: true }
+            gender: { type: string, nullable: true }
+            province: { type: string, nullable: true }
+            district: { type: string, nullable: true }
+            subdistrict: { type: string, nullable: true }
+            birthdate: { type: string, format: date, nullable: true }
+            occupation: { type: string, nullable: true }
+            emailVerified: { type: boolean }
+            pointsBalance: { type: integer }
+            createdAt: { type: string, format: date-time }
+    ProfileFieldsInput:
+      type: object
+      required: [title, firstName, lastName, phone, gender, province, district, subdistrict, birthdate, occupation]
+      properties:
+        title: { $ref: '#/components/schemas/Title' }
+        firstName: { type: string, maxLength: 100, example: สมชาย }
+        lastName: { type: string, maxLength: 100, example: ใจดี }
+        phone: { type: string, pattern: '^0\d{9}$', example: '0812345678' }
+        gender: { $ref: '#/components/schemas/Gender' }
+        province: { type: string, maxLength: 100, example: ขอนแก่น }
+        district: { type: string, maxLength: 100, example: เมืองขอนแก่น }
+        subdistrict: { type: string, maxLength: 100, example: ในเมือง }
+        birthdate: { type: string, format: date, example: '2000-01-31' }
+        occupation: { $ref: '#/components/schemas/Occupation' }
+    AvatarInput:
+      type: object
+      properties:
+        avatarFile: { type: string, format: binary }
+        avatarUrl: { type: string, example: 'preset:dino1' }
+        avatarPosition: { type: string, pattern: '^\d{1,3}% \d{1,3}%$', example: 50% 50% }
+        avatarScale: { type: number, minimum: 1, maximum: 3 }
+    SignupInput:
+      allOf:
+        - type: object
+          required: [email, password]
+          properties:
+            email: { type: string, format: email, example: tourist@example.com }
+            password: { type: string, format: password, description: 'อย่างน้อย 8 ตัว มีตัวพิมพ์ใหญ่ ตัวพิมพ์เล็ก และตัวเลข', example: Passw0rd! }
+        - $ref: '#/components/schemas/ProfileFieldsInput'
+        - $ref: '#/components/schemas/AvatarInput'
+
+    SyncField:
+      type: string
+      enum: [name, address, location, hours, phone, website, business_status]
+    PlaceReportField:
+      type: string
+      enum: [name, address, location, hours, phone, website, closed, photos, other]
+    EventReportField:
+      type: string
+      enum: [name, date, venue, admission, status, organizer, photos, other]
+
+    Place:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        source: { type: string, nullable: true, example: google }
+        googlePlaceId: { type: string, nullable: true }
+        name: { type: string, example: บึงแก่นนคร }
+        category: { type: string, example: สถานที่ท่องเที่ยว }
+        rating: { type: number, nullable: true, example: 4.6 }
+        reviews: { type: integer, description: จำนวนรีวิว }
+        price: { type: string, nullable: true }
+        address: { type: string, nullable: true }
+        district: { type: string, nullable: true }
+        hours: { type: string, nullable: true }
+        phone: { type: string, nullable: true }
+        website: { type: string, nullable: true }
+        mapsUrl: { type: string, nullable: true }
+        desc: { type: string, nullable: true }
+        amenities: { type: array, items: { type: string } }
+        tags: { type: array, items: { type: string } }
+        hasQR: { type: boolean }
+        qrPoints: { type: integer }
+        reviewsList: { type: array, items: { type: object, additionalProperties: true } }
+        location:
+          type: object
+          nullable: true
+          properties:
+            lat: { type: number }
+            lng: { type: number }
+        isActive: { type: boolean }
+        isFeatured: { type: boolean }
+        subcategory: { type: string, nullable: true }
+        popularBadge: { type: string, enum: [auto, show, hide] }
+        img: { type: string, nullable: true, description: รูปปก (รูปที่อัปโหลดชนะรูปจาก Google) }
+        images: { type: array, items: { type: string } }
+        businessStatus: { type: string, nullable: true, example: OPERATIONAL }
+        marketTime:
+          type: string
+          nullable: true
+          enum: [morning, evening, all_day, null]
+          description: 'หมายเหตุ: ปัจจุบัน list/detail ไม่ได้ select คอลัมน์ market_time จึงเป็น null เสมอ'
+        lockedFields: { type: array, items: { $ref: '#/components/schemas/SyncField' } }
+        lastSyncedAt: { type: string, format: date-time, nullable: true }
+        hasGoogleDiff: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    PlacePage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          properties:
+            data:
+              type: array
+              items: { $ref: '#/components/schemas/Place' }
+    PlaceInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, maxLength: 200, example: คาเฟ่ทดสอบ }
+        category: { type: string, example: คาเฟ่ }
+        subcategory: { type: string, nullable: true, description: 'ใช้ได้เฉพาะหมวดอาหาร/คาเฟ่ (ไม่ส่ง = ไม่แตะค่าเดิม)' }
+        marketTime: { type: string, nullable: true, enum: [morning, evening, all_day, null], description: เฉพาะหมวด "ตลาด" }
+        rating: { type: number, minimum: 0, maximum: 5 }
+        reviews: { type: integer }
+        price: { type: string }
+        address: { type: string }
+        hours: { type: string }
+        phone: { type: string }
+        desc: { type: string }
+        amenities:
+          description: array หรือสตริงคั่นด้วย comma
+          oneOf:
+            - type: array
+              items: { type: string }
+            - type: string
+        tags:
+          description: array หรือสตริงคั่นด้วย comma
+          oneOf:
+            - type: array
+              items: { type: string }
+            - type: string
+        hasQR: { type: boolean }
+        qrPoints: { type: integer, minimum: 0, maximum: 10000 }
+        lat: { type: number, minimum: -90, maximum: 90 }
+        lng: { type: number, minimum: -180, maximum: 180 }
+        location:
+          type: object
+          description: ใช้แทน lat/lng ได้
+          properties:
+            lat: { type: number }
+            lng: { type: number }
+        isActive: { type: boolean, default: true }
+        isFeatured: { type: boolean }
+        popularBadge: { type: string, enum: [auto, show, hide] }
+
+    EventStatus:
+      type: string
+      enum: [upcoming, published, cancelled]
+    Event:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        category: { type: string, nullable: true }
+        dateRange: { type: string, nullable: true, description: ข้อความวันที่ตามที่บันทึก }
+        dateLabel: { type: string, nullable: true, description: ข้อความวันที่สำหรับแสดงผล }
+        venueName: { type: string, nullable: true }
+        admission: { type: string, nullable: true }
+        organizer: { type: string, nullable: true }
+        suitableFor: { type: array, items: { type: string } }
+        desc: { type: string, nullable: true }
+        status: { $ref: '#/components/schemas/EventStatus' }
+        timeStatus: { type: string, nullable: true, enum: [upcoming, ongoing, ended, cancelled, null] }
+        img: { type: string, nullable: true }
+        images: { type: array, items: { type: string } }
+        eventStartDate: { type: string, format: date, nullable: true }
+        eventEndDate: { type: string, format: date, nullable: true }
+        placeId: { type: string, format: uuid, nullable: true }
+        isEmbedded: { type: boolean }
+    EventPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          properties:
+            data:
+              type: array
+              items: { $ref: '#/components/schemas/Event' }
+    EventInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, maxLength: 200, example: งานไหมขอนแก่น }
+        category: { type: string, example: เทศกาล }
+        dateRange: { type: string, example: 4-8 พ.ย. 2569 }
+        venueName: { type: string, example: ศาลากลางจังหวัดขอนแก่น }
+        admission: { type: string, example: เข้าฟรี }
+        organizer: { type: string }
+        suitableFor:
+          oneOf:
+            - type: array
+              items: { type: string }
+            - type: string
+        desc: { type: string }
+        status: { $ref: '#/components/schemas/EventStatus' }
+        eventStartDate: { type: string, format: date, example: '2026-11-04' }
+        eventEndDate: { type: string, format: date, example: '2026-11-08' }
+        placeId: { type: string, format: uuid, nullable: true }
+    RequestStatus:
+      type: string
+      enum: [pending, approved, rejected]
+    EventRequest:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        category: { type: string, nullable: true }
+        dateRange: { type: string, nullable: true }
+        venueName: { type: string, nullable: true }
+        admission: { type: string, nullable: true }
+        organizer: { type: string, nullable: true }
+        suitableFor: { type: array, items: { type: string } }
+        desc: { type: string, nullable: true }
+        eventStartDate: { type: string, format: date, nullable: true }
+        eventEndDate: { type: string, format: date, nullable: true }
+        placeId: { type: string, format: uuid, nullable: true }
+        status: { $ref: '#/components/schemas/RequestStatus' }
+        rejectReason: { type: string, nullable: true }
+        reviewedAt: { type: string, format: date-time, nullable: true }
+        eventId: { type: string, format: uuid, nullable: true }
+        createdAt: { type: string, format: date-time }
+        img: { type: string, nullable: true }
+        images: { type: array, items: { type: string } }
+    EventRequestPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          properties:
+            data:
+              type: array
+              items: { $ref: '#/components/schemas/EventRequest' }
+
+    KbEntry:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        category: { type: string, nullable: true }
+        content: { type: string }
+        isPinned: { type: boolean }
+        isActive: { type: boolean }
+        isEmbedded: { type: boolean }
+    KbPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          properties:
+            data:
+              type: array
+              items: { $ref: '#/components/schemas/KbEntry' }
+    KbInput:
+      type: object
+      required: [title, content]
+      properties:
+        title: { type: string, maxLength: 200, example: การเดินทางจากสนามบิน }
+        category: { type: string, example: การเดินทาง }
+        content: { type: string, example: จากสนามบินขอนแก่นเข้าเมืองใช้เวลาประมาณ 15 นาที }
+        isPinned: { type: boolean }
+        isActive: { type: boolean }
+
+    Qr:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        placeId: { type: string, format: uuid }
+        points: { type: integer }
+        isActive: { type: boolean }
+        expiresAt: { type: string, format: date-time, nullable: true }
+        radiusM: { type: integer }
+    QrPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          properties:
+            data:
+              type: array
+              items: { $ref: '#/components/schemas/Qr' }
+    QrInput:
+      type: object
+      required: [placeId, points]
+      properties:
+        placeId: { type: string, format: uuid }
+        points: { type: integer, minimum: 1, maximum: 10000, example: 10 }
+        radiusM: { type: integer, minimum: 20, maximum: 5000, default: 200 }
+        expiresAt: { type: string, format: date-time, nullable: true }
+        isActive: { type: boolean, default: true }
+
+    Reward:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        cost: { type: integer }
+        stock: { type: integer, nullable: true, description: null = ไม่จำกัด }
+        imageUrl: { type: string }
+    RewardPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          properties:
+            data:
+              type: array
+              items: { $ref: '#/components/schemas/Reward' }
+    RewardInput:
+      type: object
+      required: [name, cost]
+      properties:
+        name: { type: string, example: พวงกุญแจไดโนเสาร์ }
+        cost: { type: integer, minimum: 1, maximum: 1000000, example: 100 }
+        stock: { type: integer, nullable: true, minimum: 0, description: เว้นว่าง/null = ไม่จำกัด }
+    Redemption:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        userName: { type: string }
+        userPhone: { type: string, nullable: true }
+        rewardName: { type: string }
+        cost: { type: integer }
+        redeemedAt: { type: string, format: date-time }
+        status: { type: string, enum: [completed, cancelled] }
+        cancelledAt: { type: string, format: date-time, nullable: true }
+        cancelReason: { type: string, nullable: true }
+        adminName: { type: string, nullable: true }
+
+    TripSummary:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        note: { type: string, nullable: true }
+        planningRationale: { type: string, nullable: true }
+        totalDistanceKm: { type: number }
+        totalCostEstimate: { type: number }
+        startDate: { type: string, format: date }
+        dayCount: { type: integer }
+        isFavorite: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        placeCount: { type: integer, description: (เฉพาะ list/patch/duplicate) }
+        coverImg: { type: string, nullable: true, description: (เฉพาะ list/patch/duplicate) }
+    TripSummaryPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          properties:
+            data:
+              type: array
+              items: { $ref: '#/components/schemas/TripSummary' }
+    TripItem:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        position: { type: integer }
+        kind: { type: string, enum: [place, hotel, free_time] }
+        lat: { type: number, nullable: true }
+        lng: { type: number, nullable: true }
+        placeId: { type: string, format: uuid, nullable: true }
+        placeName: { type: string, nullable: true }
+        arrivalTime: { type: string, example: '09:00' }
+        departureTime: { type: string, example: '10:30' }
+        travelTimeMin: { type: integer }
+        distanceKm: { type: number }
+        status: { type: string }
+        waitTimeMin: { type: integer }
+        isAnchor: { type: boolean }
+        mealRole: { type: string, nullable: true, enum: [lunch, dinner, null] }
+        liked: { type: boolean, nullable: true }
+        place:
+          type: object
+          allOf: [{ $ref: '#/components/schemas/Place' }]
+          nullable: true
+    TripDetail:
+      allOf:
+        - $ref: '#/components/schemas/TripSummary'
+        - type: object
+          properties:
+            input: { type: object, additionalProperties: true, description: เงื่อนไขที่ผู้ใช้เลือกตอนวางแผน }
+            days:
+              type: array
+              items:
+                type: object
+                properties:
+                  dayNo: { type: integer }
+                  date: { type: string, format: date }
+                  dayCostEstimate: { type: number }
+                  dayTravelTimeTotal: { type: integer }
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/TripItem' }
+    TripOwner:
+      type: object
+      nullable: true
+      description: null = ผู้ไม่ล็อกอิน
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        email: { type: string, nullable: true }
+        deleted: { type: boolean }
+    TripSaveInput:
+      type: object
+      required: [days]
+      properties:
+        title: { type: string, maxLength: 120 }
+        note: { type: string, maxLength: 2000 }
+        planningRationale: { type: string, maxLength: 4000 }
+        totalDistanceKm: { type: number, minimum: 0, maximum: 50000 }
+        totalCostEstimate: { type: number, minimum: 0 }
+        input: { type: object, additionalProperties: true, description: '≤ 8KB เมื่อแปลงเป็น JSON' }
+        days:
+          type: array
+          minItems: 1
+          maxItems: 14
+          description: วันที่ต้องเรียงจากเก่าไปใหม่และไม่ซ้ำ
+          items:
+            type: object
+            required: [date, items]
+            properties:
+              date: { type: string, format: date, example: '2026-11-01' }
+              dayCostEstimate: { type: number }
+              dayTravelTimeTotal: { type: integer, maximum: 1440 }
+              items:
+                type: array
+                maxItems: 20
+                items:
+                  type: object
+                  required: [arrivalTime, departureTime]
+                  properties:
+                    kind: { type: string, enum: [place, hotel, free_time], default: place }
+                    placeId: { type: string, format: uuid, description: จำเป็นเมื่อ kind = place }
+                    placeName: { type: string, maxLength: 200, description: จำเป็นเมื่อ kind ≠ place }
+                    lat: { type: number, description: จำเป็นเมื่อ kind ≠ place }
+                    lng: { type: number, description: จำเป็นเมื่อ kind ≠ place }
+                    arrivalTime: { type: string, pattern: '^([01]\d|2[0-3]):[0-5]\d$', example: '09:00' }
+                    departureTime: { type: string, pattern: '^([01]\d|2[0-3]):[0-5]\d$', example: '10:00' }
+                    travelTimeMin: { type: integer }
+                    distanceKm: { type: number }
+                    status: { type: string, maxLength: 40, default: Open }
+                    waitTimeMin: { type: integer }
+                    isAnchor: { type: boolean }
+                    mealRole: { type: string, enum: [lunch, dinner] }
+                    liked: { type: boolean }
+
+    AdminUserRow:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        displayName: { type: string }
+        firstName: { type: string, nullable: true }
+        lastName: { type: string, nullable: true }
+        phone: { type: string, nullable: true }
+        role: { $ref: '#/components/schemas/Role' }
+        status: { type: string, enum: [active, suspended] }
+        statusReason: { type: string, nullable: true }
+        emailVerified: { type: boolean }
+        pointsBalance: { type: integer }
+        createdAt: { type: string, format: date-time }
+        lastLoginAt: { type: string, format: date-time, nullable: true }
+        deletedAt: { type: string, format: date-time, nullable: true }
+        avatarUrl: { type: string, nullable: true }
+        avatarPosition: { type: string, nullable: true }
+        avatarScale: { type: number, nullable: true }
+    AdminUserDetail:
+      allOf:
+        - $ref: '#/components/schemas/AdminUserRow'
+        - type: object
+          properties:
+            title: { type: string, nullable: true }
+            gender: { type: string, nullable: true }
+            province: { type: string, nullable: true }
+            district: { type: string, nullable: true }
+            subdistrict: { type: string, nullable: true }
+            birthdate: { type: string, format: date, nullable: true }
+            occupation: { type: string, nullable: true }
+            statusChangedAt: { type: string, format: date-time, nullable: true }
+            statusChangedByName: { type: string, nullable: true }
+            deletedByName: { type: string, nullable: true }
+            totals:
+              type: object
+              properties:
+                scans: { type: integer }
+                pointsEarned: { type: integer }
+                redemptions: { type: integer }
+                pointsSpent: { type: integer }
+            scans:
+              type: array
+              items:
+                type: object
+                properties:
+                  id: { type: string }
+                  placeName: { type: string }
+                  points: { type: integer }
+                  at: { type: string, format: date-time }
+            redemptions:
+              type: array
+              items:
+                type: object
+                properties:
+                  id: { type: string }
+                  rewardName: { type: string }
+                  cost: { type: integer }
+                  at: { type: string, format: date-time }
+                  status: { type: string }
+            adjustments:
+              type: array
+              items:
+                type: object
+                properties:
+                  id: { type: string }
+                  delta: { type: integer }
+                  balanceAfter: { type: integer }
+                  reason: { type: string }
+                  at: { type: string, format: date-time }
+                  adminName: { type: string, nullable: true }
+            audit:
+              type: array
+              items:
+                type: object
+                properties:
+                  id: { type: string }
+                  action: { type: string }
+                  details: { type: object, additionalProperties: true }
+                  at: { type: string, format: date-time }
+                  adminName: { type: string, nullable: true }
+
+    AdminStats:
+      type: object
+      properties:
+        users:
+          type: object
+          properties:
+            total: { type: integer }
+            suspended: { type: integer }
+            unverified: { type: integer }
+            newLast7Days: { type: integer }
+            deleted: { type: integer }
+        activeAdmins: { type: integer }
+        points:
+          type: object
+          properties:
+            distributed: { type: integer }
+            outstanding: { type: integer }
+        scansLast7Days: { type: integer }
+        redemptionsLast30Days: { type: integer }
+        recentRedemptions:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              userName: { type: string }
+              rewardName: { type: string }
+              cost: { type: integer }
+              status: { type: string }
+              at: { type: string, format: date-time }
+    ServiceVersion:
+      type: object
+      properties:
+        version: { type: string, example: 1.4.0 }
+        sha: { type: string, nullable: true }
+    LabelCount:
+      type: object
+      properties:
+        label: { type: string }
+        count: { type: integer }
+    TripStats:
+      type: object
+      properties:
+        days: { type: integer }
+        totals:
+          type: object
+          properties:
+            total: { type: integer }
+            loggedIn: { type: integer }
+            anonymous: { type: integer }
+            avgDays: { type: number }
+            avgCost: { type: integer }
+            favorites: { type: integer }
+            allTime: { type: integer }
+        daily:
+          type: array
+          items:
+            type: object
+            properties:
+              day: { type: string, format: date }
+              count: { type: integer }
+        topPlaces:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string, format: uuid }
+              name: { type: string }
+              trips: { type: integer }
+        budget: { type: array, items: { $ref: '#/components/schemas/LabelCount' } }
+        pace: { type: array, items: { $ref: '#/components/schemas/LabelCount' } }
+        area: { type: array, items: { $ref: '#/components/schemas/LabelCount' } }
+        interests: { type: array, items: { $ref: '#/components/schemas/LabelCount' } }
+        length: { type: array, items: { $ref: '#/components/schemas/LabelCount' } }
+        savedTripsWithFlaggedPlaces: { type: integer }
+
+    ReportItem:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        field: { type: string }
+        note: { type: string, nullable: true }
+        status: { type: string }
+        resolution: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        reporter: { type: string }
+    PlaceReportGroupPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                type: object
+                properties:
+                  place:
+                    type: object
+                    properties:
+                      id: { type: string, format: uuid }
+                      name: { type: string }
+                      district: { type: string, nullable: true }
+                      businessStatus: { type: string, nullable: true }
+                      isActive: { type: boolean }
+                      hasGoogleId: { type: boolean }
+                      lockedFields: { type: array, items: { type: string } }
+                      lastSyncedAt: { type: string, format: date-time, nullable: true }
+                      googleDiff: { type: object, additionalProperties: true }
+                  total: { type: integer }
+                  fields: { type: object, additionalProperties: { type: integer } }
+                  reports:
+                    type: array
+                    items: { $ref: '#/components/schemas/ReportItem' }
+    EventReportGroupPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                type: object
+                properties:
+                  event:
+                    type: object
+                    properties:
+                      id: { type: string, format: uuid }
+                      name: { type: string }
+                      dateRange: { type: string, nullable: true }
+                      venueName: { type: string, nullable: true }
+                      status: { type: string }
+                  total: { type: integer }
+                  fields: { type: object, additionalProperties: { type: integer } }
+                  reports:
+                    type: array
+                    items: { $ref: '#/components/schemas/ReportItem' }
+
+    SyncSelection:
+      type: object
+      required: [scope]
+      properties:
+        scope: { type: string, enum: [single, selected, filter, all] }
+        ids:
+          type: array
+          maxItems: 500
+          items: { type: string, format: uuid }
+          description: สำหรับ single (1 รายการ) / selected
+        filters:
+          type: object
+          description: สำหรับ scope filter (และ includeInactive ใช้กับ all ได้)
+          properties:
+            staleDays: { type: integer, minimum: 1, maximum: 3650 }
+            hasPendingReports: { type: boolean }
+            hasGoogleDiff: { type: boolean }
+            district: { type: string }
+            category: { type: string }
+            businessStatus: { type: string }
+            includeInactive: { type: boolean, default: false }
+        maxItems: { type: integer, minimum: 1, maximum: 500 }
+    SyncPreview:
+      type: object
+      properties:
+        count: { type: integer, description: จำนวนที่จะซิงก์จริง (หลังจำกัด) }
+        matched: { type: integer, description: จำนวนที่ตรงเงื่อนไขทั้งหมด }
+        capped: { type: boolean }
+        needsConfirm: { type: boolean }
+        sample:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string, format: uuid }
+              name: { type: string }
+    SyncJob:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        scope: { type: string, enum: [single, selected, filter, all] }
+        filters: { type: object, additionalProperties: true }
+        fields: { type: array, items: { $ref: '#/components/schemas/SyncField' } }
+        dryRun: { type: boolean }
+        maxItems: { type: integer, nullable: true }
+        status: { type: string, enum: [queued, running, completed, cancelled, failed] }
+        total: { type: integer }
+        done: { type: integer }
+        failed: { type: integer }
+        error: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        startedAt: { type: string, format: date-time, nullable: true }
+        finishedAt: { type: string, format: date-time, nullable: true }
+    SyncOutcome:
+      type: object
+      properties:
+        placeId: { type: string, format: uuid }
+        status: { type: string, enum: [updated, unchanged, skipped] }
+        changedFields: { type: array, items: { $ref: '#/components/schemas/SyncField' } }
+        skippedLocked: { type: array, items: { $ref: '#/components/schemas/SyncField' } }
+        diff:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              google: { type: object, additionalProperties: true }
+              current: { type: object, additionalProperties: true }
+        dryRun: { type: boolean }
+    GoogleSearchResult:
+      type: object
+      properties:
+        googlePlaceId: { type: string }
+        name: { type: string }
+        address: { type: string }
+        location:
+          type: object
+          nullable: true
+          properties:
+            lat: { type: number }
+            lng: { type: number }
+        primaryType: { type: string, nullable: true }
+        businessStatus: { type: string, nullable: true }
+        existingPlaceId: { type: string, format: uuid, nullable: true, description: มีค่าเมื่อเคยนำเข้าแล้ว }
+
+    Option:
+      type: object
+      properties:
+        value: { type: string }
+        label: { type: string }
+    ChoiceQuestion:
+      type: object
+      properties:
+        key: { type: string }
+        column: { type: string }
+        label: { type: string }
+        derived: { type: boolean }
+        options: { type: array, items: { $ref: '#/components/schemas/Option' } }
+    SurveyQuestions:
+      type: object
+      properties:
+        scale:
+          type: array
+          items:
+            type: object
+            properties:
+              value: { type: integer }
+              label: { type: string }
+        dimensions:
+          type: array
+          items:
+            type: object
+            properties:
+              key: { type: string }
+              label: { type: string }
+        questions:
+          type: array
+          items:
+            type: object
+            properties:
+              no: { type: integer }
+              dimension: { type: string }
+              text: { type: string }
+              skippable: { type: boolean }
+        demographics: { type: array, items: { $ref: '#/components/schemas/ChoiceQuestion' } }
+        experience: { type: array, items: { $ref: '#/components/schemas/ChoiceQuestion' } }
+        comments:
+          type: array
+          items:
+            type: object
+            properties:
+              key: { type: string }
+              column: { type: string }
+              label: { type: string }
+        age:
+          type: object
+          properties:
+            min: { type: integer, example: 10 }
+            max: { type: integer, example: 99 }
+        occupationOtherMax: { type: integer, example: 100 }
+    SurveySubmission:
+      type: object
+      required: [gender, age, occupation, planMethod, planTime, aiUsage, khonKaenVisit, answers]
+      properties:
+        gender: { type: string, enum: [male, female, unspecified] }
+        age: { type: integer, minimum: 10, maximum: 99, example: 21 }
+        occupation: { type: string, enum: [student, staff, tourist, other] }
+        occupationOther: { type: string, maxLength: 100, description: จำเป็นเมื่อ occupation = other }
+        planMethod: { type: string, enum: [search, social, maps, friends, app, ai, none] }
+        planTime: { type: string, enum: [lt30m, 30m-1h, 1-3h, gt3h] }
+        aiUsage: { type: string, enum: [often, sometimes, never] }
+        khonKaenVisit: { type: string, enum: [local, visited, never] }
+        answers:
+          type: object
+          description: 'คีย์ "1".."16" ค่า 1-5 · ข้อ 4-10 ส่ง null ได้ (ยังไม่เคยใช้)'
+          additionalProperties: { type: integer, minimum: 1, maximum: 5, nullable: true }
+          example: { '1': 5, '2': 4, '3': 4, '4': null, '5': 4, '6': 5, '7': 4, '8': 4, '9': 5, '10': 4, '11': 5, '12': 4, '13': 5, '14': 4, '15': 5, '16': 5 }
+        strengths: { type: string, maxLength: 1000 }
+        improvements: { type: string, maxLength: 1000 }
+        website: { type: string, description: honeypot — ต้องเว้นว่าง }
+    Stat:
+      type: object
+      properties:
+        mean: { type: number, nullable: true }
+        sd: { type: number, nullable: true }
+        level: { type: string, nullable: true, enum: [มากที่สุด, มาก, ปานกลาง, น้อย, น้อยที่สุด, null] }
+    SurveySummary:
+      type: object
+      properties:
+        n: { type: integer }
+        overall: { $ref: '#/components/schemas/Stat' }
+        dimensions:
+          type: array
+          items:
+            allOf:
+              - $ref: '#/components/schemas/Stat'
+              - type: object
+                properties:
+                  key: { type: string }
+                  label: { type: string }
+                  questionNos: { type: array, items: { type: integer } }
+                  answered: { type: integer }
+        questions:
+          type: array
+          items:
+            allOf:
+              - $ref: '#/components/schemas/Stat'
+              - type: object
+                properties:
+                  no: { type: integer }
+                  dimension: { type: string }
+                  text: { type: string }
+                  skippable: { type: boolean }
+                  answered: { type: integer }
+                  counts: { type: array, items: { type: integer }, description: 'จำนวนคำตอบคะแนน 1..5' }
+        demographics: { type: array, items: { type: object, additionalProperties: true } }
+        experience: { type: array, items: { type: object, additionalProperties: true } }
+        withComments: { type: integer }

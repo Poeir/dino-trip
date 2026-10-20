@@ -1,0 +1,33 @@
+meta {
+  name: Admin เพิ่มความรู้
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/knowledge-base
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "title": "การเดินทางจากสนามบิน",
+    "category": "การเดินทาง",
+    "content": "จากสนามบินขอนแก่นเข้าเมืองใช้เวลาประมาณ 15 นาที",
+    "isPinned": false,
+    "isActive": false
+  }
+}
+
+assert {
+  res.status: eq 201
+}
+
+docs {
+  ## [Admin] เพิ่มความรู้
+
+  `POST /api/knowledge-base` · สิทธิ์: ต้องล็อกอินเป็น admin (รัน "Auth / Login (admin)" ก่อน)
+
+  คาดหวัง: HTTP 201 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

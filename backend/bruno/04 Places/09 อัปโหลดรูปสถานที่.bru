@@ -1,0 +1,29 @@
+meta {
+  name: Admin อัปโหลดรูปสถานที่
+  type: http
+  seq: 9
+}
+
+post {
+  url: {{baseUrl}}/api/places/{{placeId}}/photos
+  body: multipartForm
+  auth: none
+}
+
+body:multipart-form {
+  photoFile: @file()
+}
+
+assert {
+  res.status: eq 201
+}
+
+docs {
+  ## [Admin] อัปโหลดรูปสถานที่
+
+  `POST /api/places/{id}/photos` · สิทธิ์: ต้องล็อกอินเป็น admin (รัน "Auth / Login (admin)" ก่อน)
+
+  สูงสุด 5 รูปต่อสถานที่ · ไฟล์ ≤2MB · รูปที่อัปโหลดจะใช้แทนแกลเลอรีจาก Google ทั้งหมด
+
+  คาดหวัง: HTTP 201 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

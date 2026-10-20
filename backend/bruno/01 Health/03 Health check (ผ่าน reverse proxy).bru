@@ -1,0 +1,25 @@
+meta {
+  name: Health check (ผ่าน reverse proxy)
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/health
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## Health check (ผ่าน reverse proxy)
+
+  `GET /api/health` · สิทธิ์: ไม่ต้องล็อกอิน
+
+  เหมือน `/health` แต่อยู่ใต้ `/api` เพื่อให้เรียกผ่าน Caddy ได้
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

@@ -1,0 +1,29 @@
+meta {
+  name: กดชอบไม่ชอบ stop ในทริป
+  type: http
+  seq: 6
+}
+
+patch {
+  url: {{baseUrl}}/api/trips/{{tripId}}/items/{{tripItemId}}
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "liked": false
+  }
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## กดชอบ/ไม่ชอบ stop ในทริป
+
+  `PATCH /api/trips/{id}/items/{itemId}` · สิทธิ์: ต้องล็อกอิน (รัน "Auth / Login (user)" ก่อน)
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

@@ -1,0 +1,36 @@
+meta {
+  name: Login (admin)
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/auth/login
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "email": "{{adminEmail}}",
+    "password": "{{adminPassword}}"
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.user.email: isString
+}
+
+script:post-response {
+  // Bruno เก็บ cookie ใน cookie jar ให้อัตโนมัติ — สคริปต์นี้เก็บสำเนาไว้ในตัวแปร
+  // sessionCookie ด้วย เพื่อให้ `bru run` (CLI) ส่ง cookie ต่อได้แน่นอน
+  const raw = res.getHeader("set-cookie");
+  const first = Array.isArray(raw) ? raw[0] : raw;
+  if (first) bru.setVar("sessionCookie", String(first).split(";")[0]);
+}
+
+docs {
+  เข้าสู่ระบบด้วยบัญชี admin จาก environment แล้วเก็บ cookie `session_token`
+  request ถัด ๆ ไปจะส่ง cookie นี้ให้อัตโนมัติ (Bruno cookie jar)
+}

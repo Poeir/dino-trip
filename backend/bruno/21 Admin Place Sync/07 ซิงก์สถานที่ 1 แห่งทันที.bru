@@ -1,0 +1,32 @@
+meta {
+  name: Admin ซิงก์สถานที่ 1 แห่งทันที
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{baseUrl}}/api/admin/place-sync/places/{{placeId}}/sync
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "dryRun": true
+  }
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## [Admin] ซิงก์สถานที่ 1 แห่งทันที
+
+  `POST /api/admin/place-sync/places/{id}/sync` · สิทธิ์: ต้องล็อกอินเป็น admin (รัน "Auth / Login (admin)" ก่อน)
+
+  ฟิลด์ที่ล็อกไว้จะไม่ถูกเขียนทับ แต่ค่าใหม่ของ Google จะพักไว้ใน diff · `dryRun: true` ดูผลโดยไม่บันทึก
+  **ค่าใช้จ่าย:** 1 คำขอ Places API · **Rate limit:** 120 ครั้ง/ชั่วโมง/admin
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

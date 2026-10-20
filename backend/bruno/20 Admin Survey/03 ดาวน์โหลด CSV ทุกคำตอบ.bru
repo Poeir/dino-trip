@@ -1,0 +1,25 @@
+meta {
+  name: Admin ดาวน์โหลด CSV ทุกคำตอบ
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/admin/survey/export
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## [Admin] ดาวน์โหลด CSV ทุกคำตอบ
+
+  `GET /api/admin/survey/export` · สิทธิ์: ต้องล็อกอินเป็น admin (รัน "Auth / Login (admin)" ก่อน)
+
+  UTF-8 พร้อม BOM (Excel อ่านภาษาไทยได้) · ป้องกัน CSV formula injection
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

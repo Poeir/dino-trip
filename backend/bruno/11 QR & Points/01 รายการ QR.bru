@@ -1,0 +1,30 @@
+meta {
+  name: รายการ QR
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/qrs
+  body: none
+  auth: none
+}
+
+params:query {
+  ~page: 1
+  ~limit: 1
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## รายการ QR
+
+  `GET /api/qrs` · สิทธิ์: ไม่ต้องล็อกอิน
+
+  ไม่ส่ง `page`/`limit` → array · cache 25 วินาที
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

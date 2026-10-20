@@ -1,0 +1,25 @@
+meta {
+  name: ทำสำเนาทริป
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{baseUrl}}/api/trips/{{tripId}}/duplicate
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 201
+}
+
+docs {
+  ## ทำสำเนาทริป
+
+  `POST /api/trips/{id}/duplicate` · สิทธิ์: ต้องล็อกอิน (รัน "Auth / Login (user)" ก่อน)
+
+  ชื่อใหม่ต่อท้าย " (สำเนา)" · นับรวมเพดาน 50 แผน · **Rate limit:** 30 ครั้ง/ชั่วโมง/IP (ร่วมกับการบันทึก)
+
+  คาดหวัง: HTTP 201 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

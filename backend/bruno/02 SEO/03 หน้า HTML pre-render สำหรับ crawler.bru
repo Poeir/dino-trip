@@ -1,0 +1,27 @@
+meta {
+  name: หน้า HTML pre-render สำหรับ crawler
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/seo/page/trip
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## หน้า HTML pre-render สำหรับ crawler
+
+  `GET /api/seo/page/{path}` · สิทธิ์: ไม่ต้องล็อกอิน
+
+  Caddy rewrite มาที่นี่เฉพาะเมื่อ User-Agent เป็น bot/link preview — คนทั่วไปได้ SPA
+  `path` คือ path ของเว็บ เช่น `places/<uuid>`, `events/<uuid>`, `places`, `events`, `trip`
+  (ส่วน `/` ของหน้าแรกคือ `/api/seo/page/`) · cache 5 นาที · ไม่พบ → 404 พร้อมหน้า HTML "ไม่พบหน้า"
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

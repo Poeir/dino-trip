@@ -1,0 +1,33 @@
+meta {
+  name: รายการของรางวัล
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/rewards
+  body: none
+  auth: none
+}
+
+params:query {
+  ~page: 1
+  ~limit: 1
+  ~search: <search>
+  ~sort: name
+  ~dir: asc
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## รายการของรางวัล
+
+  `GET /api/rewards` · สิทธิ์: ไม่ต้องล็อกอิน
+
+  เรียงตามแต้มที่ใช้ · ไม่ส่ง `page`/`limit` → array · cache 25 วินาที
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

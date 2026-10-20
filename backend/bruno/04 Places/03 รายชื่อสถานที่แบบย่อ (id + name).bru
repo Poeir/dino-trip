@@ -1,0 +1,25 @@
+meta {
+  name: รายชื่อสถานที่แบบย่อ (id + name)
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/places/meta/names
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## รายชื่อสถานที่แบบย่อ (id + name)
+
+  `GET /api/places/meta/names` · สิทธิ์: ไม่ต้องล็อกอิน
+
+  ใช้ใน datalist เลือกสถานที่จัดงานของฟอร์มอีเวนท์ · รวมสถานที่ที่ซ่อนอยู่ · cache 25 วินาที
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

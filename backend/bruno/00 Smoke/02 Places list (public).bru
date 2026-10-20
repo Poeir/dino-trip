@@ -1,0 +1,21 @@
+meta {
+  name: Places list (public)
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/places?isActive=true&page=1&limit=5
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.data: isArray
+  res.body.page: eq 1
+}
+
+docs {
+  ชุดตรวจแบบอ่านอย่างเดียว ไม่ต้องล็อกอิน รันได้ด้วย `bru run "00 Smoke" --env local`
+}

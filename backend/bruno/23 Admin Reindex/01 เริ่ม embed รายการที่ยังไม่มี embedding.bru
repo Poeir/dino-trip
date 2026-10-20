@@ -1,0 +1,25 @@
+meta {
+  name: Admin เริ่ม embed รายการที่ยังไม่มี embedding
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/reindex
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## [Admin] เริ่ม embed รายการที่ยังไม่มี embedding
+
+  `POST /api/reindex` · สิทธิ์: ต้องล็อกอินเป็น admin (รัน "Auth / Login (admin)" ก่อน)
+
+  ส่งต่อไป chatbot-service `/admin/reindex` · กำลังรันอยู่ → 409
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

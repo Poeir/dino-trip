@@ -1,0 +1,31 @@
+meta {
+  name: Admin ดึงข้อมูลอีเวนท์จากข้อความโพสต์ด้วย AI
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/events/extract
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "text": "งานไหมขอนแก่น 4-8 พ.ย. 2569 ณ ศาลากลาง เข้าฟรี"
+  }
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## [Admin] ดึงข้อมูลอีเวนท์จากข้อความโพสต์ด้วย AI
+
+  `POST /api/events/extract` · สิทธิ์: ต้องล็อกอินเป็น admin (รัน "Auth / Login (admin)" ก่อน)
+
+  ส่งต่อไปยัง chatbot-service `/events/extract` · คืนค่าฟิลด์ฟอร์มอีเวนท์ที่ LLM ดึงได้
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

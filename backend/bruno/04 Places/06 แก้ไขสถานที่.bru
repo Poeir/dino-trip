@@ -1,0 +1,59 @@
+meta {
+  name: Admin แก้ไขสถานที่
+  type: http
+  seq: 6
+}
+
+put {
+  url: {{baseUrl}}/api/places/{{placeId}}
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "name": "คาเฟ่ทดสอบ",
+    "category": "คาเฟ่",
+    "subcategory": "<subcategory>",
+    "marketTime": "morning",
+    "rating": 0,
+    "reviews": 1,
+    "price": "<price>",
+    "address": "<address>",
+    "hours": "<hours>",
+    "phone": "<phone>",
+    "desc": "<desc>",
+    "amenities": [
+      "<amenities>"
+    ],
+    "tags": [
+      "<tags>"
+    ],
+    "hasQR": false,
+    "qrPoints": 0,
+    "lat": -90,
+    "lng": -180,
+    "location": {
+      "lat": 1,
+      "lng": 1
+    },
+    "isActive": true,
+    "isFeatured": false,
+    "popularBadge": "auto"
+  }
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## [Admin] แก้ไขสถานที่
+
+  `PUT /api/places/{id}` · สิทธิ์: ต้องล็อกอินเป็น admin (รัน "Auth / Login (admin)" ก่อน)
+
+  ส่งข้อมูลทั้งฟอร์ม · ถ้าสถานที่มาจาก Google และ admin แก้ฟิลด์ที่ซิงก์ได้ (name, address, location, hours, phone,
+  website, business_status) ฟิลด์นั้นจะถูก **ล็อก** อัตโนมัติ และรายงานของผู้ใช้เกี่ยวกับฟิลด์นั้นจะถูกปิดเป็น `edited`
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

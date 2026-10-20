@@ -1,0 +1,9 @@
+{
+  "version": "1",
+  "name": "Dino Khon Kaen API",
+  "type": "collection",
+  "ignore": [
+    "node_modules",
+    ".git"
+  ]
+}

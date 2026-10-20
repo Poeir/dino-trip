@@ -1,0 +1,25 @@
+meta {
+  name: สถานที่ 1 แห่ง
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/api/places/{{placeId}}
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## สถานที่ 1 แห่ง
+
+  `GET /api/places/{id}` · สิทธิ์: ไม่ต้องล็อกอิน
+
+  คืนแม้สถานที่ถูกซ่อน (`isActive: false`) · cache 25 วินาที
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

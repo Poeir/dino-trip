@@ -1,0 +1,29 @@
+meta {
+  name: Admin คำตอบรายคน
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/admin/survey/responses
+  body: none
+  auth: none
+}
+
+params:query {
+  ~page: 1
+  ~limit: 1
+  ~comments: 1
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## [Admin] คำตอบรายคน
+
+  `GET /api/admin/survey/responses` · สิทธิ์: ต้องล็อกอินเป็น admin (รัน "Auth / Login (admin)" ก่อน)
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

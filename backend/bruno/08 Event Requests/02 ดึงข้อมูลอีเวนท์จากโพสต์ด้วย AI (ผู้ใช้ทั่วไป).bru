@@ -1,0 +1,31 @@
+meta {
+  name: ดึงข้อมูลอีเวนท์จากโพสต์ด้วย AI (ผู้ใช้ทั่วไป)
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/event-requests/extract
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "text": "งานไหมขอนแก่น 4-8 พ.ย. 2569 ณ ศาลากลาง เข้าฟรี"
+  }
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## ดึงข้อมูลอีเวนท์จากโพสต์ด้วย AI (ผู้ใช้ทั่วไป)
+
+  `POST /api/event-requests/extract` · สิทธิ์: ต้องล็อกอิน (รัน "Auth / Login (user)" ก่อน)
+
+  ข้อความ ≤5000 ตัวอักษร · **Rate limit:** 20 ครั้ง/ชั่วโมง/ผู้ใช้
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

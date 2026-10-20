@@ -1,0 +1,29 @@
+meta {
+  name: Admin สถิติการวางแผนทริป
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/admin/stats/trips
+  body: none
+  auth: none
+}
+
+params:query {
+  ~days: 30
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## [Admin] สถิติการวางแผนทริป
+
+  `GET /api/admin/stats/trips` · สิทธิ์: ต้องล็อกอินเป็น admin (รัน "Auth / Login (admin)" ก่อน)
+
+  นับทุกแผน (รวมผู้ไม่ล็อกอิน) ในช่วง `days` วันล่าสุดตามปฏิทินไทย
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

@@ -1,0 +1,34 @@
+meta {
+  name: สแกน QR รับแต้ม
+  type: http
+  seq: 8
+}
+
+post {
+  url: {{baseUrl}}/api/qrs/{{qrId}}/scan
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "lat": 16.4419,
+    "lng": 102.8359
+  }
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## สแกน QR รับแต้ม
+
+  `POST /api/qrs/{id}/scan` · สิทธิ์: ต้องล็อกอิน (รัน "Auth / Login (user)" ก่อน)
+
+  แต้มและชื่อสถานที่อ่านจากฐานข้อมูลในฟังก์ชัน `claim_qr_scan()` (atomic, 1 ครั้งต่อผู้ใช้ต่อ QR)
+  ถ้าสถานที่มีพิกัด ต้องส่ง `lat`/`lng` และอยู่ในรัศมี · **Rate limit:** 20 ครั้ง/นาที/ผู้ใช้
+  error: 404 ไม่พบ QR · 403 QR ปิดใช้/อยู่ไกลเกิน/บัญชีใช้ไม่ได้ · 409 เคยสแกนแล้ว · 410 หมดอายุ · 422 ต้องเปิดตำแหน่ง
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

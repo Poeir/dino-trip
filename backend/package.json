@@ -7,6 +7,9 @@
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
     "test": "node --test",
+    "test:api": "node --test \"test/api.*.test.js\"",
+    "lint:openapi": "npx --yes @redocly/cli@1 lint openapi.yaml",
+    "bruno:generate": "node scripts/generate-bruno.mjs",
     "fetch:places": "node scripts/fetch-places.js",
     "import:places": "node scripts/import-places.js",
     "seed:events-knowledge": "node scripts/seed-events-knowledge.mjs"
@@ -22,7 +25,9 @@
     "morgan": "^1.12.0",
     "multer": "^2.3.0",
     "nodemailer": "^10.0.0",
-    "pg": "^8.23.0"
+    "pg": "^8.23.0",
+    "swagger-ui-express": "^5.0.1",
+    "yaml": "^2.9.1"
   },
   "devDependencies": {
     "playwright": "^1.62.1",

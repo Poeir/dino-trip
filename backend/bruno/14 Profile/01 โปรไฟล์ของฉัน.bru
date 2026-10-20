@@ -1,0 +1,23 @@
+meta {
+  name: โปรไฟล์ของฉัน
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/profile
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## โปรไฟล์ของฉัน
+
+  `GET /api/profile` · สิทธิ์: ต้องล็อกอิน (รัน "Auth / Login (user)" ก่อน)
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

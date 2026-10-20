@@ -1,0 +1,58 @@
+meta {
+  name: บันทึกแผนทริป
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/trips
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "title": "ทริปทดสอบจาก Bruno",
+    "input": {
+      "budget_level": "medium",
+      "trip_pace": "normal",
+      "interests": [
+        "คาเฟ่"
+      ]
+    },
+    "days": [
+      {
+        "date": "2026-11-01",
+        "dayCostEstimate": 500,
+        "dayTravelTimeTotal": 30,
+        "items": [
+          {
+            "kind": "place",
+            "placeId": "{{placeId}}",
+            "arrivalTime": "09:00",
+            "departureTime": "10:30",
+            "travelTimeMin": 15,
+            "distanceKm": 4.2
+          }
+        ]
+      }
+    ]
+  }
+}
+
+assert {
+  res.status: eq 201
+}
+
+docs {
+  ## บันทึกแผนทริป
+
+  `POST /api/trips` · สิทธิ์: ล็อกอินหรือไม่ก็ได้
+
+  รับแผนที่ได้จาก chatbot-service (`/trip/llm`) — ตรวจทุกค่า และยืนยันว่า placeId มีอยู่จริง (ชื่อสถานที่อ่านจากตาราง)
+  **ล็อกอิน** → บันทึกเป็นของผู้ใช้ (สูงสุด 50 แผน) ตอบ 201 พร้อมแผนเต็ม
+  **ไม่ล็อกอิน** → บันทึกไว้ทำสถิติเท่านั้น ตอบ 202 `{ "id": null }`
+  **Rate limit:** 30 ครั้ง/ชั่วโมง/IP
+
+  คาดหวัง: HTTP 201 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

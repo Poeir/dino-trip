@@ -1,0 +1,31 @@
+meta {
+  name: Admin ลบบัญชี (soft delete)
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/api/admin/users/{{userId}}/delete
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "reason": "<reason>"
+  }
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## [Admin] ลบบัญชี (soft delete)
+
+  `POST /api/admin/users/{id}/delete` · สิทธิ์: ต้องล็อกอินเป็น admin (รัน "Auth / Login (admin)" ก่อน)
+
+  ใช้ POST เพื่อส่งเหตุผลใน body · แถว/ประวัติยังอยู่ อีเมลยังสงวนไว้
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

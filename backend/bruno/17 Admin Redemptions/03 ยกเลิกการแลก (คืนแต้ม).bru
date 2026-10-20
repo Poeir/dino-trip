@@ -1,0 +1,29 @@
+meta {
+  name: Admin ยกเลิกการแลก (คืนแต้ม)
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/admin/redemptions/{{redemptionId}}/cancel
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "reason": "ทำผิดกติกา"
+  }
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## [Admin] ยกเลิกการแลก (คืนแต้ม)
+
+  `POST /api/admin/redemptions/{id}/cancel` · สิทธิ์: ต้องล็อกอินเป็น admin (รัน "Auth / Login (admin)" ก่อน)
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

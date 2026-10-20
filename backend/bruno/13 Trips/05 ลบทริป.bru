@@ -1,0 +1,23 @@
+meta {
+  name: ลบทริป
+  type: http
+  seq: 5
+}
+
+delete {
+  url: {{baseUrl}}/api/trips/{{tripId}}
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 204
+}
+
+docs {
+  ## ลบทริป
+
+  `DELETE /api/trips/{id}` · สิทธิ์: ต้องล็อกอิน (รัน "Auth / Login (user)" ก่อน)
+
+  คาดหวัง: HTTP 204 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

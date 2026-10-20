@@ -1,0 +1,31 @@
+meta {
+  name: Admin คิวคำขออีเวนท์
+  type: http
+  seq: 9
+}
+
+get {
+  url: {{baseUrl}}/api/admin/event-requests
+  body: none
+  auth: none
+}
+
+params:query {
+  ~status: pending
+  ~page: 1
+  ~limit: 1
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## [Admin] คิวคำขออีเวนท์
+
+  `GET /api/admin/event-requests` · สิทธิ์: ต้องล็อกอินเป็น admin (รัน "Auth / Login (admin)" ก่อน)
+
+  `pending` เรียงเก่าสุดก่อน สถานะอื่นใหม่สุดก่อน
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

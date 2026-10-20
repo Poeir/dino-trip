@@ -1,0 +1,40 @@
+meta {
+  name: รายการสถานที่
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/places
+  body: none
+  auth: none
+}
+
+params:query {
+  ~page: 1
+  ~limit: 1
+  ~search: <search>
+  ~sort: name
+  ~dir: asc
+  ~category: ร้านอาหาร
+  ~subcategory: ก๋วยเตี๋ยว
+  ~isActive: true
+  ~hasQR: true
+  ~ids: <ids>
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## รายการสถานที่
+
+  `GET /api/places` · สิทธิ์: ไม่ต้องล็อกอิน
+
+  ไม่ส่ง `page`/`limit` → ได้ array ทั้งหมด (ใช้ตอนโหลดหน้าแรก) · ส่ง `page` หรือ `limit` → ได้ object แบ่งหน้า
+  เรียงตามคะแนนถ่วงน้ำหนัก (ปักหมุดก่อน) เว้นแต่ส่ง `sort=name|rating` · ผลลัพธ์ cache 25 วินาที
+  `?ids=` (คั่นด้วย comma) ไม่ถูก cache
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

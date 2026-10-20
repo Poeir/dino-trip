@@ -1,0 +1,23 @@
+meta {
+  name: อีเวนท์ 1 รายการ
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/api/events/{{eventId}}
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## อีเวนท์ 1 รายการ
+
+  `GET /api/events/{id}` · สิทธิ์: ไม่ต้องล็อกอิน
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

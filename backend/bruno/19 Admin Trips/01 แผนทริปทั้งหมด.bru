@@ -1,0 +1,33 @@
+meta {
+  name: Admin แผนทริปทั้งหมด
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/admin/trips
+  body: none
+  auth: none
+}
+
+params:query {
+  ~page: 1
+  ~limit: 1
+  ~search: <search>
+  ~owner: user
+  ~issue: 1
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## [Admin] แผนทริปทั้งหมด
+
+  `GET /api/admin/trips` · สิทธิ์: ต้องล็อกอินเป็น admin (รัน "Auth / Login (admin)" ก่อน)
+
+  ค่าเริ่มต้น 20 ต่อหน้า (สูงสุด 100) · `issue=1` เฉพาะทริปที่มีสถานที่ถูกปิด/ซ่อน/ลบ
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

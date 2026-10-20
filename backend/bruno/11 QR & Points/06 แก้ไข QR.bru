@@ -1,0 +1,33 @@
+meta {
+  name: Admin แก้ไข QR
+  type: http
+  seq: 6
+}
+
+put {
+  url: {{baseUrl}}/api/qrs/{{qrId}}
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "placeId": "{{placeId}}",
+    "points": 10,
+    "radiusM": 200,
+    "expiresAt": "2026-11-01T09:00:00.000Z",
+    "isActive": true
+  }
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## [Admin] แก้ไข QR
+
+  `PUT /api/qrs/{id}` · สิทธิ์: ต้องล็อกอินเป็น admin (รัน "Auth / Login (admin)" ก่อน)
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

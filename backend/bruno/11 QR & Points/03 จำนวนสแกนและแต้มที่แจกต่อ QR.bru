@@ -1,0 +1,23 @@
+meta {
+  name: Admin จำนวนสแกนและแต้มที่แจกต่อ QR
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/qrs/meta/stats
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## [Admin] จำนวนสแกนและแต้มที่แจกต่อ QR
+
+  `GET /api/qrs/meta/stats` · สิทธิ์: ต้องล็อกอินเป็น admin (รัน "Auth / Login (admin)" ก่อน)
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

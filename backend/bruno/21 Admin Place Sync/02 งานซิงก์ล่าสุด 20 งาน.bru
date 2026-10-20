@@ -1,0 +1,23 @@
+meta {
+  name: Admin งานซิงก์ล่าสุด 20 งาน
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/admin/place-sync/jobs
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## [Admin] งานซิงก์ล่าสุด 20 งาน
+
+  `GET /api/admin/place-sync/jobs` · สิทธิ์: ต้องล็อกอินเป็น admin (รัน "Auth / Login (admin)" ก่อน)
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

@@ -1,0 +1,23 @@
+meta {
+  name: รูปที่ admin อัปโหลดของสถานที่
+  type: http
+  seq: 8
+}
+
+get {
+  url: {{baseUrl}}/api/places/{{placeId}}/photos
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## รูปที่ admin อัปโหลดของสถานที่
+
+  `GET /api/places/{id}/photos` · สิทธิ์: ไม่ต้องล็อกอิน
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

@@ -1,0 +1,25 @@
+meta {
+  name: Admin ลบสถานที่
+  type: http
+  seq: 7
+}
+
+delete {
+  url: {{baseUrl}}/api/places/{{placeId}}
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 204
+}
+
+docs {
+  ## [Admin] ลบสถานที่
+
+  `DELETE /api/places/{id}` · สิทธิ์: ต้องล็อกอินเป็น admin (รัน "Auth / Login (admin)" ก่อน)
+
+  ลบถาวร พร้อมลบรูปใน Cloudinary (ทำหลังลบสำเร็จ)
+
+  คาดหวัง: HTTP 204 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

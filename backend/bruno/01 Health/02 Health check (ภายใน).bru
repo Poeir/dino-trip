@@ -1,0 +1,25 @@
+meta {
+  name: Health check (ภายใน)
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/health
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## Health check (ภายใน)
+
+  `GET /health` · สิทธิ์: ไม่ต้องล็อกอิน
+
+  รัน `select 1` กับฐานข้อมูลจริง ตอบ 503 เมื่อเชื่อมต่อฐานข้อมูลไม่ได้
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

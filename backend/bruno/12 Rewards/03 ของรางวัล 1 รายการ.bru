@@ -1,0 +1,23 @@
+meta {
+  name: ของรางวัล 1 รายการ
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/rewards/{{rewardId}}
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## ของรางวัล 1 รายการ
+
+  `GET /api/rewards/{id}` · สิทธิ์: ไม่ต้องล็อกอิน
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

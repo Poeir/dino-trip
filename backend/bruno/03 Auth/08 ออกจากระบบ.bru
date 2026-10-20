@@ -1,0 +1,29 @@
+meta {
+  name: ออกจากระบบ
+  type: http
+  seq: 8
+}
+
+post {
+  url: {{baseUrl}}/api/auth/logout
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 204
+}
+
+script:post-response {
+  bru.setVar("sessionCookie", "");
+}
+
+docs {
+  ## ออกจากระบบ
+
+  `POST /api/auth/logout` · สิทธิ์: ไม่ต้องล็อกอิน
+
+  ลบ session ปัจจุบันและล้าง cookie (เรียกได้แม้ไม่ได้ล็อกอิน)
+
+  คาดหวัง: HTTP 204 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

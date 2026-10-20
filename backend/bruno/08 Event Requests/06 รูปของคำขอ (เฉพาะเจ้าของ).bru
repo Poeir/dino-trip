@@ -1,0 +1,23 @@
+meta {
+  name: รูปของคำขอ (เฉพาะเจ้าของ)
+  type: http
+  seq: 6
+}
+
+get {
+  url: {{baseUrl}}/api/event-requests/{{eventRequestId}}/photos
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## รูปของคำขอ (เฉพาะเจ้าของ)
+
+  `GET /api/event-requests/{id}/photos` · สิทธิ์: ต้องล็อกอิน (รัน "Auth / Login (user)" ก่อน)
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

@@ -1,0 +1,29 @@
+meta {
+  name: Admin อัปโหลดเปลี่ยนรูปของรางวัล
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/api/rewards/{{rewardId}}/image
+  body: multipartForm
+  auth: none
+}
+
+body:multipart-form {
+  imageFile: @file()
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## [Admin] อัปโหลด/เปลี่ยนรูปของรางวัล
+
+  `POST /api/rewards/{id}/image` · สิทธิ์: ต้องล็อกอินเป็น admin (รัน "Auth / Login (admin)" ก่อน)
+
+  1 รูปต่อของรางวัล อัปโหลดใหม่จะแทนที่ (ลบรูปเก่าใน Cloudinary) · ไฟล์ฟิลด์ `imageFile` ≤2MB
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

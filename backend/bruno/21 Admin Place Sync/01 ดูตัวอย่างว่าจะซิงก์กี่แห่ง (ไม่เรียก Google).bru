@@ -1,0 +1,33 @@
+meta {
+  name: Admin ดูตัวอย่างว่าจะซิงก์กี่แห่ง (ไม่เรียก Google)
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/admin/place-sync/preview
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "scope": "filter",
+    "filters": {
+      "staleDays": 30
+    },
+    "maxItems": 50
+  }
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## [Admin] ดูตัวอย่างว่าจะซิงก์กี่แห่ง (ไม่เรียก Google)
+
+  `POST /api/admin/place-sync/preview` · สิทธิ์: ต้องล็อกอินเป็น admin (รัน "Auth / Login (admin)" ก่อน)
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

@@ -1,0 +1,23 @@
+meta {
+  name: Admin จำนวนคำขอที่รออนุมัติ
+  type: http
+  seq: 10
+}
+
+get {
+  url: {{baseUrl}}/api/admin/event-requests/count
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## [Admin] จำนวนคำขอที่รออนุมัติ
+
+  `GET /api/admin/event-requests/count` · สิทธิ์: ต้องล็อกอินเป็น admin (รัน "Auth / Login (admin)" ก่อน)
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

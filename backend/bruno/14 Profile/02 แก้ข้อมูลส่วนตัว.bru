@@ -1,0 +1,40 @@
+meta {
+  name: แก้ข้อมูลส่วนตัว
+  type: http
+  seq: 2
+}
+
+patch {
+  url: {{baseUrl}}/api/profile
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "title": "mr",
+    "firstName": "สมชาย",
+    "lastName": "ใจดี",
+    "phone": "0812345678",
+    "gender": "male",
+    "province": "ขอนแก่น",
+    "district": "เมืองขอนแก่น",
+    "subdistrict": "ในเมือง",
+    "birthdate": "2000-01-31",
+    "occupation": "student"
+  }
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## แก้ข้อมูลส่วนตัว
+
+  `PATCH /api/profile` · สิทธิ์: ต้องล็อกอิน (รัน "Auth / Login (user)" ก่อน)
+
+  ต้องส่งครบทุกช่อง (เหมือนตอนสมัคร) · แก้ role/แต้ม/อีเมลผ่านทางนี้ไม่ได้ · **Rate limit:** 30 ครั้ง/นาที/ผู้ใช้
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

@@ -1,0 +1,25 @@
+meta {
+  name: คำถามแบบสอบถาม
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/survey/questions
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## คำถามแบบสอบถาม
+
+  `GET /api/survey/questions` · สิทธิ์: ไม่ต้องล็อกอิน
+
+  ไม่แตะฐานข้อมูล — ข้อมูลจาก `lib/surveyQuestions.js`
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

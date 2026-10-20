@@ -1,0 +1,35 @@
+meta {
+  name: Admin สร้าง QR ให้สถานที่
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/qrs
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "placeId": "{{placeId}}",
+    "points": 10,
+    "radiusM": 200,
+    "expiresAt": "2026-11-01T09:00:00.000Z",
+    "isActive": true
+  }
+}
+
+assert {
+  res.status: eq 201
+}
+
+docs {
+  ## [Admin] สร้าง QR ให้สถานที่
+
+  `POST /api/qrs` · สิทธิ์: ต้องล็อกอินเป็น admin (รัน "Auth / Login (admin)" ก่อน)
+
+  1 QR ต่อสถานที่ (ซ้ำ → 409)
+
+  คาดหวัง: HTTP 201 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

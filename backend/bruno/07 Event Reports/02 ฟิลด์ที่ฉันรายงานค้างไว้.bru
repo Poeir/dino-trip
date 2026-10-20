@@ -1,0 +1,23 @@
+meta {
+  name: ฟิลด์ที่ฉันรายงานค้างไว้
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/events/{{eventId}}/reports/mine
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## ฟิลด์ที่ฉันรายงานค้างไว้
+
+  `GET /api/events/{id}/reports/mine` · สิทธิ์: ต้องล็อกอิน (รัน "Auth / Login (user)" ก่อน)
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

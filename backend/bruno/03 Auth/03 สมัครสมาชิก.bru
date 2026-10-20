@@ -1,0 +1,46 @@
+meta {
+  name: สมัครสมาชิก
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/auth/signup
+  body: multipartForm
+  auth: none
+}
+
+body:multipart-form {
+  email: tourist@example.com
+  password: Passw0rd!
+  title: mr
+  firstName: สมชาย
+  lastName: ใจดี
+  phone: 0812345678
+  gender: male
+  province: ขอนแก่น
+  district: เมืองขอนแก่น
+  subdistrict: ในเมือง
+  birthdate: 2000-01-31
+  occupation: student
+  ~avatarFile: @file()
+  ~avatarUrl: preset:dino1
+  ~avatarPosition: 50% 50%
+  ~avatarScale: 1
+}
+
+assert {
+  res.status: eq 201
+}
+
+docs {
+  ## สมัครสมาชิก
+
+  `POST /api/auth/signup` · สิทธิ์: ไม่ต้องล็อกอิน
+
+  ส่งแบบ `multipart/form-data` เพื่อแนบรูปโปรไฟล์ (`avatarFile`, ≤2MB, jpg/png/webp/gif) ได้ในคำขอเดียว
+  หรือเลือก preset ผ่าน `avatarUrl: "preset:<key>"` · สำเร็จแล้วระบบส่งอีเมลยืนยัน — ยังล็อกอินไม่ได้จนกว่าจะยืนยัน
+  **Rate limit:** 20 ครั้ง/ชั่วโมง/IP
+
+  คาดหวัง: HTTP 201 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

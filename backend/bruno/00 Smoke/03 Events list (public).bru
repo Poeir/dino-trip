@@ -1,0 +1,20 @@
+meta {
+  name: Events list (public)
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/events?page=1&limit=5
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.data: isArray
+}
+
+docs {
+  ชุดตรวจแบบอ่านอย่างเดียว ไม่ต้องล็อกอิน รันได้ด้วย `bru run "00 Smoke" --env local`
+}

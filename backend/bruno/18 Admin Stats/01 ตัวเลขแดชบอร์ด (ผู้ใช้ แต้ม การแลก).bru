@@ -1,0 +1,23 @@
+meta {
+  name: Admin ตัวเลขแดชบอร์ด (ผู้ใช้ แต้ม การแลก)
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/admin/stats
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## [Admin] ตัวเลขแดชบอร์ด (ผู้ใช้ แต้ม การแลก)
+
+  `GET /api/admin/stats` · สิทธิ์: ต้องล็อกอินเป็น admin (รัน "Auth / Login (admin)" ก่อน)
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

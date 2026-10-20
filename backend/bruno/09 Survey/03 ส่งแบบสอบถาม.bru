@@ -1,0 +1,60 @@
+meta {
+  name: ส่งแบบสอบถาม
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/survey
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "gender": "male",
+    "age": 21,
+    "occupation": "student",
+    "occupationOther": "<occupationOther>",
+    "planMethod": "search",
+    "planTime": "lt30m",
+    "aiUsage": "often",
+    "khonKaenVisit": "local",
+    "answers": {
+      "1": 5,
+      "2": 4,
+      "3": 4,
+      "4": null,
+      "5": 4,
+      "6": 5,
+      "7": 4,
+      "8": 4,
+      "9": 5,
+      "10": 4,
+      "11": 5,
+      "12": 4,
+      "13": 5,
+      "14": 4,
+      "15": 5,
+      "16": 5
+    },
+    "strengths": "<strengths>",
+    "improvements": "<improvements>",
+    "website": "<website>"
+  }
+}
+
+assert {
+  res.status: eq 201
+}
+
+docs {
+  ## ส่งแบบสอบถาม
+
+  `POST /api/survey` · สิทธิ์: ไม่ต้องล็อกอิน
+
+  ไม่ระบุตัวตน 1 คำตอบต่อเบราว์เซอร์ (ตั้ง cookie `survey_done` อายุ 1 ปี) · ช่อง `website` คือ honeypot
+  (ถ้ามีค่า → ตอบ 201 แต่ไม่บันทึก) · **Rate limit:** 40 ครั้ง/ชั่วโมง/IP
+
+  คาดหวัง: HTTP 201 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

@@ -1,0 +1,29 @@
+meta {
+  name: Admin อัปโหลดรูปอีเวนท์
+  type: http
+  seq: 8
+}
+
+post {
+  url: {{baseUrl}}/api/events/{{eventId}}/photos
+  body: multipartForm
+  auth: none
+}
+
+body:multipart-form {
+  photoFile: @file()
+}
+
+assert {
+  res.status: eq 201
+}
+
+docs {
+  ## [Admin] อัปโหลดรูปอีเวนท์
+
+  `POST /api/events/{id}/photos` · สิทธิ์: ต้องล็อกอินเป็น admin (รัน "Auth / Login (admin)" ก่อน)
+
+  สูงสุด 5 รูปต่ออีเวนท์ · ไฟล์ ≤2MB
+
+  คาดหวัง: HTTP 201 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

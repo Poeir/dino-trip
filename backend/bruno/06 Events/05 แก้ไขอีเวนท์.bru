@@ -1,0 +1,44 @@
+meta {
+  name: Admin แก้ไขอีเวนท์
+  type: http
+  seq: 5
+}
+
+put {
+  url: {{baseUrl}}/api/events/{{eventId}}
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "name": "งานไหมขอนแก่น",
+    "category": "เทศกาล",
+    "dateRange": "4-8 พ.ย. 2569",
+    "venueName": "ศาลากลางจังหวัดขอนแก่น",
+    "admission": "เข้าฟรี",
+    "organizer": "<organizer>",
+    "suitableFor": [
+      "<suitableFor>"
+    ],
+    "desc": "<desc>",
+    "status": "upcoming",
+    "eventStartDate": "2026-11-04",
+    "eventEndDate": "2026-11-08",
+    "placeId": "{{placeId}}"
+  }
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## [Admin] แก้ไขอีเวนท์
+
+  `PUT /api/events/{id}` · สิทธิ์: ต้องล็อกอินเป็น admin (รัน "Auth / Login (admin)" ก่อน)
+
+  รายงานของผู้ใช้เกี่ยวกับฟิลด์ที่ถูกแก้จะถูกปิดเป็น `edited` อัตโนมัติ
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

@@ -1,0 +1,25 @@
+meta {
+  name: แผนทริปของฉัน 1 แผน
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/trips/{{tripId}}
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## แผนทริปของฉัน 1 แผน
+
+  `GET /api/trips/{id}` · สิทธิ์: ต้องล็อกอิน (รัน "Auth / Login (user)" ก่อน)
+
+  ทริปของคนอื่นตอบ 404 เหมือนไม่มีอยู่ · แต่ละ stop มี `place` ปัจจุบัน (null ถ้าถูกลบ)
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

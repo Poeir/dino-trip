@@ -1,0 +1,23 @@
+meta {
+  name: QR 1 รายการ
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/api/qrs/{{qrId}}
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## QR 1 รายการ
+
+  `GET /api/qrs/{id}` · สิทธิ์: ไม่ต้องล็อกอิน
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

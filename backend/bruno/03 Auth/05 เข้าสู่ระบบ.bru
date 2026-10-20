@@ -1,0 +1,42 @@
+meta {
+  name: เข้าสู่ระบบ
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/api/auth/login
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "email": "{{userEmail}}",
+    "password": "{{userPassword}}"
+  }
+}
+
+assert {
+  res.status: eq 200
+}
+
+script:post-response {
+  // Bruno เก็บ cookie ใน cookie jar ให้อัตโนมัติ — สคริปต์นี้เก็บสำเนาไว้ในตัวแปร
+  // sessionCookie ด้วย เพื่อให้ `bru run` (CLI) ส่ง cookie ต่อได้แน่นอน
+  const raw = res.getHeader("set-cookie");
+  const first = Array.isArray(raw) ? raw[0] : raw;
+  if (first) bru.setVar("sessionCookie", String(first).split(";")[0]);
+}
+
+docs {
+  ## เข้าสู่ระบบ
+
+  `POST /api/auth/login` · สิทธิ์: ไม่ต้องล็อกอิน
+
+  สำเร็จ → ตั้ง cookie `session_token` (httpOnly) — ใช้ cookie นี้กับทุก endpoint ที่ต้องล็อกอิน
+  อีเมลผิด/รหัสผิด/บัญชีถูกลบ ตอบเหมือนกัน (401) · บัญชีถูกระงับหรือยังไม่ยืนยันอีเมล → 403
+  **Rate limit:** 100 ครั้ง/15 นาที/IP และ 10 ครั้ง/15 นาที ต่อ IP+อีเมล
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

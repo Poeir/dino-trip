@@ -34,8 +34,13 @@ cd backend
 npm install
 cp .env.example .env   # แล้วกรอก DATABASE_URL / FRONTEND_ORIGIN / CHATBOT_SERVICE_URL / Cloudinary / Gmail / GOOGLE_PLACES_API_KEY
 npm run dev             # http://localhost:4000
-npm test                # node --test
+npm test                # node --test (รวม API tests ที่ไม่ต้องใช้ฐานข้อมูลจริง)
+npm run test:api        # เฉพาะ API tests
 ```
+
+**เอกสาร API:** สเปก OpenAPI อยู่ที่ `backend/openapi.yaml` และคู่มือภาษาไทยอยู่ที่ `backend/docs/API.md`
+ตอนรัน `npm run dev` เปิด Swagger UI ได้ที่ `http://localhost:4000/api/docs` (เปิดเฉพาะตอน `NODE_ENV` ไม่ใช่ `production`)
+ทดลองยิง API ด้วย [Bruno](https://www.usebruno.com/) ได้โดย Open Collection ที่โฟลเดอร์ `backend/bruno`
 
 ### 2. Frontend
 

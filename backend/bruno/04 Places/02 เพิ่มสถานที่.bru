@@ -1,0 +1,58 @@
+meta {
+  name: Admin เพิ่มสถานที่
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/places
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "name": "คาเฟ่ทดสอบ",
+    "category": "คาเฟ่",
+    "subcategory": "<subcategory>",
+    "marketTime": "morning",
+    "rating": 0,
+    "reviews": 1,
+    "price": "<price>",
+    "address": "<address>",
+    "hours": "<hours>",
+    "phone": "<phone>",
+    "desc": "<desc>",
+    "amenities": [
+      "<amenities>"
+    ],
+    "tags": [
+      "<tags>"
+    ],
+    "hasQR": false,
+    "qrPoints": 0,
+    "lat": -90,
+    "lng": -180,
+    "location": {
+      "lat": 1,
+      "lng": 1
+    },
+    "isActive": true,
+    "isFeatured": false,
+    "popularBadge": "auto"
+  }
+}
+
+assert {
+  res.status: eq 201
+}
+
+docs {
+  ## [Admin] เพิ่มสถานที่
+
+  `POST /api/places` · สิทธิ์: ต้องล็อกอินเป็น admin (รัน "Auth / Login (admin)" ก่อน)
+
+  สร้างสถานที่ใหม่ (ล้าง `embedding` — ต้อง reindex เพื่อให้แชทบอทค้นเจอ)
+
+  คาดหวัง: HTTP 201 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

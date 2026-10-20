@@ -1,0 +1,23 @@
+meta {
+  name: Admin ลบรูปของรางวัล
+  type: http
+  seq: 7
+}
+
+delete {
+  url: {{baseUrl}}/api/rewards/{{rewardId}}/image
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## [Admin] ลบรูปของรางวัล
+
+  `DELETE /api/rewards/{id}/image` · สิทธิ์: ต้องล็อกอินเป็น admin (รัน "Auth / Login (admin)" ก่อน)
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

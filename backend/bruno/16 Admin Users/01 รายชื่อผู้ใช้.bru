@@ -1,0 +1,36 @@
+meta {
+  name: Admin รายชื่อผู้ใช้
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/admin/users
+  body: none
+  auth: none
+}
+
+params:query {
+  ~page: 1
+  ~limit: 1
+  ~search: <search>
+  ~status: visible
+  ~role: admin
+  ~verified: true
+  ~sort: created
+  ~dir: desc
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## [Admin] รายชื่อผู้ใช้
+
+  `GET /api/admin/users` · สิทธิ์: ต้องล็อกอินเป็น admin (รัน "Auth / Login (admin)" ก่อน)
+
+  ค่าเริ่มต้น 20 ต่อหน้า (สูงสุด 100) · `status=visible` (ค่าเริ่มต้น) ซ่อนบัญชีที่ถูกลบ · search ค้นอีเมล ชื่อ เบอร์โทร
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

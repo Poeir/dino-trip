@@ -1,0 +1,35 @@
+meta {
+  name: แจ้งข้อมูลสถานที่ไม่ถูกต้อง
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/places/{{placeId}}/reports
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "fields": [
+      "hours"
+    ],
+    "note": "ร้านเปิด 10 โมงแล้ว"
+  }
+}
+
+assert {
+  res.status: eq 201
+}
+
+docs {
+  ## แจ้งข้อมูลสถานที่ไม่ถูกต้อง
+
+  `POST /api/places/{id}/reports` · สิทธิ์: ต้องล็อกอิน (รัน "Auth / Login (user)" ก่อน)
+
+  1 ฟิลด์ = 1 รายงาน (ส่งหลายฟิลด์พร้อมกันได้ ใช้หมายเหตุร่วมกัน) · ฟิลด์ที่ผู้ใช้รายงานค้างอยู่แล้วจะถูกข้าม
+  ถ้าเลือก `other` ต้องมี `note` · **Rate limit:** 20 ครั้ง/ชั่วโมง/ผู้ใช้
+
+  คาดหวัง: HTTP 201 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

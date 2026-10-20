@@ -1,0 +1,20 @@
+meta {
+  name: Profile requires login (401)
+  type: http
+  seq: 8
+}
+
+get {
+  url: {{baseUrl}}/api/profile
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 401
+  res.body.error.message: eq กรุณาเข้าสู่ระบบก่อน
+}
+
+docs {
+  ชุดตรวจแบบอ่านอย่างเดียว ไม่ต้องล็อกอิน รันได้ด้วย `bru run "00 Smoke" --env local`
+}

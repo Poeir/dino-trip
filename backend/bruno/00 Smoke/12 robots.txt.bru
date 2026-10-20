@@ -1,0 +1,19 @@
+meta {
+  name: robots.txt
+  type: http
+  seq: 12
+}
+
+get {
+  url: {{baseUrl}}/robots.txt
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ชุดตรวจแบบอ่านอย่างเดียว ไม่ต้องล็อกอิน รันได้ด้วย `bru run "00 Smoke" --env local`
+}

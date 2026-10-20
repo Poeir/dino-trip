@@ -1,0 +1,23 @@
+meta {
+  name: ถอนคำขอที่ยังรออนุมัติ
+  type: http
+  seq: 5
+}
+
+delete {
+  url: {{baseUrl}}/api/event-requests/{{eventRequestId}}
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 204
+}
+
+docs {
+  ## ถอนคำขอที่ยังรออนุมัติ
+
+  `DELETE /api/event-requests/{id}` · สิทธิ์: ต้องล็อกอิน (รัน "Auth / Login (user)" ก่อน)
+
+  คาดหวัง: HTTP 204 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

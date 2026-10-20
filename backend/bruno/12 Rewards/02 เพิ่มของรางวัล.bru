@@ -1,0 +1,31 @@
+meta {
+  name: Admin เพิ่มของรางวัล
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/rewards
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "name": "พวงกุญแจไดโนเสาร์",
+    "cost": 100,
+    "stock": 0
+  }
+}
+
+assert {
+  res.status: eq 201
+}
+
+docs {
+  ## [Admin] เพิ่มของรางวัล
+
+  `POST /api/rewards` · สิทธิ์: ต้องล็อกอินเป็น admin (รัน "Auth / Login (admin)" ก่อน)
+
+  คาดหวัง: HTTP 201 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

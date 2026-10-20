@@ -1,0 +1,31 @@
+meta {
+  name: Admin แก้ไขของรางวัล
+  type: http
+  seq: 4
+}
+
+put {
+  url: {{baseUrl}}/api/rewards/{{rewardId}}
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "name": "พวงกุญแจไดโนเสาร์",
+    "cost": 100,
+    "stock": 0
+  }
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## [Admin] แก้ไขของรางวัล
+
+  `PUT /api/rewards/{id}` · สิทธิ์: ต้องล็อกอินเป็น admin (รัน "Auth / Login (admin)" ก่อน)
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

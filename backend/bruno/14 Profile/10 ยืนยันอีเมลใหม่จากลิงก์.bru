@@ -1,0 +1,31 @@
+meta {
+  name: ยืนยันอีเมลใหม่จากลิงก์
+  type: http
+  seq: 10
+}
+
+post {
+  url: {{baseUrl}}/api/profile/email/confirm
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "token": "{{token}}"
+  }
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## ยืนยันอีเมลใหม่จากลิงก์
+
+  `POST /api/profile/email/confirm` · สิทธิ์: ไม่ต้องล็อกอิน
+
+  ไม่ต้องล็อกอิน (เปิดลิงก์จากเครื่องไหนก็ได้) — token คือหลักฐาน · **Rate limit:** 20 ครั้ง/15 นาที/IP
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

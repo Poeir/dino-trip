@@ -1,0 +1,25 @@
+meta {
+  name: Admin อนุมัติคำขอ → สร้างอีเวนท์
+  type: http
+  seq: 11
+}
+
+post {
+  url: {{baseUrl}}/api/admin/event-requests/{{eventRequestId}}/approve
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## [Admin] อนุมัติคำขอ → สร้างอีเวนท์
+
+  `POST /api/admin/event-requests/{id}/approve` · สิทธิ์: ต้องล็อกอินเป็น admin (รัน "Auth / Login (admin)" ก่อน)
+
+  คัดลอกเป็นอีเวนท์ใหม่ (status upcoming) และย้ายรูปไปแกลเลอรีของอีเวนท์ ใน transaction เดียว
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

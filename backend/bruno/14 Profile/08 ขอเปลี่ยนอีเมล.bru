@@ -1,0 +1,32 @@
+meta {
+  name: ขอเปลี่ยนอีเมล
+  type: http
+  seq: 8
+}
+
+post {
+  url: {{baseUrl}}/api/profile/email
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "email": "new-address@example.com",
+    "password": "{{userPassword}}"
+  }
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## ขอเปลี่ยนอีเมล
+
+  `POST /api/profile/email` · สิทธิ์: ต้องล็อกอิน (รัน "Auth / Login (user)" ก่อน)
+
+  ส่งลิงก์ยืนยันไปอีเมลใหม่ และแจ้งเตือนอีเมลเดิม · ยืนยันด้วยรหัสผ่าน · **Rate limit:** 5 ครั้ง/15 นาที/ผู้ใช้
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

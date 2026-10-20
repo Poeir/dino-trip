@@ -1,0 +1,33 @@
+meta {
+  name: Admin แก้ไขความรู้
+  type: http
+  seq: 4
+}
+
+put {
+  url: {{baseUrl}}/api/knowledge-base/{{kbId}}
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "title": "การเดินทางจากสนามบิน",
+    "category": "การเดินทาง",
+    "content": "จากสนามบินขอนแก่นเข้าเมืองใช้เวลาประมาณ 15 นาที",
+    "isPinned": false,
+    "isActive": false
+  }
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## [Admin] แก้ไขความรู้
+
+  `PUT /api/knowledge-base/{id}` · สิทธิ์: ต้องล็อกอินเป็น admin (รัน "Auth / Login (admin)" ก่อน)
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

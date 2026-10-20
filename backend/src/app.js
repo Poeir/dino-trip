@@ -40,7 +40,7 @@ app.disable('x-powered-by')
 // requests can't use) is required for the browser to accept/send the
 // httpOnly session cookies /api/auth sets.
 app.use(cors({ origin: process.env.FRONTEND_ORIGIN || 'http://localhost:5173', credentials: true }))
-app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'))
+app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev', { skip: () => process.env.NODE_ENV === 'test' }))
 app.use(express.json())
 app.use(cookieParser())
 
@@ -64,6 +64,22 @@ app.get(['/health', '/api/health'], async (req, res) => {
 // backstop against flooding them. Loose enough for many users behind one NAT:
 // one page load fires roughly ten requests.
 app.use('/api', rateLimit({ windowMs: 60 * 1000, max: 1200, keyFn: (req) => req.ip }))
+
+// Swagger UI for backend/openapi.yaml -- dev only by default (prod would need
+// ENABLE_API_DOCS=true, and the Docker image doesn't even ship the spec file).
+// Loaded lazily so production never pulls in swagger-ui-express or the YAML.
+if (process.env.NODE_ENV !== 'production' || process.env.ENABLE_API_DOCS === 'true') {
+  try {
+    const { readFile } = await import('node:fs/promises')
+    const { parse } = await import('yaml')
+    const { default: swaggerUi } = await import('swagger-ui-express')
+    const spec = parse(await readFile(new URL('../openapi.yaml', import.meta.url), 'utf8'))
+    app.get('/api/docs/openapi.json', (req, res) => res.json(spec))
+    app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(spec, { customSiteTitle: 'Dino Khon Kaen API', swaggerOptions: { withCredentials: true } }))
+  } catch (err) {
+    console.warn('API docs disabled:', err.message)
+  }
+}
 
 // robots.txt, sitemap.xml and the crawler-only pre-rendered pages.
 app.use(seoRouter)

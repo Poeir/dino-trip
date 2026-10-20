@@ -1,0 +1,25 @@
+meta {
+  name: Admin รายละเอียดผู้ใช้
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/admin/users/{{userId}}
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## [Admin] รายละเอียดผู้ใช้
+
+  `GET /api/admin/users/{id}` · สิทธิ์: ต้องล็อกอินเป็น admin (รัน "Auth / Login (admin)" ก่อน)
+
+  ข้อมูลส่วนตัว + ยอดรวม + สแกน/แลก/ปรับแต้มล่าสุด 50 รายการ + audit log 30 รายการ
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

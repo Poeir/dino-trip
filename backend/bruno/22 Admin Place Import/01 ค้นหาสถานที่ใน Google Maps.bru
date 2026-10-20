@@ -1,0 +1,25 @@
+meta {
+  name: Admin ค้นหาสถานที่ใน Google Maps
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/admin/place-import/search?q=%E0%B8%84%E0%B8%B2%E0%B9%80%E0%B8%9F%E0%B9%88%20%E0%B8%82%E0%B8%AD%E0%B8%99%E0%B9%81%E0%B8%81%E0%B9%88%E0%B8%99
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## [Admin] ค้นหาสถานที่ใน Google Maps
+
+  `GET /api/admin/place-import/search` · สิทธิ์: ต้องล็อกอินเป็น admin (รัน "Auth / Login (admin)" ก่อน)
+
+  **ค่าใช้จ่าย:** 1 คำขอ Places API · **Rate limit:** 120 ครั้ง/ชั่วโมง/admin · ต้องตั้ง `GOOGLE_PLACES_API_KEY` (ไม่มี → 503)
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

@@ -1,0 +1,34 @@
+meta {
+  name: แจ้งข้อมูลอีเวนท์ไม่ถูกต้อง
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/events/{{eventId}}/reports
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "fields": [
+      "date"
+    ],
+    "note": "เลื่อนเป็นสัปดาห์หน้า"
+  }
+}
+
+assert {
+  res.status: eq 201
+}
+
+docs {
+  ## แจ้งข้อมูลอีเวนท์ไม่ถูกต้อง
+
+  `POST /api/events/{id}/reports` · สิทธิ์: ต้องล็อกอิน (รัน "Auth / Login (user)" ก่อน)
+
+  เหมือนรายงานสถานที่ · **Rate limit:** 20 ครั้ง/ชั่วโมง/ผู้ใช้
+
+  คาดหวัง: HTTP 201 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

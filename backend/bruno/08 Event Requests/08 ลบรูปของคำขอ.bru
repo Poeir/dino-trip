@@ -1,0 +1,23 @@
+meta {
+  name: ลบรูปของคำขอ
+  type: http
+  seq: 8
+}
+
+delete {
+  url: {{baseUrl}}/api/event-requests/{{eventRequestId}}/photos/{{photoId}}
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## ลบรูปของคำขอ
+
+  `DELETE /api/event-requests/{id}/photos/{photoId}` · สิทธิ์: ต้องล็อกอิน (รัน "Auth / Login (user)" ก่อน)
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

@@ -1,0 +1,29 @@
+meta {
+  name: รูปโปรไฟล์ที่อัปโหลด (ไบต์รูป)
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/users/{{userId}}/avatar
+  body: none
+  auth: none
+}
+
+params:query {
+  ~v: <v>
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## รูปโปรไฟล์ที่อัปโหลด (ไบต์รูป)
+
+  `GET /api/users/{id}/avatar` · สิทธิ์: ไม่ต้องล็อกอิน
+
+  สาธารณะ · Cache-Control `private, max-age=86400` (frontend ต่อท้าย `?v=` เมื่อรูปเปลี่ยน) · ไม่มีรูป/บัญชีถูกลบ → 404 ไม่มี body
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

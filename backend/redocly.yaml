@@ -1,0 +1,7 @@
+# Config for `npx @redocly/cli lint openapi.yaml` (see docs/API.md).
+extends:
+  - recommended
+rules:
+  info-license: off
+  no-server-example.com: off
+  operation-4xx-response: off

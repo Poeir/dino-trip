@@ -1,0 +1,32 @@
+meta {
+  name: Admin ปรับแต้มผู้ใช้
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{baseUrl}}/api/admin/users/{{userId}}/points
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "delta": 50,
+    "reason": "ชดเชยสแกนไม่ผ่าน"
+  }
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## [Admin] ปรับแต้มผู้ใช้
+
+  `POST /api/admin/users/{id}/points` · สิทธิ์: ต้องล็อกอินเป็น admin (รัน "Auth / Login (admin)" ก่อน)
+
+  `delta` เป็นจำนวนเต็มไม่ใช่ 0 และ |delta| ≤ 100000 · ต้องระบุเหตุผล · แต้มไม่พอให้หัก → 400
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

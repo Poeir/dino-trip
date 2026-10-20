@@ -1,0 +1,29 @@
+meta {
+  name: Admin คิวรายงานอีเวนท์ (จัดกลุ่มต่ออีเวนท์)
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/admin/event-reports
+  body: none
+  auth: none
+}
+
+params:query {
+  ~status: pending
+  ~page: 1
+  ~limit: 1
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## [Admin] คิวรายงานอีเวนท์ (จัดกลุ่มต่ออีเวนท์)
+
+  `GET /api/admin/event-reports` · สิทธิ์: ต้องล็อกอินเป็น admin (รัน "Auth / Login (admin)" ก่อน)
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

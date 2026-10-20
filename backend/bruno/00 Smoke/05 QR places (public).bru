@@ -1,0 +1,20 @@
+meta {
+  name: QR places (public)
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/api/qrs/meta/places
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body: isArray
+}
+
+docs {
+  ชุดตรวจแบบอ่านอย่างเดียว ไม่ต้องล็อกอิน รันได้ด้วย `bru run "00 Smoke" --env local`
+}

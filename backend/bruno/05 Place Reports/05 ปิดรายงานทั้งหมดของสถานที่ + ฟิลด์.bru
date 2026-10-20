@@ -1,0 +1,32 @@
+meta {
+  name: Admin ปิดรายงานทั้งหมดของสถานที่ + ฟิลด์
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/api/admin/place-reports/resolve
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "placeId": "{{placeId}}",
+    "field": "hours",
+    "status": "resolved",
+    "resolution": "edited"
+  }
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## [Admin] ปิดรายงานทั้งหมดของสถานที่ + ฟิลด์
+
+  `POST /api/admin/place-reports/resolve` · สิทธิ์: ต้องล็อกอินเป็น admin (รัน "Auth / Login (admin)" ก่อน)
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

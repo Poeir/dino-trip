@@ -1,0 +1,25 @@
+meta {
+  name: ยอดแต้มของฉัน
+  type: http
+  seq: 9
+}
+
+get {
+  url: {{baseUrl}}/api/points/me
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## ยอดแต้มของฉัน
+
+  `GET /api/points/me` · สิทธิ์: ต้องล็อกอิน (รัน "Auth / Login (user)" ก่อน)
+
+  การแลกของรางวัลทำโดย admin ที่เคาน์เตอร์เท่านั้น (ไม่มี endpoint แลกฝั่งผู้ใช้)
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

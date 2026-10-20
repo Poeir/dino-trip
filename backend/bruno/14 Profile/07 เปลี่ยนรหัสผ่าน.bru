@@ -1,0 +1,32 @@
+meta {
+  name: เปลี่ยนรหัสผ่าน
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{baseUrl}}/api/profile/password
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "currentPassword": "{{userPassword}}",
+    "newPassword": "NewPassw0rd"
+  }
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## เปลี่ยนรหัสผ่าน
+
+  `POST /api/profile/password` · สิทธิ์: ต้องล็อกอิน (รัน "Auth / Login (user)" ก่อน)
+
+  ออกจากระบบทุกเครื่องยกเว้นเครื่องนี้ · **Rate limit:** 5 ครั้ง/15 นาที/ผู้ใช้
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

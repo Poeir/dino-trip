@@ -1,0 +1,23 @@
+meta {
+  name: Admin ยกเลิกการระงับ
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/admin/users/{{userId}}/unsuspend
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## [Admin] ยกเลิกการระงับ
+
+  `POST /api/admin/users/{id}/unsuspend` · สิทธิ์: ต้องล็อกอินเป็น admin (รัน "Auth / Login (admin)" ก่อน)
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

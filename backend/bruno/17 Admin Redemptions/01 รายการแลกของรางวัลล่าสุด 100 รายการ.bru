@@ -1,0 +1,27 @@
+meta {
+  name: Admin รายการแลกของรางวัลล่าสุด 100 รายการ
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/admin/redemptions
+  body: none
+  auth: none
+}
+
+params:query {
+  ~status: completed
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## [Admin] รายการแลกของรางวัลล่าสุด 100 รายการ
+
+  `GET /api/admin/redemptions` · สิทธิ์: ต้องล็อกอินเป็น admin (รัน "Auth / Login (admin)" ก่อน)
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

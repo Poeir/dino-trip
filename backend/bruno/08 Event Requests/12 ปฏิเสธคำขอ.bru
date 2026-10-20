@@ -1,0 +1,29 @@
+meta {
+  name: Admin ปฏิเสธคำขอ
+  type: http
+  seq: 12
+}
+
+post {
+  url: {{baseUrl}}/api/admin/event-requests/{{eventRequestId}}/reject
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "reason": "ทำผิดกติกา"
+  }
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## [Admin] ปฏิเสธคำขอ
+
+  `POST /api/admin/event-requests/{id}/reject` · สิทธิ์: ต้องล็อกอินเป็น admin (รัน "Auth / Login (admin)" ก่อน)
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

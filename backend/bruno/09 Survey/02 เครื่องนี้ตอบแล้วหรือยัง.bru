@@ -1,0 +1,25 @@
+meta {
+  name: เครื่องนี้ตอบแล้วหรือยัง
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/survey/status
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## เครื่องนี้ตอบแล้วหรือยัง
+
+  `GET /api/survey/status` · สิทธิ์: ไม่ต้องล็อกอิน
+
+  ดูจาก cookie `survey_done`
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

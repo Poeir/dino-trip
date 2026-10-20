@@ -1,0 +1,23 @@
+meta {
+  name: ลบรูปโปรไฟล์
+  type: http
+  seq: 6
+}
+
+delete {
+  url: {{baseUrl}}/api/profile/avatar
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## ลบรูปโปรไฟล์
+
+  `DELETE /api/profile/avatar` · สิทธิ์: ต้องล็อกอิน (รัน "Auth / Login (user)" ก่อน)
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}

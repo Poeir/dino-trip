@@ -1,0 +1,31 @@
+meta {
+  name: คำขอของฉัน
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/event-requests/mine
+  body: none
+  auth: none
+}
+
+params:query {
+  ~page: 1
+  ~limit: 1
+  ~status: pending
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  ## คำขอของฉัน
+
+  `GET /api/event-requests/mine` · สิทธิ์: ต้องล็อกอิน (รัน "Auth / Login (user)" ก่อน)
+
+  ทุกสถานะ ใหม่สุดก่อน · ค่าเริ่มต้น 20 ต่อหน้า (สูงสุด 50)
+
+  คาดหวัง: HTTP 200 เมื่อสำเร็จ · error ตอบเป็น `{ "error": { "message": "..." } }`
+}
