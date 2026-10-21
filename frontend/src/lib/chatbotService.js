@@ -9,13 +9,40 @@ const BASE_URL = import.meta.env.VITE_CHATBOT_SERVICE_URL ?? 'http://localhost:8
 // `places`/`events` are only known once the whole reply is in (agent.py has
 // to check for the fallback message first), so they always arrive on `done`,
 // not progressively.
+// How long the stream may stay silent before the request is given up on. The
+// first token waits for rewrite + retrieval + the model (worst case ~40s with
+// the server's own timeouts); a stalled reply must not leave the send button
+// disabled forever.
+const CHAT_IDLE_TIMEOUT_MS = 60_000
+
 export async function sendChatMessage(message, { history = [], onToken } = {}) {
+  const controller = new AbortController()
+  let idleTimer
+  const armIdleTimer = () => {
+    clearTimeout(idleTimer)
+    idleTimer = setTimeout(() => controller.abort(), CHAT_IDLE_TIMEOUT_MS)
+  }
+  armIdleTimer()
+  try {
+    return await readChatStream(message, history, onToken, controller.signal, armIdleTimer)
+  } finally {
+    clearTimeout(idleTimer)
+  }
+}
+
+async function readChatStream(message, history, onToken, signal, armIdleTimer) {
   const res = await fetch(`${BASE_URL}/chat/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message, history }),
+    signal,
   })
-  if (!res.ok) throw new Error(`chatbot-service /chat failed (${res.status})`)
+  if (!res.ok) {
+    // Carries the status so the caller can tell "slow down" (429) from a real failure.
+    const err = new Error(`chatbot-service /chat failed (${res.status})`)
+    err.status = res.status
+    throw err
+  }
 
   const reader = res.body.getReader()
   const decoder = new TextDecoder('utf-8')
@@ -27,6 +54,7 @@ export async function sendChatMessage(message, { history = [], onToken } = {}) {
   while (true) {
     const { done, value } = await reader.read()
     if (done) break
+    armIdleTimer()
     buffer += decoder.decode(value, { stream: true })
     const sseEvents = buffer.split('\n\n')
     buffer = sseEvents.pop() // last chunk may be incomplete, keep for next read

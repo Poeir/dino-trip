@@ -3,26 +3,31 @@ import threading
 import time
 from functools import lru_cache
 
-from sentence_transformers import SentenceTransformer
+from concurrent.futures import ThreadPoolExecutor
+
 from supabase import create_client
-from src.core.config import EMBEDDING_MODEL_NAME, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+from src.core.config import EMBEDDING_QUERY_PREFIX, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
 from src.core.db import supabase
-from src.services.rag.area import area_candidates, is_specific, rank_in_area, resolve_area, split_area_query
+from src.services.rag.embedder import encode_lock, get_model
+from src.services.rag.area import (
+    area_candidates, is_specific, rank_in_area, resolve_area, split_area_query, split_bare_area_query,
+)
 from src.services.rag.synonyms import alias_variants, expand_query, intent_categories, strip_filler
 
 # Replaces the old project's Chroma-query-then-Mongo-$in-fetch two-step --
 # match_places()/match_knowledge_base() (backend/supabase/migrations) do the
 # whole "embed -> nearest neighbours -> full row" job in one Postgres call.
 print("[*] Loading embedding model (once)...")
-_model = SentenceTransformer(EMBEDDING_MODEL_NAME)
+# The same instance the reindex job uses (embedder.get_model), not a second copy.
+_model = get_model()
 
 
 @lru_cache(maxsize=256)
 def _embed_cached(text: str) -> tuple[float, ...]:
-    return tuple(_model.encode(text, normalize_embeddings=True).tolist())
+    return tuple(_model.encode(EMBEDDING_QUERY_PREFIX + text, normalize_embeddings=True).tolist())
 
 
-_embed_lock = threading.Lock()
+_embed_lock = encode_lock
 
 
 def embed(text: str) -> list[float]:
@@ -51,18 +56,71 @@ _DIRECTORY_KEY = ("__all_active__",)
 # few still counts, without shipping hundreds of rows per question.
 _AREA_SEARCH_POOL = 30
 
-# agent.py runs these three hybrid-search RPCs concurrently (ThreadPoolExecutor)
-# to overlap their network time -- but doing that against the one shared
-# `supabase` client (src.core.db) raised an intermittent httpx.ReadError
-# ([WinError 10035], confirmed by a 10/20-trial stress test: ~1/15 calls
-# failed) because httpx's connection pool isn't safe for concurrent requests
-# from multiple threads on the same client. A dedicated client per call, each
-# with its own connection, removed the race entirely (0/60 calls in the same
-# stress test) -- created once here and reused for every chat turn, so there's
-# no extra connection-setup cost over the shared client.
-_places_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-_kb_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-_events_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+# The hybrid-search RPCs run concurrently to overlap their network time -- but
+# doing that against the one shared `supabase` client (src.core.db) raised an
+# intermittent httpx.ReadError ([WinError 10035], confirmed by a 10/20-trial
+# stress test: ~1/15 calls failed) because httpx's connection pool isn't safe
+# for concurrent requests from multiple threads on the same client.
+#
+# So every RPC runs on a long-lived worker thread of _rpc_pool, and each worker
+# keeps its own client (and connection) in thread-local storage: a client is
+# only ever used by one thread at a time, whichever chat turns are in flight
+# (the earlier one-client-per-search-type setup was still shared between two
+# turns searching at once). Workers only ever run this leaf call and never wait
+# on each other, so callers blocking on them can't deadlock.
+_rpc_pool = ThreadPoolExecutor(max_workers=12, thread_name_prefix="rag-rpc")
+_worker = threading.local()
+
+
+def _run_rpc(name: str, params: dict) -> list:
+    client = getattr(_worker, "client", None)
+    if client is None:
+        client = _worker.client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+    return client.rpc(name, params).execute().data or []
+
+
+def rpc(name: str, params: dict) -> list:
+    return _rpc_pool.submit(_run_rpc, name, params).result()
+
+
+def rpc_many(calls: list[tuple[str, dict]]) -> list[list]:
+    """The same RPCs as rpc(), all in flight at once; results in call order."""
+    futures = [_rpc_pool.submit(_run_rpc, name, params) for name, params in calls]
+    return [f.result() for f in futures]
+
+
+# match_places_ranked (migration 20261021000002) returns rows without the
+# heavy columns, ties broken by popularity. Until that migration is applied
+# to a database, fall back to match_places_hybrid and drop the same columns
+# here, so callers see one row shape either way.
+_HEAVY_PLACE_COLUMNS = ("raw_data", "embedding", "reviews", "images")
+_ranked_search_available = True
+
+
+def _is_missing_function(err: Exception) -> bool:
+    text = str(err)
+    return "match_places_ranked" in text and ("PGRST202" in text or "Could not find the function" in text)
+
+
+def _match_places(queries: list[tuple[list[float], str]], limit: int) -> list[list]:
+    """One search per (embedding, text) pair, all in flight at once."""
+    global _ranked_search_available
+    if _ranked_search_available:
+        try:
+            return rpc_many([
+                ("match_places_ranked", {"query_embedding": vec, "query_text": text, "match_count": limit})
+                for vec, text in queries
+            ])
+        except Exception as e:
+            if not _is_missing_function(e):
+                raise
+            print("[!] match_places_ranked not found, using match_places_hybrid (apply migration 20261021000002)")
+            _ranked_search_available = False
+    results = rpc_many([
+        ("match_places_hybrid", {"query_embedding": vec, "query_text": text, "match_count": limit})
+        for vec, text in queries
+    ])
+    return [[{k: v for k, v in row.items() if k not in _HEAVY_PLACE_COLUMNS} for row in rows] for rows in results]
 
 
 class PlaceRetriever:
@@ -141,13 +199,9 @@ class PlaceRetriever:
             if alias not in variants:
                 variants.append(alias)
 
-        result_lists = []
-        for v in variants:
-            vec = embed(v)
-            res = _places_client.rpc(
-                "match_places_hybrid", {"query_embedding": vec, "query_text": v, "match_count": limit}
-            ).execute()
-            result_lists.append(res.data or [])
+        # Encoding is serialized by the lock anyway; the network round trips
+        # (the slow part) are what run side by side.
+        result_lists = _match_places([(embed(v), v) for v in variants], limit)
 
         if len(result_lists) == 1:
             return result_lists[0]
@@ -194,9 +248,13 @@ class PlaceRetriever:
         A database failure in either step falls back to the plain search."""
         try:
             split = split_area_query(query)
+            directory = None
+            if not split:
+                directory = self._directory()
+                split = split_bare_area_query(query, directory)
             if split:
                 what, where = split
-                directory = self._directory()
+                directory = directory or self._directory()
                 area = resolve_area(where, directory)
                 if area:
                     candidates = area_candidates(area, directory, limit)
@@ -222,10 +280,7 @@ class PlaceRetriever:
     def search_knowledge_base(self, query: str, limit: int = 3):
         query = expand_query(query)
         vec = embed(query)
-        res = _kb_client.rpc(
-            "match_knowledge_base_hybrid", {"query_embedding": vec, "query_text": query, "match_count": limit}
-        ).execute()
-        return res.data or []
+        return rpc("match_knowledge_base_hybrid", {"query_embedding": vec, "query_text": query, "match_count": limit})
 
     def search_events(self, query: str, limit: int = 3):
         """Same hybrid approach as search_and_expand(), over `events` --
@@ -234,7 +289,4 @@ class PlaceRetriever:
         expire_events() clears an expired event's embedding on reindex."""
         query = expand_query(query)
         vec = embed(query)
-        res = _events_client.rpc(
-            "match_events_hybrid", {"query_embedding": vec, "query_text": query, "match_count": limit}
-        ).execute()
-        return res.data or []
+        return rpc("match_events_hybrid", {"query_embedding": vec, "query_text": query, "match_count": limit})

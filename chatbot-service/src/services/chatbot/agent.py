@@ -81,7 +81,13 @@ MATCH_TAGS = tuple(
     for r in range(1, len(_SOURCES) + 1)
     for combo in itertools.permutations(_SOURCES, r)
 )
-ALL_TAGS = (*MATCH_TAGS, MATCH_SELF_TAG, NO_MATCH_TAG)
+# The prompt shows the tag as "[MATCH:...]" for everything else, so the model
+# sometimes writes the no-match tag in that shape too. Unrecognized, it was
+# read as "model skipped the tag" and the whole reply -- the text that is
+# supposed to be hidden, recommendations of unrelated places included -- was
+# shown to the user with "[MATCH:NO_MATCH]" on the front.
+NO_MATCH_TAG_VARIANTS = (NO_MATCH_TAG, "[MATCH:NO_MATCH]")
+ALL_TAGS = (*MATCH_TAGS, MATCH_SELF_TAG, *NO_MATCH_TAG_VARIANTS)
 
 
 def match_tag(*sources: str) -> str:
@@ -113,6 +119,15 @@ MAX_REWRITE_CHARS = 300
 LLM_TIMEOUT_S = 25
 LLM_MAX_RETRIES = 1
 REWRITE_TIMEOUT_S = 8
+# Output caps so one request can't ask for an essay (the rate limiter counts
+# requests, not tokens). Generous on purpose: on Gemini the hidden reasoning
+# tokens count against the cap too (600-900 measured on a rewrite), and a cap
+# that reasoning eats leaves an empty reply. A truncated rewrite just falls
+# back to the raw message; the answer cap is far above a 3-place reply.
+ANSWER_MAX_TOKENS = 3000
+REWRITE_MAX_TOKENS = 800
+# Longest description / knowledge-base body put into the prompt per item.
+MAX_CONTEXT_ITEM_CHARS = 700
 _HISTORY_ROLES = ("user", "assistant")
 
 # Gemini 3 Flash "thinks" by default even for a one-line query rewrite --
@@ -171,10 +186,21 @@ def _normalize_name(text: str) -> str:
     return "".join(c for c in unicodedata.normalize("NFKC", text).casefold() if unicodedata.category(c)[0] in "LMN")
 
 
+def _is_cjk_or_hangul(word: str) -> bool:
+    """A name's native-script twin ("แดจังกึม กังสดาล 대장금"): a Thai reply
+    writes the Thai part only, so requiring the rest dropped the place's card
+    even though the reply recommended it (seen live)."""
+    letters = [c for c in word if c.isalpha()]
+    return bool(letters) and all(unicodedata.name(c, "").startswith(("HANGUL", "CJK", "HIRAGANA", "KATAKANA")) for c in letters)
+
+
 def _named_in_reply(name: str, normalized_reply: str) -> bool:
     if _normalize_name(name) in normalized_reply:
         return True
-    parts = [_normalize_name(p) for p in _PARENTHETICAL_RE.sub(" ", name).split() if not _LOCATION_QUALIFIER_RE.search(p)]
+    parts = [
+        _normalize_name(p) for p in _PARENTHETICAL_RE.sub(" ", name).split()
+        if not _LOCATION_QUALIFIER_RE.search(p) and not _is_cjk_or_hangul(p)
+    ]
     parts = [p for p in parts if p]
     return sum(map(len, parts)) >= _MIN_PARTIAL_NAME_CHARS and all(p in normalized_reply for p in parts)
 
@@ -190,9 +216,16 @@ def cited_only(cards: list[dict], reply: str) -> list[dict]:
     return cited or cards
 
 
+def _clip(text: str | None, limit: int = MAX_CONTEXT_ITEM_CHARS) -> str:
+    """A long description/article body trimmed for the prompt: the model needs
+    the gist of 3+3+3 items, not every paragraph of each."""
+    text = (text or "").strip()
+    return text if len(text) <= limit else text[:limit].rstrip() + "…"
+
+
 def _tag_sources(tag: str) -> set[str]:
     """Which of PLACES/KB/EVENTS a [MATCH:...] tag cites -- order-independent."""
-    if not tag or tag == NO_MATCH_TAG:
+    if not tag or tag in NO_MATCH_TAG_VARIANTS:
         return set()
     return set(tag[len("[MATCH:"):-1].split("+"))
 
@@ -229,9 +262,12 @@ class RAGChatbotService:
         """Turns a follow-up ("แล้วร้านนั้นเปิดกี่โมง") into a standalone
         query for retrieval -- searching on the raw follow-up finds nothing
         because the referent only exists in the history. Skipped on the first
-        turn (no extra LLM call). Any failure falls back to the raw message so
-        a rewrite hiccup never breaks the chat."""
-        if not history:
+        turn (no extra LLM call) -- and that means a history with no user turn
+        in it too: the frontend's opening greeting is an assistant message, so
+        without this check every first question paid for a pointless rewrite.
+        Any failure falls back to the raw message so a rewrite hiccup never
+        breaks the chat."""
+        if not any(m["role"] == "user" for m in history):
             return user_message
         transcript = "\n".join(
             f"{'ผู้ใช้' if m['role'] == 'user' else 'น้องไดโน'}: {m['content']}" for m in history
@@ -244,6 +280,7 @@ class RAGChatbotService:
                     {"role": "user", "content": f"[บทสนทนาก่อนหน้า]\n{transcript}\n\n[คำถามล่าสุด]\n{user_message}"},
                 ],
                 **self._temperature(0),
+                max_tokens=REWRITE_MAX_TOKENS,
                 timeout=REWRITE_TIMEOUT_S,
             )
             if usage:
@@ -273,9 +310,19 @@ class RAGChatbotService:
             f_places = pool.submit(self.retriever.search_chat_places, query=search_query, limit=3)
             f_kb = pool.submit(self.retriever.search_knowledge_base, query=search_query, limit=3)
             f_events = pool.submit(self.retriever.search_events, query=search_query, limit=3)
-            places = f_places.result()
-            kb_entries = f_kb.result()
-            events = f_events.result()
+            outcomes = []
+            for name, future in (("places", f_places), ("knowledge_base", f_kb), ("events", f_events)):
+                try:
+                    outcomes.append(future.result())
+                except Exception as e:
+                    logger.warning("chat %s search failed, answering without it: %s", name, e)
+                    outcomes.append(e)
+        # One source being down shouldn't cost the whole answer; all of them
+        # being down is a real outage and ends the turn with ERROR_MESSAGE.
+        failures = [o for o in outcomes if isinstance(o, Exception)]
+        if len(failures) == len(outcomes):
+            raise failures[0]
+        places, kb_entries, events = ([] if isinstance(o, Exception) else o for o in outcomes)
         retrieve_ms = (time.time() - t0) * 1000
 
         logger.info(
@@ -317,7 +364,7 @@ class RAGChatbotService:
             f"ชื่อสถานที่: {p['name']}\n"
             f"ประเภท/แท็ก: {', '.join(p.get('tags') or []) or p.get('category') or '-'}\n"
             f"คะแนน: {p.get('rating') or '-'} ดาว\n"
-            f"รายละเอียด: {p.get('description') or '-'}\n"
+            f"รายละเอียด: {_clip(p.get('description')) or '-'}\n"
             f"ที่อยู่: {p.get('address') or '-'}\n"
             f"เวลาเปิด-ปิด: {p.get('hours') or '-'}\n"
             f"ราคา: {p.get('price') or 'ไม่มีข้อมูลราคา'}\n"
@@ -328,7 +375,7 @@ class RAGChatbotService:
             for p in places
         )
         kb_context = "\n---\n".join(
-            f"หัวข้อ: {k['title']}\nเนื้อหา: {k.get('content', '')}" for k in kb_entries
+            f"หัวข้อ: {k['title']}\nเนื้อหา: {_clip(k.get('content'))}" for k in kb_entries
         )
         event_context = "\n---\n".join(
             f"ชื่องาน: {e['name']}\n"
@@ -337,7 +384,7 @@ class RAGChatbotService:
             f"วันที่จัดงาน: {e.get('date_range') or 'ไม่มีข้อมูลวันที่'}\n"
             f"ค่าเข้างาน: {e.get('admission') or 'ไม่มีข้อมูลค่าเข้างาน'}\n"
             f"เหมาะสำหรับ: {', '.join(e.get('suitable_for') or []) or 'ไม่มีข้อมูล'}\n"
-            f"รายละเอียด: {e.get('description') or '-'}"
+            f"รายละเอียด: {_clip(e.get('description')) or '-'}"
             for e in events
         )
         context_str = "\n---\n".join(filter(None, [place_context, kb_context, event_context])) or "ไม่มีข้อมูลที่ตรงกับคำถามในฐานข้อมูล"
@@ -387,13 +434,14 @@ class RAGChatbotService:
             # context -- 0.3 was flipping the tag on repeated identical
             # requests during testing.
             **self._temperature(0.1),
+            max_tokens=ANSWER_MAX_TOKENS,
         )
         usage.record_response("answer", self.model_name, response)
         raw_reply = response.choices[0].message.content or ""
         llm_ms = (time.time() - t0) * 1000
 
         matched_tag = next((t for t in ALL_TAGS if raw_reply.startswith(t)), None)
-        is_fallback = matched_tag == NO_MATCH_TAG
+        is_fallback = matched_tag in NO_MATCH_TAG_VARIANTS
         if is_fallback:
             bot_reply = FALLBACK_MESSAGE
             source_places = []
@@ -467,6 +515,7 @@ class RAGChatbotService:
             # context -- 0.3 was flipping the tag on repeated identical
             # requests during testing.
             **self._temperature(0.1),
+            max_tokens=ANSWER_MAX_TOKENS,
             stream=True,
         )
         # Not given REASONING_EFFORT, same reason as the non-streamed answer
@@ -510,7 +559,7 @@ class RAGChatbotService:
                 matched_tag = next((t for t in ALL_TAGS if tag_buffer.startswith(t)), None)
                 if matched_tag:
                     tag_resolved = True
-                    if matched_tag == NO_MATCH_TAG:
+                    if matched_tag in NO_MATCH_TAG_VARIANTS:
                         # The model's own no-match text is hidden (drained
                         # below, not yielded) -- but the frontend only ever
                         # renders accumulated `token` events, it doesn't read

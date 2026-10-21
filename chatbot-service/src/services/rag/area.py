@@ -35,6 +35,8 @@ _ADMIN_PREFIX_RE = re.compile(r"^(ตำบล|ต\.|อำเภอ|อ\.)\s*")
 _PARENTHETICAL_RE = re.compile(r"[(（][^)）]*[)）]")
 # A shorter landmark key is a common word ("วัด", "ตลาด") that names no one place.
 MIN_LANDMARK_CHARS = 4
+# Same idea for a ตำบล/อำเภอ matched as a prefix of the text ("ในเมือง" in "ในเมืองอะมี").
+MIN_ADMIN_PREFIX_CHARS = 4
 
 TOURISM = ("สถานที่ท่องเที่ยว", "วัด", "พิพิธภัณฑ์", "สวนสาธารณะ", "ตลาด", "อุทยานแห่งชาติ", "ห้างสรรพสินค้า")
 # What kind of place the rest of the question asks for, by `category`.
@@ -56,7 +58,8 @@ CATEGORY_WORDS: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
 # Left over once the place, the marker and the kind of place are taken out of
 # "อยากเที่ยวแถวท่าพระ ช่วยแนะนำหน่อย": if nothing else is left, the
 # question asks for "anything there", not for something specific.
-_GENERIC_WORDS = ("อยาก", "ไป", "เที่ยว", "ที่", "มี", "อะไร", "ไหน", "ดี", "หา", "ร้าน", "ขอ", "แนะนำ", "ช่วย")
+_GENERIC_WORDS = ("อยาก", "ไป", "เที่ยว", "ที่", "มี", "อะไร", "ไหน", "ดี", "หา", "ร้าน", "ขอ", "แนะนำ", "ช่วย",
+                  "ได้", "ต้องการ", "สัก", "เอา")
 
 LANDMARK_RADIUS_KM = 2.0
 WIDER_RADIUS_KM = 5.0
@@ -83,6 +86,33 @@ def split_area_query(query: str) -> tuple[str, str] | None:
         return None
     what = " ".join(f"{query[:start]} {after[cut:]}".split())
     return what, where
+
+
+# What may stand right before a bare area name: "อยากเที่ยว|ท่าพระ", "ไป|ท่าพระ",
+# "ร้านอาหาร|ที่|ท่าพระ", "ตำบล|ท่าพระ". Without one of these a ตำบล/อำเภอ name
+# is probably part of something else ("สถานีท่าพระ", a shop's name).
+BARE_AREA_PREFIXES = ("เที่ยว", "ไป", "ใน", "ที่", "ตำบล", "ต.", "อำเภอ", "อ.", "อยู่")
+
+
+def split_bare_area_query(query: str, places: list[dict]) -> tuple[str, str] | None:
+    """("what", "where") for an area named without "แถว", e.g. "อยากไปเที่ยวท่าพระ"
+    (confirmed live: it fell to the plain search, which read "เที่ยว...พระ"
+    as temples and answered with three temples elsewhere, though ท่าพระ has
+    places). Only a ตำบล/อำเภอ that exists in `places` counts, after one of
+    BARE_AREA_PREFIXES and followed by the end, a space or a stop phrase;
+    anything else returns None and the question is searched as before.
+    Landmarks need "แถว" -- "ไปบึงแก่นนคร" asks about that place itself."""
+    names = {p[k] for p in places for k in ("district", "subdistrict") if p.get(k)}
+    names = sorted((n for n in names if len(normalize(n)) >= MIN_ADMIN_PREFIX_CHARS and normalize(n) not in _TOO_BROAD),
+                   key=len, reverse=True)
+    for name in names:
+        start = query.find(name)
+        while start != -1:
+            before, after = query[:start].rstrip(), query[start + len(name):]
+            if before.endswith(BARE_AREA_PREFIXES) and (not after.strip() or after[:1].isspace() or after.lstrip().startswith(_STOP_PHRASES)):
+                return " ".join(f"{before} {after}".split()), name
+            start = query.find(name, start + 1)
+    return None
 
 
 def wanted_categories(what: str) -> list[str]:
@@ -140,7 +170,18 @@ def resolve_area(where: str, places: list[dict]) -> dict | None:
         starting = [p for c, p in cores if c.startswith(first)]
         if starting:
             return {"kind": "landmark", "place": max(starting, key=_popularity)}
-    return None
+
+    # Last resort: the question's tail ran into the name ("แถวในเมืองอะมีมั้ย"
+    # gives "ในเมืองอะมี"), so take the longest ตำบล/อำเภอ the text starts with.
+    best = None
+    for kind in ("district", "subdistrict"):
+        for p in places:
+            n = p.get(kind)
+            key = normalize(n) if n else ""
+            if len(key) >= MIN_ADMIN_PREFIX_CHARS and key not in _TOO_BROAD and full.startswith(key):
+                if best is None or len(key) > best[0]:
+                    best = (len(key), kind, n)
+    return {"kind": best[1], "name": best[2]} if best else None
 
 
 def distance_km(a: dict, b: dict) -> float:

@@ -1,4 +1,6 @@
 import math
+import random
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from itertools import zip_longest
 from src.core.db import find_place_by_name
@@ -48,6 +50,60 @@ SPARE_MIN_REVIEWS = 200
 SPARE_MAX_KM_FROM_HOTEL = route_scheduler.INTERCITY_THRESHOLD_KM
 SPARE_POOL_SIZE = 20
 
+# --- Candidate ranking ----------------------------------------------------
+# Every place whose tags match an interest scores exactly 1.0 in the search,
+# so "คาเฟ่" returns ~150 equally relevant cafes and the pool used to take
+# whichever came first. _rerank orders each interest's results by relevance
+# tier first (a weak semantic match never passes a tag match), then within a
+# tier by a blend of popularity and closeness to the accommodation, plus a
+# little noise so the same request doesn't always produce the same trip.
+RELEVANCE_TIER = 0.1
+POPULARITY_WEIGHT = 0.7
+PROXIMITY_WEIGHT = 0.3
+RANK_JITTER = 0.05
+# Rating pulled toward 4.3 by 50 virtual reviews (same formula as the
+# match_places_ranked SQL function), so 5.0 from 3 reviews doesn't beat
+# 4.6 from 2,000. Mapped from 3.5..5.0 onto 0..1.
+POPULARITY_PRIOR_RATING = 4.3
+POPULARITY_PRIOR_REVIEWS = 50
+# Proximity score halves at this distance from the accommodation. Only a
+# bonus: a far place with strong reviews can still win its slot.
+PROXIMITY_HALF_KM = 10.0
+
+GENERIC_INTEREST_QUERY = "สถานที่ท่องเที่ยวยอดนิยม ขอนแก่น"
+MEAL_QUERY = "ร้านอาหารแนะนำ ขอนแก่น"
+
+# The searches for one trip (one per interest, the meal search, the must-go
+# name lookups) are independent network calls, run side by side.
+_search_pool = ThreadPoolExecutor(max_workers=8, thread_name_prefix="trip-search")
+
+
+def _popularity_score(row: dict) -> float:
+    rating = row.get("rating") or 0.0
+    reviews = row.get("review_count") or 0
+    bayes = (rating * reviews + POPULARITY_PRIOR_RATING * POPULARITY_PRIOR_REVIEWS) / (reviews + POPULARITY_PRIOR_REVIEWS)
+    return min(1.0, max(0.0, (bayes - 3.5) / 1.5))
+
+
+def _proximity_score(row: dict, origin: Place | None) -> float:
+    if origin is None or row.get("lat") is None or row.get("lng") is None:
+        return 0.0
+    here = Place(id="_", name="_", lat=row["lat"], lng=row["lng"])
+    return 1.0 / (1.0 + route_scheduler.calculate_distance(origin, here) / PROXIMITY_HALF_KM)
+
+
+def _rerank(rows: list, origin: Place | None, rng: random.Random) -> list:
+    """See RELEVANCE_TIER above. `origin` is None when the accommodation's
+    location isn't really known; popularity then decides alone."""
+    pop_w, prox_w = (POPULARITY_WEIGHT, PROXIMITY_WEIGHT) if origin else (1.0, 0.0)
+
+    def key(row):
+        tier = math.floor((row.get("match_score") or 1.0) / RELEVANCE_TIER + 1e-9)
+        blend = pop_w * _popularity_score(row) + prox_w * _proximity_score(row, origin) + rng.uniform(0, RANK_JITTER)
+        return (-tier, -blend)
+
+    return sorted(rows, key=key)
+
 
 # Google's administrative_area_level_2 name for Khon Kaen's city district
 # (see import-places.js's mapDistrict()) comes back inconsistently across
@@ -65,8 +121,9 @@ def _is_mueang_district(district: str | None) -> bool:
 
 
 class TripBuilderService:
-    def __init__(self):
+    def __init__(self, rng: random.Random | None = None):
         self.retriever = PlaceRetriever()
+        self.rng = rng or random.Random()
 
     def build_candidate_list(self, user_input: TripInput):
         # Real coordinates from the frontend's map picker/geolocation take
@@ -76,8 +133,11 @@ class TripBuilderService:
         # path was silently falling back to a hardcoded city-center point
         # for most users. Only reached when the request didn't supply
         # coordinates at all (old clients, or nothing picked).
+        # Where candidates get a closeness bonus from (see _rerank): only a
+        # location that is really known, not the city-centre fallback.
+        origin = None
         if user_input.accommodation_lat is not None and user_input.accommodation_lng is not None:
-            accommodation = Place(
+            accommodation = origin = Place(
                 id="hotel_dummy",
                 name=user_input.accommodation_name or "ที่พัก",
                 category="ที่พัก",
@@ -88,7 +148,7 @@ class TripBuilderService:
         else:
             accommodation_row = find_place_by_name(user_input.accommodation_name)
             if accommodation_row:
-                accommodation = Place(**accommodation_row)
+                accommodation = origin = Place(**accommodation_row)
             else:
                 accommodation = Place(
                     id="hotel_dummy",
@@ -101,8 +161,8 @@ class TripBuilderService:
 
         must_go_list = []
         missing_must_go = []
-        for name in user_input.must_go:
-            row = find_place_by_name(name)
+        must_go_rows = list(_search_pool.map(lambda name: find_place_by_name(name), user_input.must_go))
+        for name, row in zip(user_input.must_go, must_go_rows):
             if row:
                 must_go_list.append(Place(**row))
             else:
@@ -143,32 +203,37 @@ class TripBuilderService:
         allowed_prices = BUDGET_PRICE_RANGES.get(user_input.budget_level, [0, 1, 2])
         excluded_categories = BUDGET_EXCLUDED_CATEGORIES.get(user_input.budget_level, set())
 
-        interest_list = []
+        meal_reserve_needed = user_input.trip_duration_days * 2
+
+        def search(query, limit):
+            return _search_pool.submit(lambda: self.retriever.search_and_expand(query=query, limit=limit))
+
+        # One retrieval call PER interest, then round-robin merge -- not one
+        # call on ", ".join(interests). Regression: a single combined query
+        # let an interest with many real matches (e.g. 140 temples for
+        # "วัฒนธรรม/ศาสนา") drown out one with few (3 spots for "ไดโนเสาร์")
+        # in the top-N ranking, even though the small interest had exact tag
+        # matches -- confirmed live: the 3 dinosaur places never appeared in
+        # a combined-query candidate list, but all 3 appeared when queried
+        # alone. Round-robin (index 0 of every interest, then index 1, ...)
+        # guarantees each stated interest gets a fair shot at a slot before
+        # any single interest's larger result count crowds out the rest.
+        # The meal search below is started at the same time; it's only read
+        # if the interest results don't already hold enough restaurants.
+        interest_futures = []
         if remaining_slots > 0:
-            if user_input.interests:
-                # One retrieval call PER interest, then round-robin merge --
-                # not one call on ", ".join(interests). Regression: a single
-                # combined query let an interest with many real matches (e.g.
-                # 140 temples for "วัฒนธรรม/ศาสนา") drown out one with few (3
-                # spots for "ไดโนเสาร์") in the top-N ranking, even though the
-                # small interest had exact tag matches -- confirmed live: the
-                # 3 dinosaur places never appeared in a combined-query
-                # candidate list, but all 3 appeared when queried alone.
-                # Round-robin (index 0 of every interest, then index 1, ...)
-                # guarantees each stated interest gets a fair shot at a slot
-                # before any single interest's larger result count crowds out
-                # the rest.
-                per_interest_results = [
-                    self.retriever.search_and_expand(query=interest, limit=candidate_pool_target * 5)
-                    for interest in user_input.interests
-                ]
-                rag_results = [
-                    row for group in zip_longest(*per_interest_results) for row in group if row is not None
-                ]
-            else:
-                rag_results = self.retriever.search_and_expand(
-                    query="สถานที่ท่องเที่ยวยอดนิยม ขอนแก่น", limit=candidate_pool_target * 5
-                )
+            interest_futures = [
+                search(query, candidate_pool_target * 5)
+                for query in (user_input.interests or [GENERIC_INTEREST_QUERY])
+            ]
+        meal_future = search(MEAL_QUERY, meal_reserve_needed * 10)
+
+        interest_list = []
+        if interest_futures:
+            per_interest_results = [_rerank(f.result(), origin, self.rng) for f in interest_futures]
+            rag_results = [
+                row for group in zip_longest(*per_interest_results) for row in group if row is not None
+            ]
 
             for row in rag_results:
                 place_id = row.get("id")
@@ -231,7 +296,6 @@ class TripBuilderService:
             restaurants = [p for p in must_go_list + interest_list if p.category == "ร้านอาหาร" and usable(p)]
             return len(restaurants), sum(1 for p in restaurants if lunch_capable(p))
 
-        meal_reserve_needed = user_input.trip_duration_days * 2
         lunch_needed = user_input.trip_duration_days if needs_lunch else 0
 
         def acceptable_meal(row, require_lunch=False):
@@ -260,9 +324,7 @@ class TripBuilderService:
         if have < meal_reserve_needed or have_lunch < lunch_needed:
             # Relevance-ranked first (the old behaviour), over a wider net
             # than before since many top results can be unusable.
-            for row in self.retriever.search_and_expand(
-                query="ร้านอาหารแนะนำ ขอนแก่น", limit=meal_reserve_needed * 10,
-            ):
+            for row in meal_future.result():
                 if have >= meal_reserve_needed and have_lunch >= lunch_needed:
                     break
                 place = acceptable_meal(row, require_lunch=have >= meal_reserve_needed)

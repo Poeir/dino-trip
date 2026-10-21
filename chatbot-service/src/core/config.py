@@ -105,6 +105,14 @@ if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
 # silently wrong (comparing vectors from two different embedding spaces),
 # not loudly broken.
 EMBEDDING_MODEL_NAME = os.environ.get("EMBEDDING_MODEL_NAME", "paraphrase-multilingual-MiniLM-L12-v2")
+# The e5 family is trained with these markers and returns noticeably worse
+# vectors without them: "passage: " on stored text, "query: " on the search
+# text. Derived from the model name so switching models is one setting; set
+# either variable (even to "") to override. The embedding column is 384-d, so
+# only 384-d models (MiniLM, multilingual-e5-small) fit without a migration.
+_IS_E5 = "e5" in EMBEDDING_MODEL_NAME.lower()
+EMBEDDING_PASSAGE_PREFIX = os.environ.get("EMBEDDING_PASSAGE_PREFIX", "passage: " if _IS_E5 else "")
+EMBEDDING_QUERY_PREFIX = os.environ.get("EMBEDDING_QUERY_PREFIX", "query: " if _IS_E5 else "")
 
 # Per-client limits on the public endpoints (see core/rate_limit.py). This
 # service has no auth and each call spends LLM quota. Generous per-minute caps

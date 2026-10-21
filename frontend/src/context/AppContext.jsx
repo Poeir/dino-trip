@@ -38,6 +38,8 @@ const PERSONA_AVATARS = [
 const MAX_AVATAR_FILE_BYTES = 2 * 1024 * 1024
 // Mirrors MAX_HISTORY_MESSAGES in chatbot-service agent.py.
 const CHAT_HISTORY_LIMIT = 4
+// The server keeps at most 1,400 chars of a turn and rejects bodies far past that.
+const CHAT_HISTORY_MAX_CHARS = 2000
 
 // Password strength checklist shown live under the field as the visitor
 // types (see derived.passwordRules) -- kept to widely-understood rules
@@ -110,7 +112,9 @@ const initialState = {
   // wait for the first token) -- the send button is disabled meanwhile.
   chatBusy: false,
   chatMessages: [
-    { from: 'bot', text: 'สวัสดีครับ! ผมน้องไดโน ผู้ช่วยนำเที่ยวขอนแก่น สอบถามเรื่องสถานที่ อาหาร หรือเทศกาลได้เลยครับ' }
+    // `local`: shown but never sent as history -- it isn't part of the conversation,
+    // and as the only prior turn it made the server rewrite the first question.
+    { from: 'bot', local: true, text: 'สวัสดีครับ! ผมน้องไดโน ผู้ช่วยนำเที่ยวขอนแก่น สอบถามเรื่องสถานที่ อาหาร หรือเทศกาลได้เลยครับ' }
   ],
   // `accommodation` is null until picked, then { name, address, lat, lng }
   // (name/address only present when picked via search, not a dragged pin --
@@ -570,10 +574,11 @@ export function AppProvider({ children }) {
     // Only the last few turns are sent: the server keeps just the tail anyway
     // (MAX_HISTORY_MESSAGES), and the whole chat would grow every request and
     // eventually trip the API's 50-message limit.
+    // Messages with `local` (the greeting, error notices) are not conversation.
     const history = stateRef.current.chatMessages
-      .filter((m) => m.text)
+      .filter((m) => m.text && !m.local)
       .slice(-CHAT_HISTORY_LIMIT)
-      .map((m) => ({ role: m.from === 'user' ? 'user' : 'assistant', content: m.text }))
+      .map((m) => ({ role: m.from === 'user' ? 'user' : 'assistant', content: m.text.slice(0, CHAT_HISTORY_MAX_CHARS) }))
     // Push the user message plus an empty bot placeholder that fills in as
     // tokens stream in -- always the last message in the array while streaming.
     setState((s) => ({ chatMessages: [...s.chatMessages, { from: 'user', text }, { from: 'bot', text: '', places: [], events: [] }], chatInput: '', chatTyping: true, chatBusy: true }))
@@ -593,7 +598,10 @@ export function AppProvider({ children }) {
       appendToLastBotMessage(() => ({ places, events }))
     } catch (err) {
       console.error('Chat request failed:', err)
-      appendToLastBotMessage(() => ({ text: 'ขออภัยครับ ระบบแชทขัดข้องชั่วคราว ลองใหม่อีกครั้งนะครับ', places: [], events: [] }))
+      const text = err.status === 429
+        ? 'ถามถี่ไปนิดนึงครับ รอสักครู่แล้วลองใหม่อีกครั้งนะครับ'
+        : 'ขออภัยครับ ระบบแชทขัดข้องชั่วคราว ลองใหม่อีกครั้งนะครับ'
+      appendToLastBotMessage(() => ({ text, local: true, places: [], events: [] }))
     } finally {
       chatBusyRef.current = false
       setState({ chatTyping: false, chatBusy: false })

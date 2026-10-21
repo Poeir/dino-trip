@@ -16,6 +16,40 @@ def test_chat_message_over_limit_is_rejected():
         ChatRequest(message="ก" * (MAX_MESSAGE_CHARS + 1))
 
 
+def test_chat_history_over_the_limits_is_rejected():
+    from src.api.routes_chatbot import MAX_HISTORY_CONTENT_CHARS, MAX_HISTORY_ITEMS
+
+    turn = {"role": "user", "content": "สวัสดี"}
+    assert ChatRequest(message="x", history=[turn] * MAX_HISTORY_ITEMS)
+    with pytest.raises(ValidationError):
+        ChatRequest(message="x", history=[turn] * (MAX_HISTORY_ITEMS + 1))
+    with pytest.raises(ValidationError):
+        ChatRequest(message="x", history=[{"role": "user", "content": "ก" * (MAX_HISTORY_CONTENT_CHARS + 1)}])
+
+
+def test_chat_stream_does_not_send_usage_to_the_browser(monkeypatch):
+    import asyncio
+    import json
+
+    from src.api import routes_chatbot
+
+    def fake_stream(user_message, history=None):
+        yield {"type": "token", "text": "สวัสดี"}
+        yield {"type": "done", "reply": "สวัสดี", "places": [], "events": [], "usage": {"cost_usd": 0.01}}
+
+    monkeypatch.setattr(routes_chatbot.chatbot_service, "chat_stream", fake_stream)
+    response = routes_chatbot.chat_endpoint(ChatRequest(message="x"))
+    async def collect():
+        # Starlette turns the sync generator into an async iterator.
+        return [chunk async for chunk in response.body_iterator]
+
+    chunks = [c.decode() if isinstance(c, bytes) else c for c in asyncio.run(collect())]
+    lines = [json.loads(chunk[len("data: "):]) for chunk in chunks if chunk.strip()]
+    assert [e["type"] for e in lines] == ["token", "done"]
+    assert all("usage" not in e for e in lines)
+    assert lines[-1]["reply"] == "สวัสดี"
+
+
 def test_trip_input_defaults_and_normal_request_still_valid():
     t = TripInput(**BASE, must_go=["พิพิธภัณฑ์ไดโนเสาร์"], interests=["คาเฟ่"])
     assert t.must_go == ["พิพิธภัณฑ์ไดโนเสาร์"] and t.trip_pace == "relaxed"

@@ -43,6 +43,11 @@
 	# No `encode` on these: /chat/ streams its answer over SSE and must not be
 	# buffered or re-compressed.
 	handle /chat/* {
+		# A turn is a 500-char message plus a few history turns; anything near
+		# this size is not a chat.
+		request_body {
+			max_size 64KB
+		}
 		reverse_proxy chatbot:8000 {
 			flush_interval -1
 		}

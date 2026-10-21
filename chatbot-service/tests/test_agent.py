@@ -176,6 +176,13 @@ class TestChatTagParsing:
         assert result["places"] == []
         assert result["events"] == []
 
+    def test_no_match_written_in_match_shape_is_still_a_no_match(self):
+        # Seen live: "[MATCH:NO_MATCH] ..." was shown to the user as-is.
+        svc = make_service(response_text="[MATCH:NO_MATCH] ไม่มีข้อมูลท่าพระ แต่แนะนำวัด...", events=[make_event_row()])
+        result = svc.chat("อยากไปเที่ยวท่าพระ")
+        assert result["reply"] == FALLBACK_MESSAGE
+        assert result["places"] == [] and result["events"] == []
+
     def test_missing_tag_is_treated_as_a_match_not_dropped(self):
         # Defensive fallback: a model that skips the tag instruction
         # shouldn't have its whole answer silently discarded.
@@ -237,6 +244,13 @@ class TestChatStreamTagParsing:
         assert tokens == "งาน Y และร้าน X ครับ"
         assert len(done["places"]) == 1
         assert len(done["events"]) == 1
+
+    def test_no_match_in_match_shape_streams_the_fallback_not_the_tag(self):
+        svc = make_service(stream_text="[MATCH:NO_MATCH] ตอนนี้ไม่มีข้อมูลท่าพระ แนะนำวัดป่า...")
+        tokens, done = self._collect(svc, "อยากไปเที่ยวท่าพระ")
+        assert tokens == done["reply"] == FALLBACK_MESSAGE
+        assert "MATCH" not in tokens and "วัดป่า" not in tokens
+        assert done["places"] == [] and done["events"] == []
 
     def test_no_match_streams_fallback_text_not_the_hidden_reasoning(self):
         # Regression: this used to yield zero token events, so the frontend
@@ -388,11 +402,46 @@ class TestLatencyGuards:
         r = svc.retriever
         assert r.place_queries == r.kb_queries == r.event_queries == ["ร้าน X เปิดกี่โมง"]
 
-    def test_a_failing_search_still_raises_instead_of_being_swallowed(self):
-        svc, _ = make_multiturn_service()
+    def test_one_failing_search_still_answers_from_the_others(self):
+        svc, c = make_multiturn_service()
         svc.retriever.search_events = lambda **kw: (_ for _ in ()).throw(RuntimeError("db down"))
+        result = svc.chat("แนะนำร้านกาแฟ")
+        assert result["reply"] == "ตอบครับ"
+        assert len(result["places"]) == 1
+        assert len(c.answer_calls) == 1
+
+    def test_every_search_failing_raises_instead_of_being_swallowed(self):
+        svc, _ = make_multiturn_service()
+        down = lambda **kw: (_ for _ in ()).throw(RuntimeError("db down"))
+        svc.retriever.search_chat_places = svc.retriever.search_knowledge_base = svc.retriever.search_events = down
         with pytest.raises(RuntimeError, match="db down"):
             svc.chat("แนะนำร้านกาแฟ")
+
+    def test_greeting_only_history_makes_no_rewrite_call(self):
+        # The frontend's opening greeting is an assistant message: a history
+        # with no user turn has nothing to resolve a reference against.
+        svc, c = make_multiturn_service()
+        svc.chat("แนะนำร้านกาแฟ", history=[{"role": "assistant", "content": "สวัสดีครับ! ผมน้องไดโน"}])
+        assert c.rewrite_calls == []
+        assert svc.retriever.place_queries == ["แนะนำร้านกาแฟ"]
+
+    def test_every_llm_call_has_an_output_cap(self):
+        from src.services.chatbot.agent import ANSWER_MAX_TOKENS, REWRITE_MAX_TOKENS
+        svc, c = make_multiturn_service()
+        svc.chat("เปิดกี่โมง", history=HISTORY)
+        list(svc.chat_stream("เปิดกี่โมง", history=HISTORY))
+        assert c.rewrite_calls[0]["max_tokens"] == REWRITE_MAX_TOKENS
+        assert [call["max_tokens"] for call in c.answer_calls] == [ANSWER_MAX_TOKENS, ANSWER_MAX_TOKENS]
+
+    def test_long_descriptions_are_clipped_in_the_prompt(self):
+        from src.services.chatbot.agent import MAX_CONTEXT_ITEM_CHARS
+        place = {**make_place_row(), "description": "ก" * 5000}
+        svc, c = make_multiturn_service()
+        svc.retriever = FakeRetriever(places=[place], kb_entries=[{**make_kb_row(), "content": "ข" * 5000}])
+        svc.chat("แนะนำร้านกาแฟ")
+        prompt = c.answer_calls[0]["messages"][0]["content"]
+        assert "ก" * MAX_CONTEXT_ITEM_CHARS in prompt and "ก" * (MAX_CONTEXT_ITEM_CHARS + 1) not in prompt
+        assert "ข" * (MAX_CONTEXT_ITEM_CHARS + 1) not in prompt
 
     def test_worst_case_history_stays_bounded(self):
         from src.services.chatbot.agent import (
@@ -427,7 +476,8 @@ class TestTurnFailures:
 
     def test_retrieval_failure_streams_the_error_message(self):
         svc = make_service(stream_text=f"{MATCH_PLACES_TAG} ตอบครับ")
-        svc.retriever.search_events = lambda **kw: (_ for _ in ()).throw(RuntimeError("db down"))
+        down = lambda **kw: (_ for _ in ()).throw(RuntimeError("db down"))
+        svc.retriever.search_chat_places = svc.retriever.search_knowledge_base = svc.retriever.search_events = down
         tokens, done = self._collect(svc, "แนะนำร้านกาแฟ")
         assert tokens == done["reply"] == ERROR_MESSAGE
         assert done["places"] == [] and done["events"] == []
@@ -488,6 +538,9 @@ class TestCitedCards:
         ("น้ำผุดตาดเต่า at ภูผาม่าน ขอนแก่น", "น้ำผุดตาดเต่า at ภูผาม่าน (อ.ภูผาม่าน)"),
         ("เที่ยวขอนแก่น Khonkaen Exotic Pets สนามบินขอนแก่น", "Khonkaen Exotic Pets สนามบินขอนแก่น"),
         ("ธารธาราลานกางเต็นท์เขื่อนอุบลรัตน์ อ.อุบลรัตน์ จ.ขอนแก่น", "ธารธาราลานกางเต็นท์เขื่อนอุบลรัตน์"),
+        # Seen live: the Korean-script twin of the name is never written in a Thai reply.
+        ("แดจังกึม กังสดาล 대장금", "แดจังกึม กังสดาล"),
+        ("ซูชิโตเกียว 東京寿司", "ซูชิโตเกียว"),
     ])
     def test_name_written_without_its_location_qualifier_still_matches(self, name, written_as):
         cards = [name, "วัดป่าชัยวัน"]

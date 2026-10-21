@@ -62,6 +62,42 @@ class TestSplitAreaQuery:
         assert split_area_query("ร้านอาหารอีสานอร่อยๆ") is None
 
 
+class TestSplitBareAreaQuery:
+    """An area named without "แถว" -- the live "อยากไปเที่ยวท่าพระ" that came back
+    as three temples elsewhere."""
+
+    @pytest.mark.parametrize(
+        "query, what",
+        [
+            ("อยากไปเที่ยวท่าพระ", "อยากไปเที่ยว"),
+            ("ที่เที่ยวท่าพระ", "ที่เที่ยว"),
+            ("ไปท่าพระ", "ไป"),
+            ("ร้านอาหารที่ท่าพระ", "ร้านอาหารที่"),
+            ("ร้านอาหารในตำบลท่าพระ", "ร้านอาหารในตำบล"),
+            ("เที่ยวท่าพระมีอะไรบ้าง", "เที่ยว มีอะไรบ้าง"),
+            ("อยากไปเที่ยวท่าพระ ช่วยแนะนำหน่อย", "อยากไปเที่ยว ช่วยแนะนำหน่อย"),
+        ],
+    )
+    def test_names_an_area_after_a_going_out_word(self, query, what):
+        assert area.split_bare_area_query(query, PLACES) == (what, "ท่าพระ")
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "ร้านอาหารอีสานอร่อยๆ",             # no area in it
+            "สถานีท่าพระอยู่ไหน",               # the name inside another name, no prefix word
+            "เที่ยวท่าพระเก่า",                # the name continues into another word
+            "อยากไปเที่ยวบึงแก่นนคร",           # a landmark: asks about that place itself
+            "อยากไปเที่ยวขอนแก่น",              # province-wide, not a neighbourhood
+        ],
+    )
+    def test_anything_else_is_left_to_the_normal_search(self, query):
+        assert area.split_bare_area_query(query, PLACES) is None
+
+    def test_an_area_the_table_does_not_have_is_ignored(self):
+        assert area.split_bare_area_query("อยากไปเที่ยวหนองเรือ", PLACES) is None
+
+
 class TestResolveArea:
     def test_a_subdistrict_name(self):
         assert resolve_area("ท่าพระ", PLACES) == {"kind": "subdistrict", "name": "ท่าพระ"}
@@ -80,6 +116,10 @@ class TestResolveArea:
 
     def test_a_shortened_name_picks_the_most_reviewed_place_starting_with_it(self):
         assert resolve_area("เซ็นทรัล", PLACES)["place"]["id"] == "mall"
+
+    def test_a_subdistrict_followed_by_stray_words(self):
+        # "แถวในเมืองอะมีมั้ย": the question's tail runs into the name.
+        assert resolve_area("ในเมืองอะมี", PLACES) == {"kind": "subdistrict", "name": "ในเมือง"}
 
     @pytest.mark.parametrize("where", ["ขอนแก่น", "เมืองขอนแก่น", "ฉัน", "นี้", "มข."])
     def test_too_broad_or_unknown_resolves_to_nothing(self, where):
@@ -128,7 +168,7 @@ class TestRankInArea:
 
 
 class TestWhatIsAsked:
-    @pytest.mark.parametrize("what", ["ร้านอาหาร", "มีอะไรบ้าง", "อยากเที่ยว ช่วยแนะนำหน่อย", "ที่เที่ยว", "ฝนตกไปไหนดี"])
+    @pytest.mark.parametrize("what", ["ร้านอาหาร", "มีอะไรบ้าง", "อยากเที่ยว ช่วยแนะนำหน่อย", "ที่เที่ยว", "ฝนตกไปไหนดี", "อยากได้ที่เที่ยว", "อยากได้คาเฟ่"])
     def test_generic(self, what):
         assert not is_specific(what)
 
@@ -171,6 +211,14 @@ class TestSearchChatPlaces:
         assert [p["id"] for p in out] == ["rest", "noodle"]
         assert all(p["area_note"] for p in out)
         assert r.search_calls == []  # a generic ask needs no ranking search
+
+    def test_area_named_without_a_marker_is_still_searched_as_an_area(self):
+        # "อยากไปเที่ยวท่าพระ" used to skip the area logic and return temples elsewhere.
+        r = FakeRetriever(search=[FAR_CAFE])
+        out = r.search_chat_places("อยากไปเที่ยวท่าพระ", limit=3)
+        assert [p["id"] for p in out][:2] == ["golf", "timo"]  # ท่าพระ's own places, most-reviewed first
+        assert out[0]["area_note"] == "อยู่ในตำบลท่าพระ"
+        assert r.search_calls == []
 
     def test_specific_area_question_ranks_with_the_plain_search(self):
         r = FakeRetriever(search=[FAR_CAFE, NOODLE_NEAR_LAKE])

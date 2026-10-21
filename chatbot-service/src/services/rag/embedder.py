@@ -22,13 +22,17 @@ from datetime import datetime, timezone
 from sentence_transformers import SentenceTransformer
 
 from src.core.clock import today_bangkok
-from src.core.config import EMBEDDING_MODEL_NAME
+from src.core.config import EMBEDDING_MODEL_NAME, EMBEDDING_PASSAGE_PREFIX
 from src.core.db import supabase
 
 logger = logging.getLogger(__name__)
 
 _model = None
 _model_lock = threading.Lock()
+# The chat retriever (retriever.py) shares this one model instance instead of
+# loading its own copy, and a SentenceTransformer's tokenizer isn't safe to
+# call from two threads at once -- so every encode, here and there, takes this.
+encode_lock = threading.Lock()
 
 
 def get_model() -> SentenceTransformer:
@@ -43,13 +47,25 @@ def get_model() -> SentenceTransformer:
     return _model
 
 
+# How much of a place's description goes into its embedding (~45 tokens of Thai).
+# MiniLM reads only 128 tokens and 89% of places were longer than that, so the
+# tail -- amenities included -- was silently cut off. Structured fields first,
+# then a short description, measured against 24 offline queries: detail
+# questions ("มีดนตรีสด", "พาสัตว์เลี้ยงเข้าได้") P@5 0.52 -> 0.68 on MiniLM, name/
+# tag/category queries unchanged. A longer description did not help even on
+# e5 (512 tokens): 0.72 vs 0.73.
+PLACE_DESCRIPTION_CHARS = 170
+
+
 def place_text(p: dict) -> str:
     """Kept tightly focused on what a search query is actually about -- name,
-    category, interest tags, description, amenities. Mixing in rating/hours/
-    address (like the original setup_vector_db.py did) was tested against
-    this dataset and badly diluted retrieval quality (buffet/park/cafe
-    queries all returned irrelevant top results); dropping them fixed it."""
-    parts = [p.get("name"), p.get("category"), p.get("subcategory"), *(p.get("tags") or []), p.get("description"), *(p.get("amenities") or [])]
+    category, interest tags, amenities, and the start of the description.
+    Mixing in rating/hours/address (like the original setup_vector_db.py did)
+    was tested against this dataset and badly diluted retrieval quality
+    (buffet/park/cafe queries all returned irrelevant top results); dropping
+    them fixed it."""
+    description = (p.get("description") or "").strip()[:PLACE_DESCRIPTION_CHARS]
+    parts = [p.get("name"), p.get("category"), p.get("subcategory"), *(p.get("tags") or []), *(p.get("amenities") or []), description]
     return " - ".join(x for x in parts if x)
 
 
@@ -143,7 +159,8 @@ def embed_rows(table: str, rows: list[dict], text_fn) -> int:
         if not text:
             logger.warning("  Skipping %s id=%s: nothing to embed", table, row["id"])
             continue
-        vector = model.encode(text, normalize_embeddings=True).tolist()
+        with encode_lock:
+            vector = model.encode(EMBEDDING_PASSAGE_PREFIX + text, normalize_embeddings=True).tolist()
         res = supabase.table(table).update({"embedding": vector}).eq("id", row["id"]).execute()
         if res.data:
             done += 1

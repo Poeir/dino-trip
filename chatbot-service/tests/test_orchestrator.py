@@ -203,10 +203,9 @@ class TestMultiInterestRoundRobin:
         })
         user_input = make_user_input(interests=["วัฒนธรรม/ศาสนา", "ไดโนเสาร์"])
         service.build_candidate_list(user_input)
-        # Trailing call is the unconditional meal reserve (see
-        # build_candidate_list) -- fires regardless of interests since
-        # neither fixture place above is category "ร้านอาหาร".
-        assert service.retriever.queries_seen == ["วัฒนธรรม/ศาสนา", "ไดโนเสาร์", "ร้านอาหารแนะนำ ขอนแก่น"]
+        # The meal search always runs alongside the interest searches (see
+        # build_candidate_list). They run in parallel, so order isn't fixed.
+        assert sorted(service.retriever.queries_seen) == sorted(["วัฒนธรรม/ศาสนา", "ไดโนเสาร์", "ร้านอาหารแนะนำ ขอนแก่น"])
 
     def test_no_interests_falls_back_to_generic_single_query(self, service):
         service.retriever = FakeRetrieverByQuery({
@@ -215,10 +214,7 @@ class TestMultiInterestRoundRobin:
         user_input = make_user_input(interests=[])
         _, candidates, _, _ = service.build_candidate_list(user_input)
         assert "Generic1" in [p.name for p in candidates]
-        # Trailing call is the unconditional meal reserve (see
-        # build_candidate_list) -- fires regardless of interests since
-        # "Generic1" above is category "คาเฟ่", not "ร้านอาหาร".
-        assert service.retriever.queries_seen == ["สถานที่ท่องเที่ยวยอดนิยม ขอนแก่น", "ร้านอาหารแนะนำ ขอนแก่น"]
+        assert sorted(service.retriever.queries_seen) == sorted(["สถานที่ท่องเที่ยวยอดนิยม ขอนแก่น", "ร้านอาหารแนะนำ ขอนแก่น"])
 
 
 class TestAccommodationLocation:
@@ -431,3 +427,50 @@ class TestMealReserveUsability:
         _, candidates, _, _ = service.build_candidate_list(make_user_input(area_scope="เมือง"))
         assert "Far" not in names(candidates)
         assert "City" in names(candidates)
+
+
+class TestCandidateRanking:
+    """Every tag match scores 1.0 in the search, so build_candidate_list
+    re-ranks each interest's results (orchestrator._rerank): relevance tier
+    first, then mostly popularity and partly closeness to the accommodation."""
+
+    def ids(self, service, rows, **input_overrides):
+        class NoJitter:  # ranking noise off, so these orderings are exact
+            def uniform(self, a, b):
+                return a
+        service.rng = NoJitter()
+        service.retriever = FakeRetriever(rows)
+        _, candidates, _, _ = service.build_candidate_list(make_user_input(**input_overrides))
+        return [p.id for p in candidates]
+
+    def test_many_reviews_beat_a_perfect_score_from_a_few(self, service):
+        rows = [
+            make_place_row("few", "Few", "เมืองขอนแก่น", rating=5.0, review_count=3),
+            make_place_row("popular", "Popular", "เมืองขอนแก่น", rating=4.6, review_count=2000),
+        ]
+        order = self.ids(service, rows)
+        assert order.index("popular") < order.index("few")
+
+    def test_a_weaker_match_never_passes_a_tag_match(self, service):
+        rows = [
+            make_place_row("loose", "Loose", "เมืองขอนแก่น", rating=4.9, review_count=5000, match_score=0.55),
+            make_place_row("tagged", "Tagged", "เมืองขอนแก่น", rating=4.0, review_count=20, match_score=1.0),
+        ]
+        order = self.ids(service, rows)
+        assert order.index("tagged") < order.index("loose")
+
+    def test_closer_to_the_accommodation_wins_between_equally_popular_places(self, service):
+        rows = [
+            make_place_row("far", "Far", "อำเภอภูเวียง", rating=4.5, review_count=500, lat=16.66, lng=102.37),
+            make_place_row("near", "Near", "เมืองขอนแก่น", rating=4.5, review_count=500, lat=16.44, lng=102.84),
+        ]
+        order = self.ids(service, rows, accommodation_lat=16.43, accommodation_lng=102.83)
+        assert order.index("near") < order.index("far")
+
+    def test_popularity_outweighs_distance(self, service):
+        rows = [
+            make_place_row("near_unknown", "NearUnknown", "เมืองขอนแก่น", rating=4.0, review_count=10, lat=16.44, lng=102.84),
+            make_place_row("far_famous", "FarFamous", "อำเภอภูเวียง", rating=4.8, review_count=3000, lat=16.66, lng=102.37),
+        ]
+        order = self.ids(service, rows, accommodation_lat=16.43, accommodation_lng=102.83)
+        assert order.index("far_famous") < order.index("near_unknown")
