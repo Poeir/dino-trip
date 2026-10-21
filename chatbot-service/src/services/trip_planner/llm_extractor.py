@@ -6,7 +6,7 @@ from typing import Dict, List, Optional, Set, Tuple
 
 from src.core.llm_client import complete_json
 from src.core.config import MODEL_NAME
-from . import route_scheduler
+from . import route_scheduler, trip_ends
 from src.core.usage import UsageTracker
 from .judge import TripItineraryJudge
 from .models import BREAKFAST_PREFERENCE, DailyItinerary, JudgeVerdict, Place, TripInput, meal_food_kinds
@@ -122,8 +122,12 @@ class LLMTripPlanner:
     def __init__(
         self, candidates: List[Place], start_point: Place = None, must_go_ids: Optional[Set[str]] = None,
         spare_places: Optional[List[Place]] = None, meal_pool: Optional[List[Place]] = None,
+        end_point: Optional[Place] = None,
     ):
         self.candidates = candidates
+        # trip_ends.resolve_trip_end: where the last day ends instead of the
+        # accommodation (start_point). None = it ends there like every day.
+        self.end_point = end_point
         # orchestrator.build_meal_pool: every usable restaurant beyond the
         # candidates, never shown to the LLM -- _ensure_meals draws a day's
         # lunch/dinner from it when the day's own picks can't serve that meal.
@@ -197,6 +201,16 @@ class LLMTripPlanner:
                 meals_str += " (breakfast: a restaurant of Type อาหารเช้า near the accommodation, open in the morning)"
         else:
             meals_str = "the daily window holds no full meal -- at most one \"ร้านอาหาร\" per day, without a meal_role"
+        trip_end_str = trip_ends.describe_for_prompt(user_input, self.end_point)
+        if trip_end_str:
+            last = user_input.trip_duration_days
+            last_start, last_end = trip_ends.day_window(user_input, last)
+            last_meals = route_scheduler.day_meals(
+                last_start, last_end, breakfast=BREAKFAST_PREFERENCE in user_input.food_preferences,
+            )
+            if not trip_ends.is_travel_only_day(last_start, last_end) and last_meals != meals:
+                trip_end_str += f" Day {last}'s meals: {' and '.join(last_meals) if last_meals else 'none'}."
+            trip_end_str = f"\n        - Last day: {trip_end_str}"
 
         # Appended at the very end, deliberately: models weight the tail of a
         # long prompt more heavily as "the final word".
@@ -221,7 +235,7 @@ class LLMTripPlanner:
         - Must Go: {', '.join(user_input.must_go)}
         - Start: {user_input.start_time}, End: {user_input.end_time}
         - Calendar dates per day: {day_dates_str}
-        - Meals: {meals_str}
+        - Meals: {meals_str}{trip_end_str}
 
         [DYNAMIC CONSTRAINTS]
         {pace_instruction}
@@ -323,7 +337,9 @@ class LLMTripPlanner:
                       "so fewer picks are dropped like this.")
         return "\n".join(lines)
 
-    def _build_post_schedule_feedback(self, final_itinerary: List[DailyItinerary]) -> str:
+    def _build_post_schedule_feedback(
+        self, final_itinerary: List[DailyItinerary], skip_days: Set[int] = frozenset(),
+    ) -> str:
         """Checks the itinerary route_scheduler actually materialized, not
         just what got dropped along the way (_build_drop_feedback only sees
         explicit drops): a day with nothing real to visit, and a day still
@@ -336,11 +352,16 @@ class LLMTripPlanner:
 
         The missing-restaurant note is only raised when the candidate pool
         has a restaurant a regenerate round could pick -- a pool with none
-        is an orchestrator/retrieval sizing problem the LLM can't fix."""
+        is an orchestrator/retrieval sizing problem the LLM can't fix.
+
+        `skip_days` are days meant to be empty: a departure day too short to
+        plan anything in (trip_ends.is_travel_only_day)."""
         has_restaurant_candidate = any(loc.category == "ร้านอาหาร" for loc in self.candidates)
         lines = []
         for day in final_itinerary:
-            real = [s for s in day.schedule if s.place.category not in (None, "ที่พัก")]
+            if day.day in skip_days:
+                continue
+            real = [s for s in day.schedule if s.place.category not in trip_ends.NON_VISIT_CATEGORIES]
             if not real:
                 lines.append(
                     f"- Day {day.day}: completely empty -- none of that day's picks could be scheduled. "
@@ -414,6 +435,7 @@ class LLMTripPlanner:
     def _enforce_pace_cap(
         self, day_assignments: Dict[int, List[Place]], max_per_day: int,
         used_ids: Set[str], trip_start_date, trip_duration_days: int,
+        day_caps: Optional[Dict[int, int]] = None,
     ) -> List[Tuple[int, Place]]:
         """Trims each day's attractions (everything but "ร้านอาหาร", see
         route_scheduler.attraction_count) down to `max_per_day`, the pace's
@@ -423,12 +445,17 @@ class LLMTripPlanner:
         under the cap and not closed, and is only dropped (returned to the
         unused pool for backfill) when no day has room. Lowest-rated optional
         picks go first; must-go picks are never trimmed, even if they alone
-        exceed the cap."""
+        exceed the cap. `day_caps` overrides the cap for some days (a short
+        last day, see trip_ends.py)."""
         dropped: List[Tuple[int, Place]] = []
+        day_caps = day_caps or {}
+
+        def cap(day_num: int) -> int:
+            return day_caps.get(day_num, max_per_day)
 
         for day_num in range(1, trip_duration_days + 1):
             places = day_assignments.get(day_num, [])
-            excess = route_scheduler.attraction_count(places) - max_per_day
+            excess = route_scheduler.attraction_count(places) - cap(day_num)
             if excess <= 0:
                 continue
             trimmable = sorted(
@@ -442,7 +469,7 @@ class LLMTripPlanner:
                     if other_day == day_num:
                         continue
                     other_places = day_assignments.setdefault(other_day, [])
-                    if route_scheduler.attraction_count(other_places) >= max_per_day:
+                    if route_scheduler.attraction_count(other_places) >= cap(other_day):
                         continue
                     other_date = trip_start_date + timedelta(days=other_day - 1)
                     noon = datetime(other_date.year, other_date.month, other_date.day, 12, 0)
@@ -462,7 +489,7 @@ class LLMTripPlanner:
                     dropped.append((day_num, place))
                     logger.info(
                         "trip planner: dropping %s, day %d is over the pace cap of %d attractions",
-                        place.name, day_num, max_per_day,
+                        place.name, day_num, cap(day_num),
                     )
         return dropped
 
@@ -513,7 +540,7 @@ class LLMTripPlanner:
 
     def _resolve_unfittable_meal_roles(
         self, day_assignments: Dict[int, List[Place]], meal_roles: Dict[str, str],
-        start_time_of_day, end_time_of_day,
+        start_time_of_day, end_time_of_day, day_windows: Optional[Dict[int, Tuple]] = None,
     ) -> None:
         """A lunch/dinner role is a hard start-time floor in route_scheduler
         (11:00 / 17:30), whoever set it -- the LLM (rule 6) or
@@ -531,11 +558,15 @@ class LLMTripPlanner:
         hours) when the place is a must-go or the day's only restaurant.
         Tried and rejected: always just removing the role. In replays the
         freed restaurant became a second anytime meal that landed right after
-        lunch (12:18, then 13:23)."""
-        for places in day_assignments.values():
+        lunch (12:18, then 13:23).
+
+        `day_windows` overrides the window for some days (a short last day)."""
+        day_windows = day_windows or {}
+        for day_num, places in day_assignments.items():
+            day_start, day_end = day_windows.get(day_num, (start_time_of_day, end_time_of_day))
             for place in [p for p in places if p.category == "ร้านอาหาร"]:
                 role = meal_roles.get(place.id)
-                if not role or route_scheduler.meal_role_fits_window(role, start_time_of_day, end_time_of_day):
+                if not role or route_scheduler.meal_role_fits_window(role, day_start, day_end):
                     continue
                 del meal_roles[place.id]
                 other_meal = any(p.category == "ร้านอาหาร" and p is not place for p in places)
@@ -700,6 +731,7 @@ class LLMTripPlanner:
         self, day_assignments: Dict[int, List[Place]], meal_roles: Dict[str, str], used_ids: Set[str],
         trip_start_date, trip_duration_days: int, start_time_of_day, end_time_of_day,
         food_kinds: Optional[List[str]] = None, breakfast: bool = False,
+        day_windows: Optional[Dict[int, Tuple]] = None,
     ) -> Set[str]:
         """Every day gets one restaurant per meal its window can hold (lunch,
         dinner), each open at that meal and near that day's places, and no
@@ -719,13 +751,12 @@ class LLMTripPlanner:
         off the day -- a role-less restaurant used to be placed anywhere from
         11:00 to 20:00, which put days' only meal at 14:55 or 17:07 -- unless
         it's a must-go, or no restaurant could be found for a meal at all
-        (then the best leftover still feeds the traveller, role-less)."""
-        start_min = start_time_of_day.hour * 60 + start_time_of_day.minute
-        end_min = end_time_of_day.hour * 60 + end_time_of_day.minute
-        meals = route_scheduler.day_meals(start_time_of_day, end_time_of_day, breakfast=breakfast)
+        (then the best leftover still feeds the traveller, role-less).
+
+        `day_windows` overrides the window for some days (a short last day,
+        which may hold fewer meals)."""
+        day_windows = day_windows or {}
         added: Set[str] = set()
-        if not meals:
-            return added  # a window with no mealtime (e.g. 14:00-17:00): restaurants stay as picked
         food_kinds = list(food_kinds or [])
         meal_no = 0  # meals served so far, for rotating food_kinds
 
@@ -734,6 +765,12 @@ class LLMTripPlanner:
             return food_kinds[k:] + food_kinds[:k]
 
         for day_num in range(1, trip_duration_days + 1):
+            day_start, day_end = day_windows.get(day_num, (start_time_of_day, end_time_of_day))
+            start_min = day_start.hour * 60 + day_start.minute
+            end_min = day_end.hour * 60 + day_end.minute
+            meals = route_scheduler.day_meals(day_start, day_end, breakfast=breakfast)
+            if not meals:
+                continue  # a window with no mealtime (e.g. 14:00-17:00): restaurants stay as picked
             places = day_assignments.setdefault(day_num, [])
             day_date = trip_start_date + timedelta(days=day_num - 1)
             anchor = self._day_anchor(places)
@@ -770,7 +807,7 @@ class LLMTripPlanner:
                 return False
 
             def bring_in(meal, kinds=None, avoid=frozenset()) -> bool:
-                pick = self._pick_fallback_restaurant(places, day_date, start_time_of_day, end_time_of_day, used_ids, meal, kinds, avoid)
+                pick = self._pick_fallback_restaurant(places, day_date, day_start, day_end, used_ids, meal, kinds, avoid)
                 if not pick or pick.subcategory in avoid or not self._serves_meal(pick, meal, day_date, start_min, end_min, anchor):
                     return False
                 places.append(pick)
@@ -870,6 +907,30 @@ class LLMTripPlanner:
                 if role in route_scheduler.MEAL_WINDOWS:
                     meal_roles[loc_id] = role
             day_assignments[day_num] = places_for_day
+
+        # Per-day windows and end points (trip_ends.py): only the last day can
+        # differ, when the trip ends somewhere other than the accommodation.
+        # A last day too short for any stop (an early flight) is not planned
+        # at all: whatever the LLM put on it goes back to the unused pool, and
+        # every step below works on the days before it (`plan_days`).
+        num_days = user_input.trip_duration_days
+        day_windows = {
+            d: trip_ends.day_window(user_input, d) if self.end_point is not None else (start_time_of_day, end_time_of_day)
+            for d in range(1, num_days + 1)
+        }
+        end_locs = {num_days: self.end_point} if self.end_point is not None else {}
+        travel_only_days = (
+            {num_days} if self.end_point is not None and trip_ends.is_travel_only_day(*day_windows[num_days]) else set()
+        )
+        plan_days = num_days - (1 if num_days in travel_only_days else 0)
+        if travel_only_days and self.start_point is not None:
+            # Leave the accommodation in time for the departure, not at start_time.
+            to_end = route_scheduler.travel_minutes(route_scheduler.calculate_distance(self.start_point, self.end_point))
+            day_windows[num_days] = trip_ends.departure_day_window(user_input, to_end)
+        for p in day_assignments.pop(num_days, []) if num_days in travel_only_days else []:
+            used_ids.discard(p.id)
+            meal_roles.pop(p.id, None)
+            logger.info("trip planner: day %d is the departure day, not planning %s on it", num_days, p.name)
         llm_pick_ids = set(used_ids)  # for TimeSlot.source
 
         # The "Must Go" list in generate_prompt() is only a hint -- STRICT
@@ -882,10 +943,10 @@ class LLMTripPlanner:
         # actually fit it in rather than the place never being considered
         # at all.
         for must_go_id in self.must_go_ids:
-            if must_go_id in used_ids or must_go_id not in self.location_map:
+            if must_go_id in used_ids or must_go_id not in self.location_map or plan_days < 1:
                 continue
             target_day = min(
-                range(1, user_input.trip_duration_days + 1),
+                range(1, plan_days + 1),
                 key=lambda d: len(day_assignments.get(d, [])),
             )
             day_assignments.setdefault(target_day, []).append(self.location_map[must_go_id])
@@ -896,19 +957,21 @@ class LLMTripPlanner:
             )
 
         day_assignments = route_scheduler.reassign_infeasible_days(
-            day_assignments, trip_start_date, user_input.trip_duration_days,
+            day_assignments, trip_start_date, plan_days,
         )
 
         wants_breakfast = BREAKFAST_PREFERENCE in user_input.food_preferences
         trip_meals = route_scheduler.day_meals(start_time_of_day, end_time_of_day, breakfast=wants_breakfast)
         restaurant_cap_drops = self._enforce_restaurant_cap_and_roles(
-            day_assignments, meal_roles, used_ids, trip_start_date, user_input.trip_duration_days,
+            day_assignments, meal_roles, used_ids, trip_start_date, plan_days,
             max_per_day=max(MAX_RESTAURANTS_PER_DAY, len(trip_meals)),
         )
-        self._resolve_unfittable_meal_roles(day_assignments, meal_roles, start_time_of_day, end_time_of_day)
+        self._resolve_unfittable_meal_roles(
+            day_assignments, meal_roles, start_time_of_day, end_time_of_day, day_windows=day_windows,
+        )
         cafe_cap_drops = self._enforce_category_cap(
             day_assignments, "คาเฟ่", MAX_CAFES_PER_DAY,
-            used_ids, trip_start_date, user_input.trip_duration_days,
+            used_ids, trip_start_date, plan_days,
         )
         # Same relocate-or-drop for every other category, at
         # route_scheduler.category_daily_cap (3) -- the "family + nature"
@@ -920,19 +983,28 @@ class LLMTripPlanner:
         for category in other_categories:
             for day_num, place in self._enforce_category_cap(
                 day_assignments, category, route_scheduler.category_daily_cap(category),
-                used_ids, trip_start_date, user_input.trip_duration_days,
+                used_ids, trip_start_date, plan_days,
             ):
                 cafe_cap_drops.append((day_num, place))
         stop_min, stop_max = route_scheduler.pace_stop_range(
             user_input.trip_pace, start_time_of_day, end_time_of_day, breakfast=wants_breakfast,
         )
+        # A shorter last day gets its own (smaller) range; a departure-only
+        # day gets none, so backfill never puts anything on it.
+        stop_ranges = {
+            d: (0, 0) if d in travel_only_days
+            else route_scheduler.pace_stop_range(user_input.trip_pace, s, e, breakfast=wants_breakfast)
+            for d, (s, e) in day_windows.items()
+        }
         pace_cap_drops = self._enforce_pace_cap(
-            day_assignments, stop_max, used_ids, trip_start_date, user_input.trip_duration_days,
+            day_assignments, stop_max, used_ids, trip_start_date, plan_days,
+            day_caps={d: r[1] for d, r in stop_ranges.items()},
         )
         dropped_by_day: Dict[int, List[Tuple[Place, str]]] = {}
         for day_num, place in pace_cap_drops:
             dropped_by_day.setdefault(day_num, []).append((
-                place, f"day already had {stop_max} attractions, the max for {user_input.trip_pace} pace in this time window",
+                place,
+                f"day already had {stop_ranges[day_num][1]} attractions, the max for {user_input.trip_pace} pace in this time window",
             ))
         for day_num, place in restaurant_cap_drops:
             reason = f"day already had {MAX_RESTAURANTS_PER_DAY} \"ร้านอาหาร\" scheduled"
@@ -960,19 +1032,20 @@ class LLMTripPlanner:
         # order_day_stops' priority tier below, so the injected restaurant
         # isn't silently dropped like any other optional pick.
         meal_fallback_ids = self._ensure_meals(
-            day_assignments, meal_roles, used_ids, trip_start_date, user_input.trip_duration_days,
+            day_assignments, meal_roles, used_ids, trip_start_date, plan_days,
             start_time_of_day, end_time_of_day,
             food_kinds=meal_food_kinds(user_input.food_preferences), breakfast=wants_breakfast,
+            day_windows=day_windows,
         )
         # A window with no mealtime still gets one restaurant on a day that
         # has none (the old rule), placed by its opening hours.
-        for day_num in range(1, user_input.trip_duration_days + 1):
+        for day_num in range(1, plan_days + 1):
             day_places = day_assignments.setdefault(day_num, [])
             if any(p.category == "ร้านอาหาร" for p in day_places):
                 continue
             restaurant = self._pick_fallback_restaurant(
                 day_places, trip_start_date + timedelta(days=day_num - 1),
-                start_time_of_day, end_time_of_day, used_ids,
+                *day_windows[day_num], used_ids,
             )
             if restaurant:
                 day_places.append(restaurant)
@@ -1016,8 +1089,8 @@ class LLMTripPlanner:
             day_places = day_assignments.get(day_num, [])
             ordered = route_scheduler.order_day_stops(
                 day_places, self.start_point, day_date,
-                start_time_of_day, end_time_of_day, user_input.trip_pace, meal_roles,
-                must_go_ids=self.must_go_ids | meal_fallback_ids,
+                *day_windows[day_num], user_input.trip_pace, meal_roles,
+                must_go_ids=self.must_go_ids | meal_fallback_ids, end_loc=end_locs.get(day_num),
             )
             routes[day_num] = ordered
             ordered_ids = {p.id for p in ordered}
@@ -1033,10 +1106,11 @@ class LLMTripPlanner:
             routes, day_dates, meal_roles, self.start_point,
             start_time_of_day, end_time_of_day, user_input.trip_pace, backfill_pool,
             stop_range=(stop_min, stop_max),
+            day_windows=day_windows, end_locs=end_locs, stop_ranges=stop_ranges,
         )
 
         def source_of(place: Place, day_num: int) -> Optional[str]:
-            if place.category in (None, "ที่พัก"):
+            if place.category in trip_ends.NON_VISIT_CATEGORIES:
                 return None
             if place.is_spare:
                 return "spare"
@@ -1058,10 +1132,10 @@ class LLMTripPlanner:
             late_drops: List[Tuple[Place, str]] = []
             schedule, day_cost, day_travel = route_scheduler.materialize_day_schedule(
                 route, anchor_ids, meal_roles, self.start_point,
-                day_date, start_time_of_day, end_time_of_day, user_input.trip_pace,
-                gap_filler_pool=backfill_pool, max_attractions=stop_max,
+                day_date, *day_windows[day_num], user_input.trip_pace,
+                gap_filler_pool=backfill_pool, max_attractions=stop_ranges[day_num][1],
                 must_go_ids=self.must_go_ids | meal_fallback_ids,
-                dropped=late_drops,
+                dropped=late_drops, end_loc=end_locs.get(day_num),
             )
             for slot in schedule:
                 slot.source = source_of(slot.place, day_num)
@@ -1081,7 +1155,7 @@ class LLMTripPlanner:
                 dropped_by_day.setdefault(day_num, []).append((p, reason))
 
         drop_feedback = self._build_drop_feedback(dropped_by_day)
-        post_schedule_feedback = self._build_post_schedule_feedback(final_itinerary)
+        post_schedule_feedback = self._build_post_schedule_feedback(final_itinerary, skip_days=travel_only_days)
         if post_schedule_feedback:
             drop_feedback = f"{drop_feedback}\n{post_schedule_feedback}" if drop_feedback else post_schedule_feedback
 

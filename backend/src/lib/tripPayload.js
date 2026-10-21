@@ -17,7 +17,9 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/
 // 'breakfast' needs migration 20261021000003 (the trip_items check constraint).
 const MEAL_ROLES = new Set(['breakfast', 'lunch', 'dinner'])
-const SLOT_KINDS = new Set(['place', 'hotel', 'free_time'])
+// 'trip_end' (the last day ends at an airport/bus/train/district/pin instead of
+// the hotel) needs migration 20261021000004.
+const SLOT_KINDS = new Set(['place', 'hotel', 'free_time', 'trip_end'])
 const MAX_SLOT_NAME = 200
 const bad = (what) => httpError(400, `ข้อมูลแผนทริปไม่ถูกต้อง: ${what}`)
 

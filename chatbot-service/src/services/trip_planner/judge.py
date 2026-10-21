@@ -23,7 +23,7 @@ from typing import Iterable, List, Optional, Tuple
 from src.core.llm_client import complete_json
 from src.core.config import MODEL_NAME
 from src.core.usage import UsageTracker
-from . import route_scheduler
+from . import route_scheduler, trip_ends
 from .models import DailyItinerary, JudgeVerdict, Place, TripInput
 
 logger = logging.getLogger(__name__)
@@ -100,8 +100,20 @@ class TripItineraryJudge:
         lo, hi = route_scheduler.pace_stop_range(user_input.trip_pace, start, end, breakfast=breakfast)
         meals = route_scheduler.day_meals(start, end, breakfast=breakfast)
         cafe_cap = route_scheduler.CATEGORY_DAILY_CAP.get("คาเฟ่")
+        last_day = []
+        if user_input.trip_end is not None:
+            last = user_input.trip_duration_days
+            last_start, last_end = trip_ends.day_window(user_input, last)
+            if trip_ends.is_travel_only_day(last_start, last_end):
+                last_day = [f"- Day {last} is the departure day: nothing is planned on it (expected, not an issue)"]
+            else:
+                last_day = [
+                    f"- Day {last} ends at the trip's end point, not the accommodation, by {last_end.strftime('%H:%M')} "
+                    "-- a shorter day with fewer attractions/meals is expected, not an issue"
+                ]
         return "\n".join([
             f"- Days: {user_input.trip_duration_days}, daily window {user_input.start_time}-{user_input.end_time}",
+            *last_day,
             f"- Pace: {user_input.trip_pace} (target {lo}-{hi} attractions a day; restaurants don't count)",
             f"- Hard limits per day the planner cannot exceed: {hi} attractions, {cafe_cap} \"คาเฟ่\", "
             f"{route_scheduler.DEFAULT_CATEGORY_DAILY_CAP} of any other category",
@@ -118,28 +130,36 @@ class TripItineraryJudge:
         it ends), so the judge doesn't have to infer them from times. The
         accommodation's name and "no hours data" statuses are left out: the
         first is the user's, the second is noise nobody can act on."""
-        window_end = _minutes(user_input.end_time)
         lines = []
         for day in itinerary:
-            real = [s for s in day.schedule if s.place.category not in (None, "ที่พัก")]
+            # The last day may end earlier, at the trip's end point (trip_ends.py).
+            _, day_end = trip_ends.day_window(user_input, day.day) if user_input.trip_end else (None, None)
+            window_end = _minutes(day_end.strftime("%H:%M")) if day_end else _minutes(user_input.end_time)
+            real = [s for s in day.schedule if s.place.category not in trip_ends.NON_VISIT_CATEGORIES]
             idle = sum(
                 _minutes(s.departure_time) - _minutes(s.arrival_time)
                 for s in day.schedule if s.status == "Free Time"
             ) + sum(s.wait_time_min for s in real)
-            back = next((s.arrival_time for s in day.schedule if s.place.category == "ที่พัก"), None)
+            end_slot = next((s for s in day.schedule if s.place.category in ("ที่พัก", trip_ends.TRIP_END_CATEGORY)), None)
+            back = end_slot.arrival_time if end_slot else None
+            where = (
+                f"arrives at the trip's end point ({end_slot.place.name})"
+                if end_slot and end_slot.place.category == trip_ends.TRIP_END_CATEGORY
+                else "back at the accommodation"
+            )
             early = window_end - _minutes(back) if back else 0
             attractions = sum(1 for s in real if s.place.category != "ร้านอาหาร")
             weekday = datetime.strptime(day.date, "%Y-%m-%d").strftime("%A")
             km = round(sum(s.distance_km for s in day.schedule))
             lines.append(
                 f"Day {day.day} ({day.date}, {weekday}): {attractions} attractions, {km} km driven, "
-                f"idle {idle} min, back at the accommodation {back or '?'}"
+                f"idle {idle} min, {where} {back or '?'}"
                 + (f" ({early} min before the window ends)" if early > 0 else "")
             )
             for s in day.schedule:
                 if s.status == "Free Time":
                     lines.append(f"  {s.arrival_time}-{s.departure_time} (free time, nothing planned)")
-                elif s.place.category == "ที่พัก":
+                elif s.place.category in ("ที่พัก", trip_ends.TRIP_END_CATEGORY):
                     continue
                 else:
                     wait = f" (waits {s.wait_time_min} min to open)" if s.wait_time_min else ""

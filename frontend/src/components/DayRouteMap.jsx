@@ -99,15 +99,17 @@ export default function DayRouteMap({ items, onSelectPlace }) {
 
         points.forEach((p, i) => {
           const isHotel = p.status === 'End of Day (Return to Hotel)'
+          // The last day's end point (airport, bus terminal, district...) instead of the hotel.
+          const isTripEnd = p.status === 'End of Trip'
           const marker = new maps.Marker({
             position: p.place.location,
             map,
             title: p.place.name,
-            label: { text: isHotel ? '🏠' : String(i + 1), color: '#fff', fontWeight: '800', fontSize: '12px' },
+            label: { text: isHotel ? '🏠' : isTripEnd ? '🏁' : String(i + 1), color: '#fff', fontWeight: '800', fontSize: '12px' },
             icon: {
               path: maps.SymbolPath.CIRCLE,
               scale: 14,
-              fillColor: isHotel ? '#FBC02D' : '#2E7D32',
+              fillColor: isHotel ? '#FBC02D' : isTripEnd ? '#C62828' : '#2E7D32',
               fillOpacity: 1,
               strokeColor: '#fff',
               strokeWeight: 2.5,

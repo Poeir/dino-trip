@@ -52,3 +52,35 @@ def find_place_by_name(name_query: str):
         .limit(_NAME_MATCH_LIMIT).execute()
     )
     return _pick_named_place(res.data or [], query)
+
+
+# A district's centre is the mean position of its published places: there is
+# no table of district coordinates, and every อำเภอ a traveller can pick on
+# the trip form comes from places.district anyway.
+_DISTRICT_CENTRE_ROWS = 2000
+
+
+def district_centre(district: str) -> Optional[dict]:
+    """{"lat", "lng", "count"} for the อำเภอ `district`, or None when it has no
+    located place. places.district is stored both with and without the
+    "อำเภอ" prefix ("อำเภอเมืองขอนแก่น" next to "ชุมแพ"), so both spellings
+    count."""
+    name = (district or "").strip()
+    for prefix in ("อำเภอ", "อ."):
+        if name.startswith(prefix):
+            name = name[len(prefix):].strip()
+    if not name:
+        return None
+    res = (
+        supabase.table("places").select("lat,lng")
+        .eq("is_active", True).in_("district", [name, f"อำเภอ{name}", f"อ.{name}"])
+        .limit(_DISTRICT_CENTRE_ROWS).execute()
+    )
+    located = [r for r in (res.data or []) if r.get("lat") is not None and r.get("lng") is not None]
+    if not located:
+        return None
+    return {
+        "lat": sum(r["lat"] for r in located) / len(located),
+        "lng": sum(r["lng"] for r in located) / len(located),
+        "count": len(located),
+    }

@@ -1,7 +1,8 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  categories, categoryIcons, interestList, foodPreferenceList, LEGACY_LOCAL_FOOD_INTEREST, budgetList, budgetMeta, areaScopeList, areaScopeMeta
+  categories, categoryIcons, interestList, foodPreferenceList, LEGACY_LOCAL_FOOD_INTEREST, budgetList, budgetMeta, areaScopeList, areaScopeMeta,
+  tripEndOptions, khonKaenDistricts, MIN_PLANNED_DAY_MINUTES, MAX_TRIP_DAYS, LONG_TRIP_DAYS
 } from '../data/seed.js'
 import { useThaiAddress } from '../lib/thaiAddress.js'
 import {
@@ -56,10 +57,28 @@ const isPasswordValid = (password) => PASSWORD_RULES.every((r) => r.test(passwor
 // setAvatarPosition below) -- object-position is a 0-100% pair.
 const clampPct = (n) => Math.max(0, Math.min(100, n))
 
-// chatbot-service's schedule mixes real places with two synthetic slots that
-// have no places row: the closing "return to the hotel" and "Free Time" filler.
-// Saving a trip (see planToTripPayload) needs to tell them apart.
-const slotKind = (status) => status === 'End of Day (Return to Hotel)' ? 'hotel' : status === 'Free Time' ? 'free_time' : 'place'
+// chatbot-service's schedule mixes real places with synthetic slots that have
+// no places row: the closing "return to the hotel", the last day's "End of
+// Trip" (an airport/bus/train/district/pin, see tripEndOptions) and "Free
+// Time" filler. Saving a trip (see planToTripPayload) needs to tell them apart.
+const HOTEL_RETURN_STATUS = 'End of Day (Return to Hotel)'
+const TRIP_END_STATUS = 'End of Trip'
+const slotKind = (status) => status === HOTEL_RETURN_STATUS ? 'hotel'
+  : status === TRIP_END_STATUS ? 'trip_end'
+  : status === 'Free Time' ? 'free_time' : 'place'
+
+// The trip form's "วันสุดท้ายจบที่" -> TripInput.trip_end (null = back at the hotel).
+const EMPTY_TRIP_END = { kind: 'hotel', district: '', time: '', pin: null }
+const tripEndToRequest = (te) => {
+  if (!te || te.kind === 'hotel') return null
+  return {
+    kind: te.kind,
+    name: te.kind === 'district' ? te.district : te.kind === 'pin' ? (te.pin?.name || null) : null,
+    lat: te.kind === 'pin' ? te.pin?.lat ?? null : null,
+    lng: te.kind === 'pin' ? te.pin?.lng ?? null : null,
+    time: te.time || null,
+  }
+}
 
 // "HH:MM" -> minutes-since-midnight, for computing how long a trip-plan item
 // lasts (arrival_time/departure_time only arrive as display strings from the
@@ -119,7 +138,7 @@ const initialState = {
   // `accommodation` is null until picked, then { name, address, lat, lng }
   // (name/address only present when picked via search, not a dragged pin --
   // see onAccommodationSelect/onAccommodationLocationChange).
-  tripForm: { startDate: '', endDate: '', interests: [], foodPrefs: [], budget: 'ปานกลาง', areaScope: 'ทั่วขอนแก่น', accommodation: null, mustGo: [], pace: 'standard', dailyStart: '09:00', dailyEnd: '18:00' },
+  tripForm: { startDate: '', endDate: '', dayCount: 1, interests: [], foodPrefs: [], budget: 'ปานกลาง', areaScope: 'ทั่วขอนแก่น', accommodation: null, mustGo: [], pace: 'standard', dailyStart: '09:00', dailyEnd: '18:00', tripEnd: EMPTY_TRIP_END },
   mustGoQuery: '',
   // Populated by a debounced fetchPlaces({search}) as mustGoQuery changes
   // (see the effect below) -- used to be a client-side filter over the
@@ -179,16 +198,45 @@ function addDays(d, n) {
   r.setDate(r.getDate() + n)
   return r
 }
+// Local calendar date as YYYY-MM-DD. Not toISOString(): that's UTC, and in
+// Thailand (UTC+7) local midnight is still the previous day there -- the
+// "วันนี้" button used to start the trip yesterday.
 function fmtDate(d) {
-  return d.toISOString().slice(0, 10)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+// "YYYY-MM-DD" as a local Date (new Date("YYYY-MM-DD") would be UTC midnight).
+function parseLocalDate(s) {
+  const [y, m, d] = (s || '').split('-').map(Number)
+  return y && m && d ? new Date(y, m - 1, d) : null
+}
+// The form keeps startDate + dayCount (the "เที่ยวกี่วัน" buttons); endDate is
+// always derived from them, so nothing downstream had to change.
+function withTripDays(form, startDate, dayCount) {
+  const start = parseLocalDate(startDate)
+  return { ...form, startDate, dayCount, endDate: start ? fmtDate(addDays(start, dayCount - 1)) : '' }
 }
 function validateTripDates(f) {
-  if (!f.startDate || !f.endDate) return ''
-  const start = new Date(f.startDate), end = new Date(f.endDate)
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return ''
-  if (end < start) return 'วันสิ้นสุดต้องไม่น้อยกว่าวันเริ่มต้น'
+  if (!f.startDate) return 'กรุณาเลือกวันเริ่มเที่ยว'
+  const start = parseLocalDate(f.startDate), end = parseLocalDate(f.endDate)
+  if (!start || !end) return 'กรุณาเลือกวันเริ่มเที่ยว'
   const days = Math.round((end - start) / 86400000) + 1
-  if (days > 7) return 'ระยะเวลาทริปต้องไม่เกิน 7 วัน'
+  if (days < 1 || days > MAX_TRIP_DAYS) return `ระยะเวลาทริปต้องอยู่ระหว่าง 1-${MAX_TRIP_DAYS} วัน`
+  return ''
+}
+// "วันสุดท้ายจบที่" -- checked when leaving the first step (where it's filled
+// in) and again on submit, since the daily start time is set later.
+function validateTripEnd(f) {
+  const te = f.tripEnd || EMPTY_TRIP_END
+  if (te.kind === 'district' && !te.district) return 'กรุณาเลือกอำเภอที่จะไปจบทริป'
+  if (te.kind === 'pin' && te.pin?.lat == null) return 'กรุณาปักหมุดจุดที่จะไปจบทริป'
+  // Same rule as chatbot-service (trip_ends.py): a one-day trip that must
+  // leave before there's time for any stop has nothing to plan.
+  const oneDay = !!f.startDate && f.startDate === f.endDate
+  const buffer = tripEndOptions.find((o) => o.kind === te.kind)?.buffer ?? 0
+  if (oneDay && te.kind !== 'hotel' && te.time
+      && timeToMinutes(te.time) - buffer - timeToMinutes(f.dailyStart) < MIN_PLANNED_DAY_MINUTES) {
+    return 'เวลาออกเดินทางเร็วเกินไป ไม่เหลือเวลาเที่ยวในทริปวันเดียว ลองเลือกเวลาให้ช้าลงหรือเพิ่มจำนวนวัน'
+  }
   return ''
 }
 
@@ -336,7 +384,7 @@ export function AppProvider({ children }) {
   const goTripForm = () => { navigate('/trip'); setState({ tripStep: 0, tripFormError: '' }) }
   const nextStep = () => {
     if (stateRef.current.tripStep === 0) {
-      const err = validateTripDates(stateRef.current.tripForm)
+      const err = validateTripDates(stateRef.current.tripForm) || validateTripEnd(stateRef.current.tripForm)
       if (err) { setState({ tripFormError: err }); return }
     }
     setState((s) => ({ tripStep: Math.min(3, s.tripStep + 1), tripFormError: '' }))
@@ -609,8 +657,12 @@ export function AppProvider({ children }) {
   }
 
   const updateTripField = (f, v) => setState((s) => ({ tripForm: { ...s.tripForm, [f]: v }, tripFormError: '' }))
-  const onStartDateChange = (e) => updateTripField('startDate', e.target.value)
-  const onEndDateChange = (e) => updateTripField('endDate', e.target.value)
+  const onStartDateChange = (e) => setState((s) => ({
+    tripForm: withTripDays(s.tripForm, e.target.value, s.tripForm.dayCount || 1), tripFormError: '',
+  }))
+  const setTripDayCount = (n) => setState((s) => ({
+    tripForm: withTripDays(s.tripForm, s.tripForm.startDate, n), tripFormError: '',
+  }))
   // Fires from LocationPicker's onChange (dragging the pin or editing the
   // manual lat/lng fields) -- merges into whatever's already set instead of
   // replacing it, so a name/address picked earlier via search survives a
@@ -638,19 +690,28 @@ export function AppProvider({ children }) {
     }
     updateTripField('accommodation', { name: 'ตำแหน่งปัจจุบันของฉัน', address: '', lat: loc.lat, lng: loc.lng })
   }
+  // "วันสุดท้ายจบที่" (tripEndOptions). Switching kind keeps the time typed so
+  // far; the district/pin only matter for their own kind.
+  const updateTripEnd = (patch) => setState((s) => ({
+    tripForm: { ...s.tripForm, tripEnd: { ...(s.tripForm.tripEnd || EMPTY_TRIP_END), ...patch } },
+    tripFormError: '',
+  }))
+  const setTripEndKind = (kind) => updateTripEnd({ kind })
+  const onTripEndTimeChange = (e) => updateTripEnd({ time: e.target.value })
+  const onTripEndDistrictChange = (e) => updateTripEnd({ district: e.target.value })
+  const onTripEndPinChange = (loc) => setState((s) => {
+    const te = s.tripForm.tripEnd || EMPTY_TRIP_END
+    return { tripForm: { ...s.tripForm, tripEnd: { ...te, pin: { ...(te.pin || {}), lat: loc.lat, lng: loc.lng } } }, tripFormError: '' }
+  })
+  const onTripEndPinSelect = (place) => updateTripEnd({ pin: { name: place.name, lat: place.lat, lng: place.lng } })
+  // Quick picks for the start date; the number of days stays as chosen.
   const setTripDatePreset = (preset) => {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
-    let start = today, end = today
-    if (preset === 'today') { end = today }
-    else if (preset === '2days') { end = addDays(today, 1) }
-    else if (preset === '3days') { end = addDays(today, 2) }
-    else if (preset === 'weekend') {
-      const untilSat = (6 - today.getDay() + 7) % 7
-      start = addDays(today, untilSat)
-      end = addDays(start, 1)
-    }
-    setState((s) => ({ tripForm: { ...s.tripForm, startDate: fmtDate(start), endDate: fmtDate(end) }, tripFormError: '' }))
+    let start = today
+    if (preset === 'tomorrow') start = addDays(today, 1)
+    else if (preset === 'saturday') start = addDays(today, (6 - today.getDay() + 7) % 7)
+    setState((s) => ({ tripForm: withTripDays(s.tripForm, fmtDate(start), s.tripForm.dayCount || 1), tripFormError: '' }))
   }
   const onMustGoQueryChange = (e) => setState({ mustGoQuery: e.target.value })
   const addMustGo = (name) => {
@@ -733,9 +794,9 @@ export function AppProvider({ children }) {
   }
 
   // Rebuilds the plan shape above from a saved trip (GET /api/trips/:id).
-  // Hotel / free-time slots have no places row, so they get the same synthetic
-  // ids chatbot-service gave them; a place deleted since planning falls back
-  // to the name saved with the trip.
+  // Hotel / trip-end / free-time slots have no places row, so they get the
+  // same synthetic ids chatbot-service gave them; a place deleted since
+  // planning falls back to the name saved with the trip.
   const tripDetailToPlan = (detail) => {
     const days = detail.days.map((d) => ({
       dayNum: d.dayNo,
@@ -744,14 +805,14 @@ export function AppProvider({ children }) {
       dayTravelTimeTotal: d.dayTravelTimeTotal,
       items: d.items.map((it) => {
         const placeId = it.kind === 'place' ? (it.placeId || `removed_${d.dayNo}_${it.position}`)
-          : it.kind === 'hotel' ? 'hotel_dummy' : `free_time_dummy_${d.dayNo}_${it.position}`
+          : it.kind === 'hotel' ? 'hotel_dummy' : it.kind === 'trip_end' ? 'trip_end' : `free_time_dummy_${d.dayNo}_${it.position}`
         const location = it.lat != null && it.lng != null ? { lat: it.lat, lng: it.lng } : null
         return {
           itemId: it.id, placeId, kind: it.kind, time: it.arrivalTime, departureTime: it.departureTime, status: it.status, liked: it.liked,
           distanceFromPrev: it.distanceKm || null, travelTimeMin: it.travelTimeMin, waitTimeMin: it.waitTimeMin, isAnchor: it.isAnchor, mealRole: it.mealRole,
           place: it.place
             ? { ...toTripPlace(it.place), hasQR: it.place.hasQR, qrPoints: it.place.qrPoints }
-            : { id: placeId, name: it.placeName, category: it.kind === 'hotel' ? 'ที่พัก' : null, rating: '-', address: '', img: null, location },
+            : { id: placeId, name: it.placeName, category: it.kind === 'hotel' ? 'ที่พัก' : it.kind === 'trip_end' ? 'จุดจบทริป' : null, rating: '-', address: '', img: null, location },
         }
       }),
     }))
@@ -775,6 +836,7 @@ export function AppProvider({ children }) {
       ...current,
       startDate: input.start_date,
       endDate: end.toISOString().slice(0, 10),
+      dayCount: Math.max(1, input.trip_duration_days || 1),
       interests: savedInterests.filter((i) => i !== LEGACY_LOCAL_FOOD_INTEREST),
       foodPrefs,
       budget: input.budget_level || current.budget,
@@ -786,6 +848,14 @@ export function AppProvider({ children }) {
       pace: input.trip_pace || current.pace,
       dailyStart: input.start_time || current.dailyStart,
       dailyEnd: input.end_time || current.dailyEnd,
+      tripEnd: input.trip_end
+        ? {
+            kind: input.trip_end.kind,
+            district: input.trip_end.kind === 'district' ? input.trip_end.name || '' : '',
+            time: input.trip_end.time || '',
+            pin: input.trip_end.kind === 'pin' ? { name: input.trip_end.name || '', lat: input.trip_end.lat, lng: input.trip_end.lng } : null,
+          }
+        : EMPTY_TRIP_END,
     }
   }
 
@@ -841,6 +911,9 @@ export function AppProvider({ children }) {
     if (timeToMinutes(f.dailyEnd) <= timeToMinutes(f.dailyStart)) { setState({ tripFormError: 'เวลาสิ้นสุดต้องอยู่หลังเวลาเริ่มต้น' }); return }
     const rawDays = Math.round((new Date(f.endDate) - new Date(f.startDate)) / 86400000) + 1
     const days = Number.isFinite(rawDays) && rawDays > 0 ? rawDays : 1
+    const te = f.tripEnd || EMPTY_TRIP_END
+    const tripEndErr = validateTripEnd(f)
+    if (tripEndErr) { setState({ tripFormError: tripEndErr }); return }
 
     setState({ tripFormError: '', tripPlanning: true })
     try {
@@ -858,6 +931,7 @@ export function AppProvider({ children }) {
         area_scope: f.areaScope,
         start_time: f.dailyStart,
         end_time: f.dailyEnd,
+        trip_end: tripEndToRequest(te),
       }
       // Started now so it loads while the trip is being planned, not after.
       // Caught here: a failure only costs the QR badges (see below).
@@ -1114,7 +1188,8 @@ export function AppProvider({ children }) {
     onResetPasswordChange, onResetConfirmPasswordChange,
     onAuthConsentChange, submitLogin, submitSignup, completeEmailConfirmation, submitForgotPassword, submitResetPassword, logout, setCurrentUser, signedOutLocally,
     toggleChat, onChatInputChange, sendChat,
-    onStartDateChange, onEndDateChange, onAccommodationLocationChange, onAccommodationSelect, useCurrentLocationForAccommodation, setTripDatePreset,
+    onStartDateChange, setTripDayCount, onAccommodationLocationChange, onAccommodationSelect, useCurrentLocationForAccommodation, setTripDatePreset,
+    setTripEndKind, onTripEndTimeChange, onTripEndDistrictChange, onTripEndPinChange, onTripEndPinSelect,
     onMustGoQueryChange, addMustGo, removeMustGo, onMustGoKeyDown,
     setPace, onDailyStartChange, onDailyEndChange,
     toggleInterest, setBudget, setAreaScope, submitTripForm, loadTrip,
@@ -1184,11 +1259,26 @@ export function AppProvider({ children }) {
   // so placeBadge/qrPlacesList moved out of this file entirely.
 
   const datePresetOptions = [
-    { key: 'today', label: 'วันนี้ (เดย์ทริป)' },
-    { key: '2days', label: '2 วัน' },
-    { key: '3days', label: '3 วัน' },
-    { key: 'weekend', label: 'สุดสัปดาห์นี้' },
+    { key: 'today', label: 'วันนี้' },
+    { key: 'tomorrow', label: 'พรุ่งนี้' },
+    { key: 'saturday', label: 'เสาร์นี้' },
   ].map((p) => ({ ...p, onClick: () => setTripDatePreset(p.key) }))
+  // "เที่ยวกี่วัน" buttons, 1..MAX_TRIP_DAYS.
+  const dayCount = s.tripForm.dayCount || 1
+  const dayCountOptionsView = Array.from({ length: MAX_TRIP_DAYS }, (_, i) => i + 1).map((n) => {
+    const active = n === dayCount
+    return {
+      n, label: `${n} วัน`, active, onClick: () => setTripDayCount(n),
+      bg: active ? '#E8F5E9' : '#fff', color: active ? '#1B5E20' : '#3c463f', borderColor: active ? '#2E7D32' : '#E7E3D2',
+    }
+  })
+  // e.g. "พ. 11 – อา. 15 พ.ย." under the buttons, so the dates are visible.
+  const tripRangeLabel = (() => {
+    const start = parseLocalDate(s.tripForm.startDate), end = parseLocalDate(s.tripForm.endDate)
+    if (!start || !end) return null
+    const fmt = (d) => d.toLocaleDateString('th-TH', { weekday: 'short', day: 'numeric', month: 'short' })
+    return dayCount === 1 ? fmt(start) : `${fmt(start)} – ${fmt(end)}`
+  })()
 
   const mustGoSuggestionsView = s.mustGoSuggestions
     .filter((p) => !s.tripForm.mustGo.includes(p.name))
@@ -1203,6 +1293,48 @@ export function AppProvider({ children }) {
       iconBg: active ? 'linear-gradient(135deg,#66BB6A,#388E3C)' : '#c8d6cc'
     }
   })
+  // "วันสุดท้ายจบที่": one chip per tripEndOptions entry, plus what the
+  // chosen one needs (a time, a district, a pin) and when the last day's
+  // stops then have to be over (shown as a hint).
+  // One question for everyone: where each day starts and ends -- a hotel for
+  // a tourist, home for a local, or left empty (city centre).
+  const startPointView = {
+    question: 'แต่ละวันออกเดินทางจากที่ไหน?',
+    emptyHint: 'โรงแรม ที่พัก หรือบ้านก็ได้ ยังไม่รู้หรือยังไม่ได้จอง? เว้นว่างไว้ได้ ระบบจะใช้ใจกลางเมืองขอนแก่น',
+    summaryLabel: 'จุดเริ่มต้น',
+  }
+  const currentTripEnd = s.tripForm.tripEnd || EMPTY_TRIP_END
+  const currentTripEndOption = tripEndOptions.find((o) => o.kind === currentTripEnd.kind) || tripEndOptions[0]
+  const tripEndOptionsView = tripEndOptions.map((o) => {
+    const active = o.kind === currentTripEndOption.kind
+    return {
+      kind: o.kind, label: o.label, active, onClick: () => setTripEndKind(o.kind),
+      bg: active ? '#E8F5E9' : '#fff', color: active ? '#1B5E20' : '#3c463f', borderColor: active ? '#2E7D32' : '#E7E3D2',
+    }
+  })
+  const tripEndLeaveBy = (() => {
+    if (currentTripEndOption.kind === 'hotel' || !currentTripEnd.time) return null
+    const m = timeToMinutes(currentTripEnd.time) - currentTripEndOption.buffer
+    if (!Number.isFinite(m) || m < 0 || currentTripEndOption.buffer === 0) return null
+    return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
+  })()
+  const tripEndView = {
+    kind: currentTripEndOption.kind,
+    timeLabel: currentTripEndOption.timeLabel,
+    time: currentTripEnd.time,
+    district: currentTripEnd.district,
+    districts: khonKaenDistricts,
+    pin: currentTripEnd.pin,
+    // e.g. "วันสุดท้ายจะเที่ยวถึงประมาณ 16:30 แล้วไปสนามบิน (เผื่อเวลา 90 นาที)"
+    hint: tripEndLeaveBy ? `วันสุดท้ายจะเที่ยวถึงประมาณ ${tripEndLeaveBy} แล้วไป${currentTripEndOption.label} (เผื่อเวลา ${currentTripEndOption.buffer} นาที)` : null,
+  }
+  const tripEndLabel = currentTripEndOption.kind === 'hotel' ? null
+    : [
+        currentTripEndOption.kind === 'district' ? `อำเภอ${currentTripEnd.district}`
+          : currentTripEndOption.kind === 'pin' ? (currentTripEnd.pin?.name || 'จุดที่ปักหมุด')
+          : currentTripEndOption.label,
+        currentTripEnd.time ? `(${currentTripEnd.time})` : null,
+      ].filter(Boolean).join(' ')
   const foodPreferenceOptionsView = foodPreferenceList.map((kind) => {
     const active = (s.tripForm.foodPrefs || []).includes(kind)
     return {
@@ -1253,6 +1385,8 @@ export function AppProvider({ children }) {
     areaScope: s.tripForm.areaScope,
     paceLabel: paceList.find((p) => p.key === s.tripForm.pace)?.label || s.tripForm.pace,
     accommodationLabel: s.tripForm.accommodation?.name || null,
+    accommodationTitle: startPointView.summaryLabel,
+    tripEndLabel,
     mustGo: s.tripForm.mustGo,
     dailyStart: s.tripForm.dailyStart,
     dailyEnd: s.tripForm.dailyEnd,
@@ -1264,14 +1398,17 @@ export function AppProvider({ children }) {
       ...d,
       items: d.items.map((it) => {
         const place = it.place || { name: '-', rating: '-', address: '-' }
-        const isHotelReturn = it.status === 'End of Day (Return to Hotel)'
-        const durationMin = (!isHotelReturn && it.time && it.departureTime)
+        const isHotelReturn = it.status === HOTEL_RETURN_STATUS
+        const isTripEnd = it.status === TRIP_END_STATUS
+        const durationMin = (!isHotelReturn && !isTripEnd && it.time && it.departureTime)
           ? (hhmmToMinutes(it.departureTime) ?? 0) - (hhmmToMinutes(it.time) ?? 0)
           : null
         return {
           ...it, place,
           timeRangeLabel: (it.departureTime && it.departureTime !== it.time) ? `${it.time} - ${it.departureTime}` : it.time,
-          durationLabel: isHotelReturn ? 'ถึงที่พัก' : (formatDurationMinutes(durationMin) ? `อยู่ประมาณ ${formatDurationMinutes(durationMin)}` : null),
+          durationLabel: isHotelReturn ? 'กลับถึงจุดเริ่มต้น'
+            : isTripEnd ? `ถึง${place.name} (จบทริป)`
+            : (formatDurationMinutes(durationMin) ? `อยู่ประมาณ ${formatDurationMinutes(durationMin)}` : null),
         }
       })
     }))
@@ -1298,7 +1435,7 @@ export function AppProvider({ children }) {
     const active = i === s.tripStep
     return {
       n: i + 1,
-      label: ['วันเดินทาง', 'ความสนใจ', 'งบประมาณ', 'ช่วงเวลา'][i],
+      label: ['การเดินทาง', 'ความสนใจ', 'งบประมาณ', 'ช่วงเวลา'][i],
       done, active,
       circleBg: done ? 'linear-gradient(135deg,#66BB6A,#388E3C)' : '#fff',
       circleColor: done ? '#fff' : (active ? '#2E7D32' : '#b7c2ba'),
@@ -1334,7 +1471,8 @@ export function AppProvider({ children }) {
     resetPasswordsMatch: s.resetForm.confirmPassword.length > 0 && s.resetForm.password === s.resetForm.confirmPassword,
     categoriesView, categoriesViewIcons,
     chatMessagesView: s.chatMessages.map((m) => ({ ...m, align: m.from === 'user' ? 'flex-end' : 'flex-start', bg: m.from === 'user' ? '#2E7D32' : '#f0efe7', color: m.from === 'user' ? '#fff' : '#1f2a24' })),
-    interestOptionsView, foodPreferenceOptionsView, budgetOptionsView, areaScopeOptionsView, paceOptionsView, datePresetOptions, mustGoSuggestionsView, mustGoChipsView, tripFormSummaryView,
+    interestOptionsView, foodPreferenceOptionsView, budgetOptionsView, areaScopeOptionsView, paceOptionsView, datePresetOptions, dayCountOptionsView, tripRangeLabel, mustGoSuggestionsView, mustGoChipsView, tripFormSummaryView,
+    tripEndOptionsView, tripEndView, startPointView,
     isStep0: s.tripStep === 0, isStep1: s.tripStep === 1, isStep2: s.tripStep === 2, isStep3: s.tripStep === 3,
     primaryLabel: s.tripStep === 3 ? 'สร้างแผนการเดินทาง →' : 'ถัดไป →',
     onPrimaryStep: s.tripStep === 3 ? submitTripForm : nextStep,

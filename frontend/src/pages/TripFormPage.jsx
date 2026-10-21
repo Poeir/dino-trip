@@ -52,25 +52,34 @@ export default function TripFormPage() {
             <>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 24 }}>
                 <CalendarIcon />
-                <h2 style={{ fontSize: 20, fontWeight: 800, color: '#1B5E20', margin: 0 }}>คุณจะเดินทางเมื่อไหร่?</h2>
+                <h2 style={{ fontSize: 20, fontWeight: 800, color: '#1B5E20', margin: 0 }}>การเดินทางของคุณ</h2>
               </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 18 }}>
+              {/* Start date + number of days (1..MAX_TRIP_DAYS) instead of a
+                  start/end date pair: the date still matters (opening hours
+                  per weekday, holidays), the end date is derived. */}
+              <label style={{ fontSize: 13, fontWeight: 700, color: '#1B5E20', display: 'block', marginBottom: 8 }}>เริ่มเที่ยววันไหน?</label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 18 }}>
                 {derived.datePresetOptions.map((p) => (
                   <button key={p.key} type="button" onClick={p.onClick} style={{ border: '1px solid #C8E6C9', background: '#F1F8E9', color: '#2E7D32', borderRadius: 20, padding: '7px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>{p.label}</button>
                 ))}
+                <input type="date" value={f.startDate} onChange={actions.onStartDateChange} aria-label="วันเริ่มเที่ยว" style={{ flex: '1 1 160px', minWidth: 0, border: '1px solid #DCD8C6', borderRadius: 10, padding: 10, fontSize: 14 }} />
               </div>
-              <div data-role="trip-two-col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 18 }}>
-                <div>
-                  <label style={{ fontSize: 13, fontWeight: 700, color: '#1B5E20', display: 'block', marginBottom: 6 }}>วันเริ่มต้น</label>
-                  <input type="date" value={f.startDate} onChange={actions.onStartDateChange} style={{ width: '100%', border: '1px solid #DCD8C6', borderRadius: 10, padding: 11, fontSize: 14 }} />
-                </div>
-                <div>
-                  <label style={{ fontSize: 13, fontWeight: 700, color: '#1B5E20', display: 'block', marginBottom: 6 }}>วันสิ้นสุด</label>
-                  <input type="date" value={f.endDate} min={f.startDate || undefined} onChange={actions.onEndDateChange} style={{ width: '100%', border: '1px solid #DCD8C6', borderRadius: 10, padding: 11, fontSize: 14 }} />
-                </div>
+              <label style={{ fontSize: 13, fontWeight: 700, color: '#1B5E20', display: 'block', marginBottom: 8 }}>เที่ยวกี่วัน?</label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {derived.dayCountOptionsView.map((opt) => (
+                  <button
+                    key={opt.n} type="button" onClick={opt.onClick} aria-pressed={opt.active}
+                    style={{ minWidth: 64, borderRadius: 12, padding: '9px 12px', cursor: 'pointer', transition: 'all 0.2s ease', border: `2px solid ${opt.borderColor}`, background: opt.bg, color: opt.color, fontSize: 13.5, fontWeight: 800 }}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
               </div>
+              <p style={{ fontSize: 12.5, color: derived.tripRangeLabel ? '#2E7D32' : '#626863', fontWeight: derived.tripRangeLabel ? 700 : 400, margin: '8px 0 20px' }}>
+                {derived.tripRangeLabel || 'เลือกวันเริ่มเที่ยวก่อน แล้วจะเห็นช่วงวันที่ตรงนี้'}
+              </p>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                <label style={{ fontSize: 13, fontWeight: 700, color: '#1B5E20' }}>พักที่ไหน?</label>
+                <label style={{ fontSize: 13, fontWeight: 700, color: '#1B5E20' }}>{derived.startPointView.question}</label>
                 <button
                   type="button" onClick={actions.useCurrentLocationForAccommodation}
                   style={{ display: 'inline-flex', alignItems: 'center', gap: 4, border: '1px solid #C8E6C9', background: '#F1F8E9', color: '#2E7D32', borderRadius: 20, padding: '5px 12px 5px 8px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
@@ -95,38 +104,58 @@ export default function TripFormPage() {
                   {f.accommodation.name || 'ปักหมุดไว้แล้ว'}
                 </p>
               ) : (
-                <p style={{ fontSize: 11.5, color: '#626863', margin: '8px 0 18px' }}>ถ้าไม่ระบุ ระบบจะใช้ใจกลางเมืองขอนแก่นแทน ซึ่งอาจทำให้แผนเดินทางคลาดเคลื่อนจากที่พักจริง</p>
+                <p style={{ fontSize: 11.5, color: '#626863', margin: '8px 0 18px' }}>{derived.startPointView.emptyHint}</p>
               )}
-              <label style={{ fontSize: 13, fontWeight: 700, color: '#1B5E20', display: 'block', marginBottom: 6 }}>มีสถานที่ที่อยากไปแน่ๆ มั้ย? (ถ้ามี)</label>
-              {derived.mustGoChipsView.length > 0 && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
-                  {derived.mustGoChipsView.map((chip) => (
-                    <span key={chip.name} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#E8F5E9', color: '#1B5E20', border: '1px solid #C8E6C9', borderRadius: 16, padding: '5px 6px 5px 12px', fontSize: 13, fontWeight: 700 }}>
-                      {chip.name}
-                      <button type="button" onClick={chip.onRemove} aria-label={`ลบ ${chip.name}`} style={{ background: 'transparent', border: 'none', color: '#2E7D32', cursor: 'pointer', fontSize: 15, lineHeight: 1, padding: '0 4px', display: 'inline-flex', alignItems: 'center' }}><X size={14} strokeWidth={2.6} /></button>
-                    </span>
-                  ))}
+
+              {/* Where the last day ends (chatbot-service trip_end): back at
+                  the start by default, or a departure / another district.
+                  Next to the stay so the whole journey is set in one place. */}
+              <label style={{ fontSize: 13, fontWeight: 700, color: '#1B5E20', display: 'block', marginBottom: 2 }}>วันสุดท้ายจบที่ไหน?</label>
+              <p style={{ fontSize: 11.5, color: '#626863', margin: '0 0 10px' }}>ต้องไปขึ้นเครื่อง ขึ้นรถ หรือเดินทางต่อไปอำเภออื่น? น้องไดโนจะจัดวันสุดท้ายให้ผ่านทางและไปถึงทันเวลา</p>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {derived.tripEndOptionsView.map((opt) => (
+                  <button
+                    key={opt.kind} type="button" onClick={opt.onClick} aria-pressed={opt.active}
+                    style={{ borderRadius: 999, padding: '7px 14px', cursor: 'pointer', transition: 'all 0.2s ease', border: `2px solid ${opt.borderColor}`, background: opt.bg, color: opt.color, fontSize: 12.5, fontWeight: 700 }}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              {derived.tripEndView.kind === 'district' && (
+                <div style={{ marginTop: 12 }}>
+                  <select value={derived.tripEndView.district} onChange={actions.onTripEndDistrictChange} aria-label="อำเภอที่จะไปจบทริป" style={{ width: '100%', border: '1px solid #DCD8C6', borderRadius: 10, padding: 11, fontSize: 14, background: '#fff' }}>
+                    <option value="">เลือกอำเภอ</option>
+                    {derived.tripEndView.districts.map((d) => <option key={d} value={d}>{d}</option>)}
+                  </select>
                 </div>
               )}
-              <div style={{ position: 'relative' }}>
-                <input
-                  value={state.mustGoQuery}
-                  onChange={actions.onMustGoQueryChange}
-                  onKeyDown={actions.onMustGoKeyDown}
-                  placeholder="พิมพ์ค้นหาสถานที่ แล้วกด Enter หรือเลือกจากรายการ"
-                  style={{ width: '100%', border: '1px solid #DCD8C6', borderRadius: 10, padding: 11, fontSize: 14 }}
-                />
-                {derived.mustGoSuggestionsView.length > 0 && (
-                  <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4, background: '#fff', border: '1px solid #E7E3D2', borderRadius: 12, boxShadow: '0 12px 28px rgba(46,125,50,0.14)', zIndex: 5, overflow: 'hidden' }}>
-                    {derived.mustGoSuggestionsView.map((sug) => (
-                      <div key={sug.id} onClick={sug.onClick} style={{ padding: '10px 14px', cursor: 'pointer', fontSize: 13.5, display: 'flex', justifyContent: 'space-between', gap: 10, borderBottom: '1px solid #F1F1EA' }}>
-                        <span style={{ fontWeight: 700, color: '#1f2a24' }}>{sug.name}</span>
-                        <span style={{ color: '#626863', fontSize: 12 }}>{sug.category}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+              {derived.tripEndView.kind === 'pin' && (
+                <div style={{ marginTop: 12 }}>
+                  <LocationPicker
+                    value={derived.tripEndView.pin?.lat != null ? { lat: derived.tripEndView.pin.lat, lng: derived.tripEndView.pin.lng } : null}
+                    onChange={actions.onTripEndPinChange}
+                    onSelectPlace={actions.onTripEndPinSelect}
+                    height={160}
+                    showCoordinates={false}
+                  />
+                  {derived.tripEndView.pin?.lat != null && (
+                    <p style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12.5, color: '#2E7D32', fontWeight: 700, margin: '8px 0 0' }}>
+                      <span style={{ transform: 'scale(0.6)', display: 'flex' }}><PinIcon box={false} /></span>
+                      {derived.tripEndView.pin.name || 'ปักหมุดไว้แล้ว'}
+                    </p>
+                  )}
+                </div>
+              )}
+              {derived.tripEndView.timeLabel && (
+                <div style={{ marginTop: 12, maxWidth: 260 }}>
+                  <label style={{ fontSize: 12.5, fontWeight: 700, color: '#1B5E20', display: 'block', marginBottom: 6 }}>{derived.tripEndView.timeLabel}</label>
+                  <input type="time" value={derived.tripEndView.time} onChange={actions.onTripEndTimeChange} style={{ width: '100%', border: '1px solid #DCD8C6', borderRadius: 10, padding: 11, fontSize: 14 }} />
+                </div>
+              )}
+              {derived.tripEndView.hint && (
+                <p style={{ fontSize: 12.5, color: '#2E7D32', margin: '8px 0 0' }}>{derived.tripEndView.hint}</p>
+              )}
             </>
           )}
 
@@ -155,6 +184,38 @@ export default function TripFormPage() {
                     <span style={{ fontSize: 13, fontWeight: 700, color: opt.color }}>{opt.label}</span>
                   </div>
                 ))}
+              </div>
+
+              <h2 style={{ fontSize: 17, fontWeight: 800, color: '#1B5E20', margin: '26px 0 4px' }}>มีสถานที่ที่อยากไปแน่ๆ มั้ย?</h2>
+              <p style={{ color: '#626863', fontSize: 13, margin: '0 0 12px' }}>ถ้ามี น้องไดโนจะใส่ให้ในทริปก่อนที่อื่น</p>
+              {derived.mustGoChipsView.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+                  {derived.mustGoChipsView.map((chip) => (
+                    <span key={chip.name} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#E8F5E9', color: '#1B5E20', border: '1px solid #C8E6C9', borderRadius: 16, padding: '5px 6px 5px 12px', fontSize: 13, fontWeight: 700 }}>
+                      {chip.name}
+                      <button type="button" onClick={chip.onRemove} aria-label={`ลบ ${chip.name}`} style={{ background: 'transparent', border: 'none', color: '#2E7D32', cursor: 'pointer', fontSize: 15, lineHeight: 1, padding: '0 4px', display: 'inline-flex', alignItems: 'center' }}><X size={14} strokeWidth={2.6} /></button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div style={{ position: 'relative' }}>
+                <input
+                  value={state.mustGoQuery}
+                  onChange={actions.onMustGoQueryChange}
+                  onKeyDown={actions.onMustGoKeyDown}
+                  placeholder="พิมพ์ค้นหาสถานที่ แล้วกด Enter หรือเลือกจากรายการ"
+                  style={{ width: '100%', border: '1px solid #DCD8C6', borderRadius: 10, padding: 11, fontSize: 14 }}
+                />
+                {derived.mustGoSuggestionsView.length > 0 && (
+                  <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4, background: '#fff', border: '1px solid #E7E3D2', borderRadius: 12, boxShadow: '0 12px 28px rgba(46,125,50,0.14)', zIndex: 5, overflow: 'hidden' }}>
+                    {derived.mustGoSuggestionsView.map((sug) => (
+                      <div key={sug.id} onClick={sug.onClick} style={{ padding: '10px 14px', cursor: 'pointer', fontSize: 13.5, display: 'flex', justifyContent: 'space-between', gap: 10, borderBottom: '1px solid #F1F1EA' }}>
+                        <span style={{ fontWeight: 700, color: '#1f2a24' }}>{sug.name}</span>
+                        <span style={{ color: '#626863', fontSize: 12 }}>{sug.category}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </>
           )}

@@ -99,12 +99,57 @@ def meal_food_kinds(food_preferences) -> List[str]:
     ]
 
 
+# Where the trip's last day ends when it isn't the accommodation (the trip
+# form's "วันสุดท้ายจบที่"): a transport hub (coordinates in trip_ends.py), an
+# อำเภอ (centre worked out from `places`), or a pin. See trip_ends.py.
+TRIP_END_KINDS = ("airport", "bus", "train", "district", "pin")
+
+
+class TripEnd(BaseModel):
+    kind: str = Field(max_length=20)
+    # อำเภอ name for "district" (as in places.district, e.g. "ชุมแพ"); a label
+    # for "pin". Ignored for the hubs, which have their own names.
+    name: Optional[str] = Field(default=None, max_length=200)
+    lat: Optional[float] = Field(default=None, ge=-90, le=90)
+    lng: Optional[float] = Field(default=None, ge=-180, le=180)
+    # Departure time (flight / bus / train) or, for a district/pin, when to be
+    # there. None = the day's normal end_time.
+    time: Optional[str] = Field(default=None, max_length=10)
+
+    @field_validator("kind")
+    @classmethod
+    def _known_kind(cls, value: str) -> str:
+        if value not in TRIP_END_KINDS:
+            raise ValueError(f"trip_end.kind must be one of {TRIP_END_KINDS}")
+        return value
+
+    @field_validator("time")
+    @classmethod
+    def _is_a_time(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None:
+            try:
+                datetime.strptime(value, "%H:%M")
+            except ValueError:
+                raise ValueError("trip_end.time must be HH:MM")
+        return value
+
+    @model_validator(mode="after")
+    def _has_a_location(self) -> "TripEnd":
+        if self.kind == "pin" and (self.lat is None or self.lng is None):
+            raise ValueError("trip_end of kind 'pin' needs lat and lng")
+        if self.kind == "district" and not (self.name or "").strip():
+            raise ValueError("trip_end of kind 'district' needs a name")
+        return self
+
+
 class TripInput(BaseModel):
     # Field caps exist because this endpoint is public and these values are
     # interpolated into the LLM prompt (billed per token). The frontend already
     # limits trips to 7 days; the server cap is looser so it never rejects a
     # legitimate request, only abuse.
-    trip_duration_days: int = Field(ge=1, le=14)
+    # The form offers 1-5 days (frontend seed.js MAX_TRIP_DAYS); a 5-day plan
+    # already takes ~90 s. 7 leaves slack for saved/older requests.
+    trip_duration_days: int = Field(ge=1, le=7)
     start_date: str = Field(max_length=10)
     accommodation_name: str = Field(max_length=200)
     # Real coordinates from the frontend's Google Maps search (LocationPicker)
@@ -125,6 +170,8 @@ class TripInput(BaseModel):
     area_scope: str = Field(default="ทั่วขอนแก่น", max_length=30)  # เมือง | ทั่วขอนแก่น -- matches the frontend's areaScopeList directly
     start_time: str = Field(default="09:00", max_length=10)
     end_time: str = Field(default="18:00", max_length=10)
+    # None = the last day ends back at the accommodation, like every other day.
+    trip_end: Optional[TripEnd] = None
 
     # Everything below is parsed with strptime further down (orchestrator,
     # llm_extractor): a malformed value used to surface there as a 500, and an

@@ -10,6 +10,7 @@ import FilterPill from '../components/FilterPill.jsx'
 import { fetchAdminTrips, fetchAdminTrip, deleteAdminTrip } from '../lib/apiClient.js'
 import { usePagedList } from '../lib/usePagedList.js'
 import { fmtDate, fmtDateTime } from '../lib/format.js'
+import { tripEndOptions } from '../data/seed.js'
 import AdminPageHeader from './ui/AdminPageHeader.jsx'
 import Badge from './ui/Badge.jsx'
 import Button from './ui/Button.jsx'
@@ -25,6 +26,15 @@ const OWNER_FILTERS = [
   { value: 'anonymous', label: 'ไม่ได้เข้าสู่ระบบ' },
 ]
 const CLOSED_LABEL = { CLOSED_PERMANENTLY: 'ปิดถาวร', CLOSED_TEMPORARILY: 'ปิดชั่วคราว' }
+
+// input.trip_end (chatbot-service TripInput) as one line; null = back at the hotel.
+const tripEndText = (te) => {
+  if (!te) return null
+  const where = te.kind === 'district' ? `อำเภอ${te.name || ''}`
+    : te.kind === 'pin' ? (te.name || 'จุดที่ปักหมุด')
+    : tripEndOptions.find((o) => o.kind === te.kind)?.label || te.kind
+  return te.time ? `${where} (${te.time})` : where
+}
 // trip_pace is stored as the English key TripFormPage's paceList uses
 // (relaxed/standard/packed, see chatbot-service's models.py) -- shown here in
 // the same Thai labels the tourist picked from, not the raw key.
@@ -72,7 +82,8 @@ function TripDetail({ trip }) {
         <InfoRow label="ความสนใจ">{(input.interests || []).join(', ') || null}</InfoRow>
         <InfoRow label="อยากกิน">{(input.food_preferences || []).join(', ') || null}</InfoRow>
         <InfoRow label="ต้องไปแน่ๆ">{(input.must_go || []).join(', ') || null}</InfoRow>
-        <InfoRow label="ที่พัก">{input.accommodation_name || null}</InfoRow>
+        <InfoRow label="จุดเริ่มต้น (ที่พัก/บ้าน)">{input.accommodation_name || null}</InfoRow>
+        <InfoRow label="วันสุดท้ายจบที่">{tripEndText(input.trip_end)}</InfoRow>
         <InfoRow label="ระยะทางรวม">{trip.totalDistanceKm} กม.</InfoRow>
         <InfoRow label="ค่าใช้จ่ายโดยประมาณ">฿{Math.round(trip.totalCostEstimate).toLocaleString('th-TH')}</InfoRow>
         <InfoRow label="สร้างเมื่อ">{fmtDateTime(trip.createdAt)}</InfoRow>
@@ -90,7 +101,8 @@ function TripDetail({ trip }) {
               <div key={it.id} className="ad-day__item">
                 <span className="ad-day__time">{it.arrivalTime}{it.departureTime !== it.arrivalTime ? ` – ${it.departureTime}` : ''}</span>
                 <span className="ad-day__name">{it.place?.name || it.placeName}</span>
-                {it.kind === 'hotel' && <Badge>กลับที่พัก</Badge>}
+                {it.kind === 'hotel' && <Badge>กลับจุดเริ่มต้น</Badge>}
+                {it.kind === 'trip_end' && <Badge>จบทริป</Badge>}
                 {it.kind === 'free_time' && <Badge>เวลาว่าง</Badge>}
                 {issue && <IssueBadge>{issue}</IssueBadge>}
                 {it.liked === true && <Badge tone="success">ถูกใจ</Badge>}

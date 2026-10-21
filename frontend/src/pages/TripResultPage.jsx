@@ -68,7 +68,7 @@ export default function TripResultPage() {
   // The plan's places carry no Google place id, but the "open in Google Maps"
   // links need it to land on the real Maps listing -- one batched lookup per plan.
   const [googleIds, setGoogleIds] = useState({})
-  const planPlaceIds = [...new Set((state.tripPlan?.days || []).flatMap((d) => d.items.map((i) => i.place?.id)).filter((v) => v && !/^(hotel_dummy|free_time_dummy|removed_)/.test(v)))]
+  const planPlaceIds = [...new Set((state.tripPlan?.days || []).flatMap((d) => d.items.map((i) => i.place?.id)).filter((v) => v && !/^(hotel_dummy|trip_end|free_time_dummy|removed_)/.test(v)))]
   const planPlaceIdsKey = planPlaceIds.join(',')
   useEffect(() => {
     if (!planPlaceIdsKey) return undefined
@@ -138,7 +138,10 @@ export default function TripResultPage() {
               <div style={{ padding: '0 16px 16px', display: 'grid', gap: 8, fontSize: 12.5 }}>
                 <SummaryRow label="วันที่" value={derived.tripFormSummaryView.dateRangeLabel} />
                 <SummaryRow label="ช่วงเวลาต่อวัน" value={`${derived.tripFormSummaryView.dailyStart} - ${derived.tripFormSummaryView.dailyEnd}`} />
-                <SummaryRow label="ที่พัก" value={derived.tripFormSummaryView.accommodationLabel || 'ไม่ได้ระบุ (ใช้ใจกลางเมือง)'} />
+                <SummaryRow label={derived.tripFormSummaryView.accommodationTitle} value={derived.tripFormSummaryView.accommodationLabel || 'ไม่ได้ระบุ (ใช้ใจกลางเมือง)'} />
+                {derived.tripFormSummaryView.tripEndLabel && (
+                  <SummaryRow label="วันสุดท้ายจบที่" value={derived.tripFormSummaryView.tripEndLabel} />
+                )}
                 <SummaryRow label="ความสนใจ" value={derived.tripFormSummaryView.interests.length ? derived.tripFormSummaryView.interests.join(', ') : 'ไม่ได้เลือก'} />
                 <SummaryRow label="อยากกิน" value={derived.tripFormSummaryView.foodPrefs.length ? derived.tripFormSummaryView.foodPrefs.join(', ') : 'ไม่ได้เลือก'} />
                 <SummaryRow label="งบประมาณ" value={derived.tripFormSummaryView.budget} />

@@ -251,6 +251,13 @@ class TestAccommodationLocation:
         assert accommodation.lat == orchestrator_module.DEFAULT_HOTEL_LOCATION["lat"]
         assert accommodation.lng == orchestrator_module.DEFAULT_HOTEL_LOCATION["lng"]
 
+    def test_blank_accommodation_still_has_a_name(self, service):
+        # The form's "where are you staying" left empty: the closing slot is
+        # saved with a name (backend tripPayload.js requires one).
+        service.retriever = FakeRetriever([])
+        accommodation, _, _, _ = service.build_candidate_list(make_user_input(accommodation_name=""))
+        assert accommodation.name == "ใจกลางเมืองขอนแก่น"
+
 
 def daily_hours(open_h, close_h=23):
     """hours_periods for a place open every day from open_h to close_h:59."""

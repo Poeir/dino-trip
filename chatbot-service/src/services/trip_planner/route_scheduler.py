@@ -13,6 +13,7 @@ from datetime import date, datetime, time, timedelta
 from typing import Dict, List, Optional, Tuple
 
 from .models import DailyItinerary, Place, TimeSlot
+from .trip_ends import TRIP_END_STATUS
 
 logger = logging.getLogger(__name__)
 
@@ -750,10 +751,16 @@ def open_for_meal(
     return False
 
 
+def _day_end(hotel: Optional[Place], end_loc: Optional[Place]) -> Optional[Place]:
+    """Where the day's last drive goes: `end_loc` (the trip's end point, on
+    its last day -- see trip_ends.py) or else back to `hotel`."""
+    return end_loc if end_loc is not None else hotel
+
+
 def _simulate_day_walk(
     ordered_places: List[Place], hotel: Place, day_date: date,
     start_dt: datetime, end_dt_bound: datetime, pace: str,
-    meal_roles: Optional[Dict[str, str]] = None,
+    meal_roles: Optional[Dict[str, str]] = None, end_loc: Optional[Place] = None,
 ) -> List[dict]:
     """Walk `ordered_places` in the given order starting from `hotel` at
     `start_dt`. Returns one dict per stop that's actually feasible (arrives
@@ -767,8 +774,11 @@ def _simulate_day_walk(
     hours, a lunch/dinner `meal_roles` window, an evening-only place) so the
     two can't drift apart. It used to wait for opening hours only: a "dinner"
     pick was planned at 15:00, the afternoon looked full to ordering and
-    backfill, then the real schedule held it to 17:30 and dropped it."""
+    backfill, then the real schedule held it to 17:30 and dropped it.
+
+    `end_loc`, when given, is where the day ends instead of `hotel`."""
     stops = []
+    end = _day_end(hotel, end_loc)
     current_loc = hotel
     current_dt = start_dt
     has_dinner = _day_has_dinner(ordered_places, meal_roles)
@@ -785,7 +795,7 @@ def _simulate_day_walk(
         if open_info["status"] in ("Closed", "Closed Today"):
             continue
 
-        forced_window = _forced_window(place, meal_roles, end_dt_bound, hotel, pace, has_dinner)
+        forced_window = _forced_window(place, meal_roles, end_dt_bound, end, pace, has_dinner)
         wait_min = _gap_minutes(place, arrival_at_door, forced_window, open_info)
         start_activity_dt = arrival_at_door + timedelta(minutes=wait_min)
         if start_activity_dt >= end_dt_bound:
@@ -810,9 +820,9 @@ def _simulate_day_walk(
     # bound-checked anywhere. Trim from the end until the day can actually
     # get back to the hotel by end_dt_bound; may cascade (the new last stop
     # can itself be too far) so this repeats, not just runs once.
-    while stops and hotel:
+    while stops and end:
         last = stops[-1]
-        return_travel = travel_minutes(calculate_distance(last["place"], hotel))
+        return_travel = travel_minutes(calculate_distance(last["place"], end))
         if last["departure_dt"] + timedelta(minutes=return_travel) <= end_dt_bound:
             break
         visit = _fit_last_stop_visit(
@@ -828,9 +838,9 @@ def _simulate_day_walk(
 def _route_cost(
     route: List[Place], hotel: Place, day_date: date,
     start_dt: datetime, end_dt_bound: datetime, pace: str,
-    meal_roles: Dict[str, str],
+    meal_roles: Dict[str, str], end_loc: Optional[Place] = None,
 ) -> float:
-    stops = _simulate_day_walk(route, hotel, day_date, start_dt, end_dt_bound, pace, meal_roles)
+    stops = _simulate_day_walk(route, hotel, day_date, start_dt, end_dt_bound, pace, meal_roles, end_loc)
     surviving_ids = {s["place"].id for s in stops}
     total = DROPPED_STOP_PENALTY * sum(1 for p in route if p.id not in surviving_ids)
     prev_category = None
@@ -863,9 +873,12 @@ def _route_cost(
     # real trip a must-go restaurant 0.1 km from the hotel was used at lunch
     # while an evening-only one 6.7 km away closed the day, because the only
     # check on the way home was "does it still arrive by end_time". Only the
-    # last SURVIVING stop is the one actually driven home from.
-    if stops and hotel:
-        total += calculate_distance(stops[-1]["place"], hotel) * DISTANCE_WEIGHT
+    # last SURVIVING stop is the one actually driven home from. With an
+    # `end_loc` (the trip's end point) this same leg is what orders the last
+    # day toward it.
+    end = _day_end(hotel, end_loc)
+    if stops and end:
+        total += calculate_distance(stops[-1]["place"], end) * DISTANCE_WEIGHT
     return total
 
 
@@ -873,6 +886,7 @@ def _cheapest_insert_remaining(
     route: List[Place], remaining: List[Place], hotel: Place, day_date: date,
     start_dt: datetime, end_dt_bound: datetime, pace: str, meal_roles: Dict[str, str],
     min_insert_pos: int, orig_index: Dict[str, int], label: str = "",
+    end_loc: Optional[Place] = None,
 ) -> List[Place]:
     """Repeatedly insert the (place, position) pair from `remaining` with
     the lowest cost into `route`, until every place in `remaining` is
@@ -884,7 +898,7 @@ def _cheapest_insert_remaining(
     of feasible daylight ahead of a place the user explicitly required."""
     remaining = list(remaining)
     while remaining:
-        baseline_ids = {s["place"].id for s in _simulate_day_walk(route, hotel, day_date, start_dt, end_dt_bound, pace, meal_roles)}
+        baseline_ids = {s["place"].id for s in _simulate_day_walk(route, hotel, day_date, start_dt, end_dt_bound, pace, meal_roles, end_loc)}
         best_key = None
         best_place = None
         best_pos = None
@@ -892,10 +906,10 @@ def _cheapest_insert_remaining(
             natural_pos = sum(1 for r in route if orig_index.get(r.id, 0) < orig_index.get(place.id, 0))
             for pos in range(min_insert_pos, len(route) + 1):
                 candidate = route[:pos] + [place] + route[pos:]
-                survive_ids = {s["place"].id for s in _simulate_day_walk(candidate, hotel, day_date, start_dt, end_dt_bound, pace, meal_roles)}
+                survive_ids = {s["place"].id for s in _simulate_day_walk(candidate, hotel, day_date, start_dt, end_dt_bound, pace, meal_roles, end_loc)}
                 if place.id not in survive_ids or not baseline_ids.issubset(survive_ids):
                     continue  # infeasible, or would evict an already-committed stop
-                cost = _route_cost(candidate, hotel, day_date, start_dt, end_dt_bound, pace, meal_roles)
+                cost = _route_cost(candidate, hotel, day_date, start_dt, end_dt_bound, pace, meal_roles, end_loc)
                 key = (round(cost, 6), abs(pos - natural_pos), orig_index.get(place.id, 0))
                 if best_key is None or key < best_key:
                     best_key, best_place, best_pos = key, place, pos
@@ -995,6 +1009,7 @@ def order_day_stops(
     day_places: List[Place], hotel: Place, day_date: date,
     start_time_of_day: time, end_time_of_day: time, pace: str,
     meal_roles: Optional[Dict[str, str]] = None, must_go_ids: Optional[set] = None,
+    end_loc: Optional[Place] = None,
 ) -> List[Place]:
     """Order one day's places using real geography and real opening hours:
     fixed-time anchors (narrow real opening windows) are placed first as a
@@ -1085,19 +1100,19 @@ def order_day_stops(
     rest = [p for p in flexible if p.id not in must_go_ids and p.id not in meal_ids]
     route = _cheapest_insert_remaining(
         route, priority, hotel, day_date, start_dt, end_dt_bound, pace, meal_roles,
-        min_insert_pos, orig_index, label="MUST-GO ",
+        min_insert_pos, orig_index, label="MUST-GO ", end_loc=end_loc,
     )
     route = _cheapest_insert_remaining(
         route, meals, hotel, day_date, start_dt, end_dt_bound, pace, meal_roles,
-        min_insert_pos, orig_index, label="MEAL ",
+        min_insert_pos, orig_index, label="MEAL ", end_loc=end_loc,
     )
     route = _cheapest_insert_remaining(
         route, rest, hotel, day_date, start_dt, end_dt_bound, pace, meal_roles,
-        min_insert_pos, orig_index,
+        min_insert_pos, orig_index, end_loc=end_loc,
     )
 
     anchor_ids = {p.id for p, _ in anchors if p in route}
-    return _or_opt_polish(route, anchor_ids, hotel, day_date, start_dt, end_dt_bound, pace, meal_roles)
+    return _or_opt_polish(route, anchor_ids, hotel, day_date, start_dt, end_dt_bound, pace, meal_roles, end_loc=end_loc)
 
 
 def _auto_added_ok(walk: List[dict], at: int, meal_roles: Optional[Dict[str, str]]) -> bool:
@@ -1120,6 +1135,7 @@ def _or_opt_polish(
     route: List[Place], anchor_ids: set, hotel: Place, day_date: date,
     start_dt: datetime, end_dt_bound: datetime, pace: str,
     meal_roles: Dict[str, str], auto_added_ids: Optional[set] = None,
+    end_loc: Optional[Place] = None,
 ) -> List[Place]:
     """Single-stop relocation local search: try moving each non-anchor stop
     to every other position, keep the move if it strictly reduces total
@@ -1131,7 +1147,7 @@ def _or_opt_polish(
     def keeps_auto_added_ok(candidate: List[Place]) -> bool:
         if not auto_added_ids:
             return True
-        walk = _simulate_day_walk(candidate, hotel, day_date, start_dt, end_dt_bound, pace, meal_roles)
+        walk = _simulate_day_walk(candidate, hotel, day_date, start_dt, end_dt_bound, pace, meal_roles, end_loc)
         return all(_auto_added_ok(walk, i, meal_roles) for i, s in enumerate(walk) if s["place"].id in auto_added_ids)
 
     # Same rule as the insertion phase: never relocate a stop to position 0
@@ -1145,12 +1161,12 @@ def _or_opt_polish(
             if place.id in anchor_ids:
                 continue
             without = route[:i] + route[i + 1:]
-            base_cost = _route_cost(route, hotel, day_date, start_dt, end_dt_bound, pace, meal_roles)
+            base_cost = _route_cost(route, hotel, day_date, start_dt, end_dt_bound, pace, meal_roles, end_loc)
             for pos in range(min_pos, len(without) + 1):
                 if pos == i:
                     continue
                 candidate = without[:pos] + [place] + without[pos:]
-                cost = _route_cost(candidate, hotel, day_date, start_dt, end_dt_bound, pace, meal_roles)
+                cost = _route_cost(candidate, hotel, day_date, start_dt, end_dt_bound, pace, meal_roles, end_loc)
                 if cost < base_cost - 1e-6 and keeps_auto_added_ok(candidate):
                     route = candidate
                     improved = True
@@ -1209,6 +1225,7 @@ def _find_best_backfill_insertion(
     route: List[Place], hotel: Place, day_date: date,
     start_dt: datetime, end_dt_bound: datetime, pace: str,
     meal_roles: Dict[str, str], backfill_pool: List[Place],
+    end_loc: Optional[Place] = None,
 ) -> Tuple[Optional[Place], Optional[int]]:
     """Cheapest (place, position) to insert from `backfill_pool` into
     `route`, or (None, None) if nothing in the pool fits anywhere without
@@ -1216,7 +1233,7 @@ def _find_best_backfill_insertion(
     backfill_underfilled_day (saturates one day) and
     backfill_underfilled_trip (spreads insertions across days) so the two
     can't drift apart on what counts as a valid insertion."""
-    baseline_walk = _simulate_day_walk(route, hotel, day_date, start_dt, end_dt_bound, pace, meal_roles)
+    baseline_walk = _simulate_day_walk(route, hotel, day_date, start_dt, end_dt_bound, pace, meal_roles, end_loc)
     baseline_ids = {s["place"].id for s in baseline_walk}
     baseline_late = _meal_lateness(baseline_walk, meal_roles)
     for tier in _filler_tiers(backfill_pool):
@@ -1228,7 +1245,7 @@ def _find_best_backfill_insertion(
                 continue  # this day already has CATEGORY_DAILY_CAP of place.category
             for pos in range(len(route) + 1):
                 candidate = route[:pos] + [place] + route[pos:]
-                walk = _simulate_day_walk(candidate, hotel, day_date, start_dt, end_dt_bound, pace, meal_roles)
+                walk = _simulate_day_walk(candidate, hotel, day_date, start_dt, end_dt_bound, pace, meal_roles, end_loc)
                 survive_ids = {s["place"].id for s in walk}
                 if place.id not in survive_ids or not baseline_ids.issubset(survive_ids):
                     continue  # infeasible, or would evict an already-committed stop
@@ -1237,7 +1254,7 @@ def _find_best_backfill_insertion(
                 at = next(i for i, s in enumerate(walk) if s["place"].id == place.id)
                 if not _auto_added_ok(walk, at, meal_roles):
                     continue  # e.g. a market at an hour nobody goes to it
-                cost = _route_cost(candidate, hotel, day_date, start_dt, end_dt_bound, pace, meal_roles)
+                cost = _route_cost(candidate, hotel, day_date, start_dt, end_dt_bound, pace, meal_roles, end_loc)
                 key = (round(cost, 6), place.id)
                 if best_key is None or key < best_key:
                     best_key, best_place, best_pos = key, place, pos
@@ -1249,7 +1266,7 @@ def _find_best_backfill_insertion(
 def backfill_underfilled_day(
     route: List[Place], meal_roles: Dict[str, str], hotel: Place,
     day_date: date, start_time_of_day: time, end_time_of_day: time, pace: str,
-    backfill_pool: List[Place],
+    backfill_pool: List[Place], end_loc: Optional[Place] = None,
 ) -> List[Place]:
     """Deterministic backstop for when the LLM under-selects places for a
     day (see orchestrator.py's candidate-quota sizing): route ordering and
@@ -1279,12 +1296,12 @@ def backfill_underfilled_day(
     added_ids = set()
 
     while len(route) < MAX_STOPS_PER_DAY:
-        stops = _simulate_day_walk(route, hotel, day_date, start_dt, end_dt_bound, pace, meal_roles)
+        stops = _simulate_day_walk(route, hotel, day_date, start_dt, end_dt_bound, pace, meal_roles, end_loc)
         if _largest_gap_minutes(stops, start_dt, end_dt_bound) < UNDERFILLED_GAP_MINUTES:
             break
 
         best_place, best_pos = _find_best_backfill_insertion(
-            route, hotel, day_date, start_dt, end_dt_bound, pace, meal_roles, backfill_pool,
+            route, hotel, day_date, start_dt, end_dt_bound, pace, meal_roles, backfill_pool, end_loc,
         )
         if best_place is None:
             break  # nothing in the pool fits the remaining gap
@@ -1297,6 +1314,7 @@ def backfill_underfilled_day(
     anchor_ids = {p.id for p in route if find_anchor_window(p, day_date)}
     return _or_opt_polish(
         route, anchor_ids, hotel, day_date, start_dt, end_dt_bound, pace, meal_roles, auto_added_ids=added_ids,
+        end_loc=end_loc,
     )
 
 
@@ -1305,6 +1323,9 @@ def backfill_underfilled_trip(
     hotel: Place, start_time_of_day: time, end_time_of_day: time, pace: str,
     backfill_pool: List[Place],
     stop_range: Optional[Tuple[int, int]] = None,
+    day_windows: Optional[Dict[int, Tuple[time, time]]] = None,
+    end_locs: Optional[Dict[int, Place]] = None,
+    stop_ranges: Optional[Dict[int, Tuple[int, int]]] = None,
 ) -> Dict[int, List[Place]]:
     """Cross-day counterpart of backfill_underfilled_day: each round finds
     the single day with the largest idle gap across the WHOLE trip (not
@@ -1326,12 +1347,20 @@ def backfill_underfilled_trip(
     `stop_range` is pace_stop_range's (min, max) attractions per day. A day
     below the min is backfilled regardless of how small its gaps are (the
     pace's floor), and a day already at the max is never topped up, even to
-    close a large gap (the pace's cap). None keeps the gap-only behavior."""
+    close a large gap (the pace's cap). None keeps the gap-only behavior.
+
+    Per-day overrides, for a trip whose last day differs (trip_ends.py):
+    `day_windows` (start, end) instead of start/end_time_of_day, `end_locs`
+    where a day ends instead of `hotel`, `stop_ranges` instead of
+    `stop_range`."""
     if not backfill_pool:
         return routes
 
-    start_dts = {d: datetime.combine(day_dates[d], start_time_of_day) for d in routes}
-    end_dts = {d: datetime.combine(day_dates[d], end_time_of_day) for d in routes}
+    day_windows = day_windows or {}
+    end_locs = end_locs or {}
+    stop_ranges = stop_ranges or {}
+    start_dts = {d: datetime.combine(day_dates[d], day_windows.get(d, (start_time_of_day, end_time_of_day))[0]) for d in routes}
+    end_dts = {d: datetime.combine(day_dates[d], day_windows.get(d, (start_time_of_day, end_time_of_day))[1]) for d in routes}
     added_ids: Dict[int, set] = {}
     # Days where nothing in the pool fits anymore -- without this, a day
     # that's out of feasible insertions but still has the largest gap would
@@ -1344,10 +1373,14 @@ def backfill_underfilled_trip(
             if day_num in stuck_days or len(route) >= MAX_STOPS_PER_DAY:
                 continue
             count = attraction_count(route)
-            if stop_range and count >= stop_range[1]:
+            day_range = stop_ranges.get(day_num, stop_range)
+            if day_range and count >= day_range[1]:
                 continue  # pace cap reached
-            below_min = bool(stop_range) and count < stop_range[0]
-            stops = _simulate_day_walk(route, hotel, day_dates[day_num], start_dts[day_num], end_dts[day_num], pace, meal_roles)
+            below_min = bool(day_range) and count < day_range[0]
+            stops = _simulate_day_walk(
+                route, hotel, day_dates[day_num], start_dts[day_num], end_dts[day_num], pace, meal_roles,
+                end_locs.get(day_num),
+            )
             gap = _largest_gap_minutes(stops, start_dts[day_num], end_dts[day_num])
             # Days under the pace floor outrank days that merely have a gap.
             if best_day is None or (below_min, gap) > (best_below_min, best_gap):
@@ -1358,7 +1391,7 @@ def backfill_underfilled_trip(
         route = routes[best_day]
         day_date, start_dt, end_dt_bound = day_dates[best_day], start_dts[best_day], end_dts[best_day]
         best_place, best_pos = _find_best_backfill_insertion(
-            route, hotel, day_date, start_dt, end_dt_bound, pace, meal_roles, backfill_pool,
+            route, hotel, day_date, start_dt, end_dt_bound, pace, meal_roles, backfill_pool, end_locs.get(best_day),
         )
         if best_place is None:
             stuck_days.add(best_day)  # this day's gap can't be closed with what's left -- try others
@@ -1372,6 +1405,7 @@ def backfill_underfilled_trip(
         routes[day_num] = _or_opt_polish(
             routes[day_num], anchor_ids, hotel, day_dates[day_num],
             start_dts[day_num], end_dts[day_num], pace, meal_roles, auto_added_ids=day_added,
+            end_loc=end_locs.get(day_num),
         )
     return routes
 
@@ -1675,12 +1709,13 @@ def materialize_day_schedule(
     max_attractions: Optional[int] = None,
     must_go_ids: Optional[set] = None,
     dropped: Optional[List[Tuple[Place, str]]] = None,
+    end_loc: Optional[Place] = None,
 ) -> Tuple[List[TimeSlot], float, int]:
     """Walk the already-ordered `route` and build the final TimeSlot list:
     real arrival/departure/wait times, per-stop fuel + place cost, and a
-    return-to-hotel leg at the end of every day (including the last -- a
-    trip's final day still ends back at the accommodation, same as every
-    other day).
+    return-to-hotel leg at the end of every day -- or, when `end_loc` is
+    given (the last day of a trip with a trip_end, see trip_ends.py), a leg
+    to that end point instead.
 
     Any gap > 45min before a stop is ready (closed, or waiting on its
     lunch/dinner/evening window) is filled with a real, nearby, currently-
@@ -1713,6 +1748,7 @@ def materialize_day_schedule(
     # shorten or undo a slot (kind is "stop", "filler" or "free").
     meta: List[dict] = []
     must_go_ids = must_go_ids or set()
+    end = _day_end(hotel, end_loc)
     current_loc = hotel
     current_dt = datetime.combine(day_date, start_time_of_day)
     end_dt_bound = datetime.combine(day_date, end_time_of_day)
@@ -1734,9 +1770,9 @@ def materialize_day_schedule(
         """Tail check (see docstring). True if a stop was dropped."""
         nonlocal current_loc, current_dt, day_cost, day_travel
         trimmed = dropped_stop = False
-        while meta and hotel:
+        while meta and end:
             last = meta[-1]
-            return_min = travel_minutes(calculate_distance(last["place"], hotel))
+            return_min = travel_minutes(calculate_distance(last["place"], end))
             if last["depart"] + timedelta(minutes=return_min) <= end_dt_bound:
                 break
             if last["kind"] == "free":
@@ -1805,7 +1841,7 @@ def materialize_day_schedule(
             note_drop(place, f"closed when reached at {arrival_at_door.strftime('%H:%M')}")
             continue
 
-        meal_window = _forced_window(place, meal_roles, end_dt_bound, hotel, pace, has_dinner)
+        meal_window = _forced_window(place, meal_roles, end_dt_bound, end, pace, has_dinner)
         # Two independent constraints can each push the start time later:
         # the place's own real opening hours (open_info "Waiting") and a
         # "lunch"/"dinner" meal_role's target window. _gap_minutes takes
@@ -1822,7 +1858,7 @@ def materialize_day_schedule(
         # (see _dinner_fill_until). The dinner never waits for that moment --
         # with nothing to fill it, it is seated as early as before -- and the
         # time past the real wait only ever goes to spare places.
-        fill_until = _dinner_fill_until(place, meal_roles, route[idx + 1:], end_dt_bound, hotel, pace, has_dinner)
+        fill_until = _dinner_fill_until(place, meal_roles, route[idx + 1:], end_dt_bound, end, pace, has_dinner)
 
         def fill_minutes() -> int:
             if fill_until is None:
@@ -1926,12 +1962,12 @@ def materialize_day_schedule(
 
         start_activity_dt = arrival_at_door + timedelta(minutes=wait_min)
         visit_min = get_visit_duration(place, pace, has_dinner)
-        if hotel and place is route[-1]:
+        if end and place is route[-1]:
             # Same end-of-day rule as _simulate_day_walk's trim loop. Only
             # ever shortens (a stop that doesn't fit even shortened keeps its
             # normal duration, as before this rule existed).
             fitted = _fit_last_stop_visit(
-                place, pace, start_activity_dt, travel_minutes(calculate_distance(place, hotel)), end_dt_bound,
+                place, pace, start_activity_dt, travel_minutes(calculate_distance(place, end)), end_dt_bound,
                 has_dinner,
             )
             if fitted is not None:
@@ -1959,19 +1995,19 @@ def materialize_day_schedule(
     trim_tail()
 
     # Whatever idle time is left goes into longer stays (see _stretch_stays).
-    _stretch_stays(schedule, meta, pace, hotel, end_dt_bound, has_dinner)
+    _stretch_stays(schedule, meta, pace, end, end_dt_bound, has_dinner)
     if meta:
         current_dt = meta[-1]["depart"]
 
-    if current_loc and hotel:
-        dist = calculate_distance(current_loc, hotel)
+    if current_loc and end:
+        dist = calculate_distance(current_loc, end)
         travel_min = travel_minutes(dist)
-        arrival_at_hotel = current_dt + timedelta(minutes=travel_min)
+        arrival_at_end = current_dt + timedelta(minutes=travel_min)
         schedule.append(TimeSlot(
-            place=hotel, arrival_time=arrival_at_hotel.strftime("%H:%M"),
-            departure_time=arrival_at_hotel.strftime("%H:%M"),
+            place=end, arrival_time=arrival_at_end.strftime("%H:%M"),
+            departure_time=arrival_at_end.strftime("%H:%M"),
             travel_time_min=travel_min, distance_km=round(dist, 2),
-            status="End of Day (Return to Hotel)", wait_time_min=0,
+            status=TRIP_END_STATUS if end_loc is not None else "End of Day (Return to Hotel)", wait_time_min=0,
         ))
         day_cost += dist * 4.0
         day_travel += travel_min
@@ -1985,20 +2021,22 @@ def build_day_itinerary(
     meal_roles: Optional[Dict[str, str]] = None,
     backfill_pool: Optional[List[Place]] = None,
     must_go_ids: Optional[set] = None,
+    end_loc: Optional[Place] = None,
 ) -> DailyItinerary:
     meal_roles = meal_roles or {}
     route = order_day_stops(
         day_places, hotel, day_date, start_time_of_day, end_time_of_day, pace, meal_roles,
-        must_go_ids=must_go_ids,
+        must_go_ids=must_go_ids, end_loc=end_loc,
     )
     if backfill_pool:
         route = backfill_underfilled_day(
             route, meal_roles, hotel, day_date, start_time_of_day, end_time_of_day, pace, backfill_pool,
+            end_loc=end_loc,
         )
     anchor_ids = {p.id for p in route if find_anchor_window(p, day_date)}
     schedule, day_cost, day_travel = materialize_day_schedule(
         route, anchor_ids, meal_roles, hotel, day_date, start_time_of_day, end_time_of_day, pace,
-        gap_filler_pool=backfill_pool, must_go_ids=must_go_ids,
+        gap_filler_pool=backfill_pool, must_go_ids=must_go_ids, end_loc=end_loc,
     )
     return DailyItinerary(
         day=day_num, date=day_date.strftime("%Y-%m-%d"), schedule=schedule,

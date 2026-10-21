@@ -3,10 +3,10 @@ import random
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from itertools import zip_longest
-from src.core.db import find_place_by_name
+from src.core.db import district_centre, find_place_by_name
 from src.services.rag.retriever import PlaceRetriever
 from .models import BREAKFAST_PREFERENCE, FOOD_PREFERENCES, Place, TripInput, TripSummary, DaySummary
-from . import route_scheduler
+from . import route_scheduler, trip_ends
 
 # Khon Kaen city center -- fallback location if the named accommodation isn't
 # found in `places` at all (same fallback the old project used).
@@ -92,14 +92,18 @@ def _proximity_score(row: dict, origin: Place | None) -> float:
     return 1.0 / (1.0 + route_scheduler.calculate_distance(origin, here) / PROXIMITY_HALF_KM)
 
 
-def _rerank(rows: list, origin: Place | None, rng: random.Random) -> list:
+def _rerank(rows: list, origin: Place | None, rng: random.Random, end_point: Place | None = None) -> list:
     """See RELEVANCE_TIER above. `origin` is None when the accommodation's
-    location isn't really known; popularity then decides alone."""
-    pop_w, prox_w = (POPULARITY_WEIGHT, PROXIMITY_WEIGHT) if origin else (1.0, 0.0)
+    location isn't really known; popularity then decides alone. With an
+    `end_point` (where the trip ends, trip_ends.py) a place close to either
+    counts as close, so the last day has places on the way to it."""
+    anchors = [p for p in (origin, end_point) if p is not None]
+    pop_w, prox_w = (POPULARITY_WEIGHT, PROXIMITY_WEIGHT) if anchors else (1.0, 0.0)
 
     def key(row):
         tier = math.floor((row.get("match_score") or 1.0) / RELEVANCE_TIER + 1e-9)
-        blend = pop_w * _popularity_score(row) + prox_w * _proximity_score(row, origin) + rng.uniform(0, RANK_JITTER)
+        proximity = max((_proximity_score(row, a) for a in anchors), default=0.0)
+        blend = pop_w * _popularity_score(row) + prox_w * proximity + rng.uniform(0, RANK_JITTER)
         return (-tier, -blend)
 
     return sorted(rows, key=key)
@@ -178,7 +182,12 @@ class TripBuilderService:
         self.retriever = PlaceRetriever()
         self.rng = rng or random.Random()
 
-    def build_candidate_list(self, user_input: TripInput):
+    def resolve_end_point(self, user_input: TripInput) -> Place | None:
+        """Where the last day ends (trip_ends.py), None = the accommodation."""
+        return trip_ends.resolve_trip_end(user_input.trip_end, district_centre)
+
+    def build_candidate_list(self, user_input: TripInput, end_point: Place | None = None):
+        # `end_point` (resolve_end_point): places near it rank as close too.
         # Real coordinates from the frontend's map picker/geolocation take
         # priority over name-matching -- find_place_by_name() only searches
         # the curated `places` table (tourist attractions/cafes/restaurants),
@@ -192,7 +201,8 @@ class TripBuilderService:
         if user_input.accommodation_lat is not None and user_input.accommodation_lng is not None:
             accommodation = origin = Place(
                 id="hotel_dummy",
-                name=user_input.accommodation_name or "ที่พัก",
+                # The form asks where each day starts: a hotel or a home.
+                name=user_input.accommodation_name or "จุดเริ่มต้น",
                 category="ที่พัก",
                 rating=4.5,
                 lat=user_input.accommodation_lat,
@@ -203,9 +213,12 @@ class TripBuilderService:
             if accommodation_row:
                 accommodation = origin = Place(**accommodation_row)
             else:
+                # Never a blank name: a saved trip needs one for this slot
+                # (backend tripPayload.js), and a blank "where are you staying"
+                # field used to fail the save.
                 accommodation = Place(
                     id="hotel_dummy",
-                    name=user_input.accommodation_name,
+                    name=(user_input.accommodation_name or "").strip() or "ใจกลางเมืองขอนแก่น",
                     category="ที่พัก",
                     rating=4.5,
                     lat=DEFAULT_HOTEL_LOCATION["lat"],
@@ -309,7 +322,7 @@ class TripBuilderService:
 
         interest_list = []
         if interest_futures:
-            per_interest_results = [_diversify(_rerank(f.result(), origin, self.rng)) for f in interest_futures]
+            per_interest_results = [_diversify(_rerank(f.result(), origin, self.rng, end_point)) for f in interest_futures]
             rag_results = [
                 row for group in zip_longest(*per_interest_results) for row in group if row is not None
             ]
@@ -337,7 +350,7 @@ class TripBuilderService:
             daytime_needed = min_attractions * days
             have = _daytime_capacity(must_go_list + interest_list, days)
             if have < daytime_needed:
-                for row in _diversify(_rerank(generic_future.result(), origin, self.rng)):
+                for row in _diversify(_rerank(generic_future.result(), origin, self.rng, end_point)):
                     if have >= daytime_needed:
                         break
                     place = accept(row)
@@ -424,7 +437,7 @@ class TripBuilderService:
                 else:
                     rows, wanted, check = self.retriever.list_by_categories(("คาเฟ่",)), user_input.trip_duration_days, accept
                 added = 0
-                for row in _rerank([r for r in rows if r.get("subcategory") == subcategory], origin, self.rng):
+                for row in _rerank([r for r in rows if r.get("subcategory") == subcategory], origin, self.rng, end_point):
                     if added >= wanted:
                         break
                     place = check(row)

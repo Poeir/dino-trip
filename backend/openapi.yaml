@@ -3898,7 +3898,7 @@ components:
       properties:
         id: { type: string, format: uuid }
         position: { type: integer }
-        kind: { type: string, enum: [place, hotel, free_time] }
+        kind: { type: string, enum: [place, hotel, free_time, trip_end] }
         lat: { type: number, nullable: true }
         lng: { type: number, nullable: true }
         placeId: { type: string, format: uuid, nullable: true }
@@ -3972,7 +3972,7 @@ components:
                   type: object
                   required: [arrivalTime, departureTime]
                   properties:
-                    kind: { type: string, enum: [place, hotel, free_time], default: place }
+                    kind: { type: string, enum: [place, hotel, free_time, trip_end], default: place }
                     placeId: { type: string, format: uuid, description: จำเป็นเมื่อ kind = place }
                     placeName: { type: string, maxLength: 200, description: จำเป็นเมื่อ kind ≠ place }
                     lat: { type: number, description: จำเป็นเมื่อ kind ≠ place }

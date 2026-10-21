@@ -98,3 +98,11 @@ def test_trip_input_accepts_every_value_the_form_sends():
             for area in ("เมือง", "ทั่วขอนแก่น"):
                 TripInput(**BASE, trip_pace=pace, budget_level=budget, area_scope=area,
                           start_time="08:30", end_time="20:00", accommodation_lat=16.43, accommodation_lng=102.83)
+
+
+def test_trip_length_is_capped_at_seven_days():
+    # The form offers 1-5; 7 is the server's slack. Longer plans risk the
+    # LLM timeout (a 5-day plan already took ~90 s).
+    assert TripInput(**{**BASE, "trip_duration_days": 7})
+    with pytest.raises(ValidationError):
+        TripInput(**{**BASE, "trip_duration_days": 8})
