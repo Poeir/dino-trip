@@ -20,6 +20,7 @@ import {
 import { sendChatMessage, requestTripPlan } from '../lib/chatbotService.js'
 import { getCurrentPosition, LOCATION_ERROR_MESSAGE, GENERIC_LOCATION_ERROR } from '../lib/geolocation.js'
 import { isWelcomeSnoozed, snoozeWelcome } from '../lib/welcomeSnooze.js'
+import { HOTEL_RETURN_STATUS, TRIP_END_STATUS, tripDetailToPlan, decorateTripDays } from '../lib/tripPlanView.js'
 
 const AppContext = createContext(null)
 
@@ -61,8 +62,6 @@ const clampPct = (n) => Math.max(0, Math.min(100, n))
 // no places row: the closing "return to the hotel", the last day's "End of
 // Trip" (an airport/bus/train/district/pin, see tripEndOptions) and "Free
 // Time" filler. Saving a trip (see planToTripPayload) needs to tell them apart.
-const HOTEL_RETURN_STATUS = 'End of Day (Return to Hotel)'
-const TRIP_END_STATUS = 'End of Trip'
 const slotKind = (status) => status === HOTEL_RETURN_STATUS ? 'hotel'
   : status === TRIP_END_STATUS ? 'trip_end'
   : status === 'Free Time' ? 'free_time' : 'place'
@@ -78,24 +77,6 @@ const tripEndToRequest = (te) => {
     lng: te.kind === 'pin' ? te.pin?.lng ?? null : null,
     time: te.time || null,
   }
-}
-
-// "HH:MM" -> minutes-since-midnight, for computing how long a trip-plan item
-// lasts (arrival_time/departure_time only arrive as display strings from the
-// API, not a duration field).
-const hhmmToMinutes = (hhmm) => {
-  if (!hhmm || typeof hhmm !== 'string' || !hhmm.includes(':')) return null
-  const [h, m] = hhmm.split(':').map(Number)
-  return Number.isFinite(h) && Number.isFinite(m) ? h * 60 + m : null
-}
-
-const formatDurationMinutes = (mins) => {
-  if (mins == null || mins <= 0) return null
-  const h = Math.floor(mins / 60)
-  const m = mins % 60
-  if (h === 0) return `${m} นาที`
-  if (m === 0) return `${h} ชม.`
-  return `${h} ชม. ${m} นาที`
 }
 
 const initialState = {
@@ -793,32 +774,8 @@ export function AppProvider({ children }) {
     return { days, totalBudget: resp.total_cost_estimate, totalDistance: resp.total_distance_km, totalPoints }
   }
 
-  // Rebuilds the plan shape above from a saved trip (GET /api/trips/:id).
-  // Hotel / trip-end / free-time slots have no places row, so they get the
-  // same synthetic ids chatbot-service gave them; a place deleted since
-  // planning falls back to the name saved with the trip.
-  const tripDetailToPlan = (detail) => {
-    const days = detail.days.map((d) => ({
-      dayNum: d.dayNo,
-      date: d.date,
-      dayCostEstimate: d.dayCostEstimate,
-      dayTravelTimeTotal: d.dayTravelTimeTotal,
-      items: d.items.map((it) => {
-        const placeId = it.kind === 'place' ? (it.placeId || `removed_${d.dayNo}_${it.position}`)
-          : it.kind === 'hotel' ? 'hotel_dummy' : it.kind === 'trip_end' ? 'trip_end' : `free_time_dummy_${d.dayNo}_${it.position}`
-        const location = it.lat != null && it.lng != null ? { lat: it.lat, lng: it.lng } : null
-        return {
-          itemId: it.id, placeId, kind: it.kind, time: it.arrivalTime, departureTime: it.departureTime, status: it.status, liked: it.liked,
-          distanceFromPrev: it.distanceKm || null, travelTimeMin: it.travelTimeMin, waitTimeMin: it.waitTimeMin, isAnchor: it.isAnchor, mealRole: it.mealRole,
-          place: it.place
-            ? { ...toTripPlace(it.place), hasQR: it.place.hasQR, qrPoints: it.place.qrPoints }
-            : { id: placeId, name: it.placeName, category: it.kind === 'hotel' ? 'ที่พัก' : it.kind === 'trip_end' ? 'จุดจบทริป' : null, rating: '-', address: '', img: null, location },
-        }
-      }),
-    }))
-    const totalPoints = days.flatMap((d) => d.items).reduce((sum, it) => sum + (it.place.hasQR ? it.place.qrPoints : 0), 0)
-    return { days, totalBudget: detail.totalCostEstimate, totalDistance: detail.totalDistanceKm, totalPoints }
-  }
+  // tripDetailToPlan (lib/tripPlanView.js) rebuilds the plan shape above from
+  // a saved trip (GET /api/trips/:id).
 
   // The request body sent to /trip/llm is what a saved trip keeps as its
   // conditions; this maps it back onto the form (for the "เงื่อนไขที่เลือกไว้"
@@ -989,15 +946,6 @@ export function AppProvider({ children }) {
       setState({ tripPlanning: false, tripFormError: 'สร้างแผนทริปไม่สำเร็จ ลองอีกครั้งนะครับ' })
     }
   }
-
-  // Shapes a fetched place row into the same trimmed `place` object
-  // tripResponseToPlan embeds on every item (there's no bulk `state.places`
-  // for the derived `tripPlan` view's fallback lookup to fall back to
-  // anymore, see below).
-  const toTripPlace = (p) => ({
-    id: p.id, name: p.name, category: p.category, rating: p.rating, address: p.address, img: p.img,
-    location: (p.location?.lat != null && p.location?.lng != null) ? p.location : null,
-  })
 
   // The QR's own content only ever carries an opaque id (see QrTab.jsx's
   // qrValue) -- points/place come back from the backend after claimScan,
@@ -1392,27 +1340,9 @@ export function AppProvider({ children }) {
     dailyEnd: s.tripForm.dailyEnd,
   }
 
-  const tripPlan = s.tripPlan ? {
-    ...s.tripPlan,
-    days: s.tripPlan.days.map((d) => ({
-      ...d,
-      items: d.items.map((it) => {
-        const place = it.place || { name: '-', rating: '-', address: '-' }
-        const isHotelReturn = it.status === HOTEL_RETURN_STATUS
-        const isTripEnd = it.status === TRIP_END_STATUS
-        const durationMin = (!isHotelReturn && !isTripEnd && it.time && it.departureTime)
-          ? (hhmmToMinutes(it.departureTime) ?? 0) - (hhmmToMinutes(it.time) ?? 0)
-          : null
-        return {
-          ...it, place,
-          timeRangeLabel: (it.departureTime && it.departureTime !== it.time) ? `${it.time} - ${it.departureTime}` : it.time,
-          durationLabel: isHotelReturn ? 'กลับถึงจุดเริ่มต้น'
-            : isTripEnd ? `ถึง${place.name} (จบทริป)`
-            : (formatDurationMinutes(durationMin) ? `อยู่ประมาณ ${formatDurationMinutes(durationMin)}` : null),
-        }
-      })
-    }))
-  } : { days: [], totalBudget: 0, totalDistance: 0, totalPoints: 0 }
+  const tripPlan = s.tripPlan
+    ? { ...s.tripPlan, days: decorateTripDays(s.tripPlan.days) }
+    : { days: [], totalBudget: 0, totalDistance: 0, totalPoints: 0 }
 
   // Redeeming happens at the counter (an admin deducts the points), so the
   // tourist-facing view only needs to say whether a reward is within reach.

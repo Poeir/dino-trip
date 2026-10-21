@@ -7,10 +7,13 @@ import PageControls from '../components/PageControls.jsx'
 import LoadingSpinner from '../components/LoadingSpinner.jsx'
 import LoadError from '../components/LoadError.jsx'
 import FilterPill from '../components/FilterPill.jsx'
-import { fetchAdminTrips, fetchAdminTrip, deleteAdminTrip } from '../lib/apiClient.js'
+import { fetchAdminTrips, fetchAdminTrip, deleteAdminTrip, fetchPlace } from '../lib/apiClient.js'
+import PlaceDetailView from '../components/PlaceDetailView.jsx'
 import { usePagedList } from '../lib/usePagedList.js'
 import { fmtDate, fmtDateTime } from '../lib/format.js'
 import { tripEndOptions } from '../data/seed.js'
+import TripDayCard from '../components/TripDayCard.jsx'
+import { tripDetailToPlan, decorateTripDays } from '../lib/tripPlanView.js'
 import AdminPageHeader from './ui/AdminPageHeader.jsx'
 import Badge from './ui/Badge.jsx'
 import Button from './ui/Button.jsx'
@@ -63,8 +66,31 @@ function placeIssue(item) {
   return CLOSED_LABEL[item.place.businessStatus] || null
 }
 
+// Real places only: the start / end / free-time slots have synthetic ids
+// (hotel_dummy, trip_end, free_time_dummy_*, removed_*) and no place to show.
+const isPlaceId = (id) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id || '')
+
 function TripDetail({ trip }) {
   const input = trip.input || {}
+  // A stop clicked in a day card opens the same place view the tourist gets.
+  const [selectedPlaceId, setSelectedPlaceId] = useState(null)
+  const [selectedPlace, setSelectedPlace] = useState(null)
+  const [placeError, setPlaceError] = useState(false)
+  useEffect(() => {
+    setSelectedPlace(null)
+    setPlaceError(false)
+    if (!selectedPlaceId) return undefined
+    let cancelled = false
+    fetchPlace(selectedPlaceId)
+      .then((p) => { if (!cancelled) setSelectedPlace(p) })
+      // The public endpoint doesn't return hidden places.
+      .catch(() => { if (!cancelled) setPlaceError(true) })
+    return () => { cancelled = true }
+  }, [selectedPlaceId])
+  const openPlace = (id) => { if (isPlaceId(id)) setSelectedPlaceId(id) }
+  // The API's own items, by id: placeIssue needs fields (isActive,
+  // businessStatus) the display shape leaves out.
+  const rawItems = new Map(trip.days.flatMap((d) => d.items.map((it) => [it.id, it])))
   return (
     <div>
       <div className="ad-trip-meta">
@@ -92,26 +118,36 @@ function TripDetail({ trip }) {
 
       {trip.note && <div className="ad-note-box ad-note-box--spaced">{trip.note}</div>}
 
-      {trip.days.map((d) => (
-        <div key={d.dayNo} className="ad-day">
-          <div className="ad-day__head">วันที่ {d.dayNo} · {fmtDate(d.date)}</div>
-          {d.items.map((it) => {
-            const issue = placeIssue(it)
+      {/* Same day cards as the tourist's trip page (TripDayCard), plus what
+          only an admin needs per stop: a place that's gone or closed since,
+          and the tourist's like/dislike. */}
+      <div style={{ marginTop: 18 }}>
+        {decorateTripDays(tripDetailToPlan(trip).days).map((day) => (
+          <TripDayCard key={day.dayNum} day={day} onSelectPlace={openPlace} itemExtras={(item) => {
+            const raw = rawItems.get(item.itemId)
+            const issue = raw && placeIssue(raw)
+            if (!issue && item.liked == null) return null
             return (
-              <div key={it.id} className="ad-day__item">
-                <span className="ad-day__time">{it.arrivalTime}{it.departureTime !== it.arrivalTime ? ` – ${it.departureTime}` : ''}</span>
-                <span className="ad-day__name">{it.place?.name || it.placeName}</span>
-                {it.kind === 'hotel' && <Badge>กลับจุดเริ่มต้น</Badge>}
-                {it.kind === 'trip_end' && <Badge>จบทริป</Badge>}
-                {it.kind === 'free_time' && <Badge>เวลาว่าง</Badge>}
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {issue && <IssueBadge>{issue}</IssueBadge>}
-                {it.liked === true && <Badge tone="success">ถูกใจ</Badge>}
-                {it.liked === false && <Badge tone="danger">ไม่ถูกใจ</Badge>}
+                {item.liked === true && <Badge tone="success">ถูกใจ</Badge>}
+                {item.liked === false && <Badge tone="danger">ไม่ถูกใจ</Badge>}
               </div>
             )
-          })}
-        </div>
-      ))}
+          }} />
+        ))}
+      </div>
+
+      <Modal
+        open={!!selectedPlaceId}
+        onClose={() => setSelectedPlaceId(null)}
+        title={selectedPlace ? selectedPlace.name : 'สถานที่'}
+        maxWidth={1100}
+      >
+        {selectedPlace && <PlaceDetailView place={selectedPlace} imageHeight={320} />}
+        {!selectedPlace && !placeError && <LoadingSpinner label="กำลังโหลดข้อมูลสถานที่..." />}
+        {placeError && <p className="ad-fs-sm">ไม่พบข้อมูลสถานที่นี้ (อาจถูกลบหรือปิดการแสดงผลแล้ว)</p>}
+      </Modal>
     </div>
   )
 }
