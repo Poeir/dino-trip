@@ -10,6 +10,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { createClient } from '@supabase/supabase-js'
+import { isLocalFood, LOCAL_FOOD_TAG } from '../src/lib/localFood.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -165,12 +166,13 @@ function mapTags(category, goodForChildren, types, name) {
   if (category === 'วัด') tags.add('วัฒนธรรม/ศาสนา')
   if (category === 'สวนสาธารณะ' || category === 'สถานที่ท่องเที่ยว') tags.add('ธรรมชาติ')
   if (category === 'คาเฟ่') tags.add('คาเฟ่')
-  if (category === 'ร้านอาหาร') tags.add('อาหารพื้นถิ่น')
   if (goodForChildren) tags.add('ครอบครัว')
   for (const t of types || []) {
     if (FOOD_TYPE_TAGS[t]) tags.add(FOOD_TYPE_TAGS[t])
   }
   for (const t of tagsFromName(name || '')) tags.add(t)
+  // Only restaurants that really serve local food -- see src/lib/localFood.js.
+  if (isLocalFood({ name, category, tags: [...tags] })) tags.add(LOCAL_FOOD_TAG)
   return [...tags]
 }
 

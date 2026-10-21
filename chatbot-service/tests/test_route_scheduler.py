@@ -46,8 +46,8 @@ class TestCalculateDistance:
 
 class TestGetVisitDuration:
     @pytest.mark.parametrize("category,expected", [
-        ("พิพิธภัณฑ์", 90), ("วัด", 45), ("สวนสาธารณะ", 60),
-        ("ตลาด", 120), ("ร้านอาหาร", 60), ("คาเฟ่", 45), ("สถานที่ท่องเที่ยว", 60),
+        ("พิพิธภัณฑ์", 75), ("วัด", 45), ("สวนสาธารณะ", 60), ("อุทยานแห่งชาติ", 120),
+        ("ตลาด", 60), ("ร้านอาหาร", 60), ("คาเฟ่", 45), ("สถานที่ท่องเที่ยว", 60),
         ("ห้างสรรพสินค้า", 90), ("ร้านของฝาก", 30),
     ])
     def test_base_duration_by_category_standard_pace(self, category, expected):
@@ -64,24 +64,30 @@ class TestGetVisitDuration:
         # not how long each one takes.
         assert rs.get_visit_duration(make_place(category="วัด", name="Temple"), pace) == 45
         assert rs.get_visit_duration(make_place(category="คาเฟ่", name="Cafe"), pace) == 45
-        assert rs.get_visit_duration(make_place(category="ตลาด", name="Market"), pace) == 120
+        assert rs.get_visit_duration(make_place(category="ตลาด", name="Market"), pace) == 60
 
     def test_buffet_keyword_overrides_category(self):
         # A "ร้านอาหาร" (normally 60 min) that's actually a buffet place should
-        # get the longer 120-min slot regardless of pace.
+        # get the longer buffet slot regardless of pace.
         p = make_place(category="ร้านอาหาร", name="หมูกระทะเด็ด")
-        assert rs.get_visit_duration(p, "standard") == 120
-        assert rs.get_visit_duration(p, "packed") == 120
+        assert rs.get_visit_duration(p, "standard") == rs.BUFFET_MINUTES == 90
+        assert rs.get_visit_duration(p, "packed") == 90
+
+    def test_buffet_keyword_only_applies_to_restaurants(self):
+        # "ตลาดกลางคืน ... บุฟเฟต์" style names on other categories keep their own time.
+        p = make_place(category="สถานที่ท่องเที่ยว", name="ลานปิ้งย่างวิวเขื่อน")
+        assert rs.get_visit_duration(p, "standard") == 60
 
 
 class TestPaceStopRange:
     @pytest.mark.parametrize("pace,start,end,expected", [
-        ("relaxed", time(9, 0), time(18, 0), (3, 4)),
-        ("standard", time(9, 0), time(18, 0), (4, 5)),
-        ("packed", time(9, 0), time(18, 0), (6, 7)),
-        ("relaxed", time(9, 0), time(14, 0), (1, 2)),
+        # PACE_MINUTES_PER_STOP recalibrated 2026-10-21 (relaxed 120, standard 85, packed 65).
+        ("relaxed", time(9, 0), time(18, 0), (4, 4)),
+        ("standard", time(9, 0), time(18, 0), (5, 6)),
+        ("packed", time(9, 0), time(18, 0), (7, 8)),
+        ("relaxed", time(9, 0), time(14, 0), (2, 2)),
         ("packed", time(9, 0), time(14, 0), (3, 4)),
-        ("relaxed", time(9, 0), time(22, 0), (4, 5)),
+        ("relaxed", time(9, 0), time(22, 0), (5, 6)),
     ])
     def test_range_scales_with_window(self, pace, start, end, expected):
         assert rs.pace_stop_range(pace, start, end) == expected
@@ -1180,7 +1186,7 @@ class TestPlanningWalkHonoursMealRoles:
         }
         # The sight between the two is left out: a longer lunch moves it (TestStretchStays).
         meals = lambda times: {k: v for k, v in times.items() if k != "a"}
-        assert meals(planned) == meals(seated) == {"r0": "11:00", "r1": "17:30"}
+        assert meals(planned) == meals(seated) == {"r0": "11:30", "r1": "17:30"}
 
 
 class TestMarketTiming:
@@ -1246,9 +1252,9 @@ class TestMarketTiming:
     def test_durations(self):
         evening, morning, unknown = self.market("ตลาดต้นตาล", 16, 23), self.market("ตลาดสดเทศบาล1", 5, 17), self.market("ตลาดจอมพล", 6, 22)
         assert rs.get_visit_duration(morning, "standard") == rs.MORNING_MARKET_MINUTES
-        assert rs.get_visit_duration(evening, "standard") == 120                      # the market is the evening
+        assert rs.get_visit_duration(evening, "standard") == rs.EVENING_MARKET_MINUTES == 120  # the market is the evening
         assert rs.get_visit_duration(evening, "standard", day_has_dinner=True) == rs.MARKET_AFTER_DINNER_MINUTES
-        assert rs.get_visit_duration(unknown, "standard", day_has_dinner=True) == 120
+        assert rs.get_visit_duration(unknown, "standard", day_has_dinner=True) == 60          # a daytime walk through
 
     def test_dinner_first_then_a_short_walk_through_the_market(self):
         # Geography alone says market first: sight (north) -> market -> dinner
@@ -1359,7 +1365,7 @@ class TestMarketTiming:
         food_court = self.market("ตลาดตองแปด", 8, 20, market_time="all_day")
         assert rs.preferred_time_window(food_court) is None
         assert rs.auto_add_time_ok(food_court, datetime(2026, 7, 27, 13, 0))
-        assert rs.get_visit_duration(food_court, "standard") == 120
+        assert rs.get_visit_duration(food_court, "standard") == 60
 
 
 class TestSparePlaces:
@@ -1550,7 +1556,7 @@ class TestStretchStays:
     def test_stops_before_a_wait_stay_longer_and_the_meal_keeps_its_time(self):
         by_id, schedule = self._day(self._meals_and_cafe())
         assert (self._stay(by_id["r0"]), self._stay(by_id["c1"])) == (80, 75)
-        assert (self._seated(by_id["r0"]), self._seated(by_id["r1"])) == ("11:00", "17:30")
+        assert (self._seated(by_id["r0"]), self._seated(by_id["r1"])) == ("11:30", "17:30")
         # What is still idle before dinner starts when the cafe is left.
         free = next(s for s in schedule if s.status == "Free Time" and s.arrival_time > "12:00")
         assert free.arrival_time == by_id["c1"].departure_time
@@ -1565,9 +1571,11 @@ class TestStretchStays:
         assert [self._stay(relaxed[i]) for i in ("r0", "c1", "r1")] == [90, 90, 90]
 
     def test_never_past_closing_time(self):
-        hours = [{"open": {"day": d, "hour": 8, "minute": 0}, "close": {"day": d, "hour": 13, "minute": 0}} for d in range(7)]
+        # Closes 14:00: lunch (from 11:30) leaves it time for its normal
+        # visit, and the stretch on top must stop at closing.
+        hours = [{"open": {"day": d, "hour": 8, "minute": 0}, "close": {"day": d, "hour": 14, "minute": 0}} for d in range(7)]
         by_id, _ = self._day(self._meals_and_cafe(hours_periods=hours))
-        assert by_id["c1"].departure_time <= "13:00"
+        assert by_id["c1"].departure_time <= "14:00"
         assert self._stay(by_id["c1"]) >= 45
 
     def test_a_meal_is_never_pushed_later(self):
@@ -1587,16 +1595,78 @@ class TestStretchStays:
         assert self._stay(by_id["a"]) > 60               # ...and the sight still got what fits before it
 
     def test_a_block_that_shrinks_becomes_an_ordinary_wait(self):
+        # Day starts 09:30 so the gap before lunch (from 11:30) is what it was
+        # when lunch started 11:00 and the day 09:00.
         sight, lunch = self.place("a", "สถานที่ท่องเที่ยว"), self.place("r0", "ร้านอาหาร", lat=16.431)
-        packed, packed_schedule = self._day([sight, lunch], roles={"r0": "lunch"}, pace="packed")
+        packed, packed_schedule = self._day([sight, lunch], roles={"r0": "lunch"}, start=time(9, 30), pace="packed")
         assert any(s.status == "Free Time" for s in packed_schedule)      # 50 idle minutes shown as a block
-        by_id, schedule = self._day([sight, lunch], roles={"r0": "lunch"})
+        by_id, schedule = self._day([sight, lunch], roles={"r0": "lunch"}, start=time(9, 30))
         assert not any(s.status == "Free Time" for s in schedule)
-        assert (by_id["r0"].arrival_time, by_id["r0"].wait_time_min, by_id["r0"].status) == ("10:30", 30, "Waiting")
-        assert self._seated(by_id["r0"]) == "11:00"
+        assert (by_id["r0"].arrival_time, by_id["r0"].wait_time_min, by_id["r0"].status) == ("11:00", 30, "Waiting")
+        assert self._seated(by_id["r0"]) == "11:30"
 
     def test_the_day_never_ends_later_than_asked(self):
         route = [self.place("r0", "ร้านอาหาร"), self.place("c1", "คาเฟ่", lat=16.431)]
-        _, packed = self._day(route, roles={"r0": "lunch"}, end=time(13, 0), pace="packed")
-        _, schedule = self._day(route, roles={"r0": "lunch"}, end=time(13, 0))
-        assert (packed[-1].arrival_time, schedule[-1].arrival_time) == ("12:55", "13:00")
+        # Lunch is held to 11:30, so the day ends 13:30 (was 13:00 with an 11:00 lunch).
+        _, packed = self._day(route, roles={"r0": "lunch"}, end=time(13, 30), pace="packed")
+        _, schedule = self._day(route, roles={"r0": "lunch"}, end=time(13, 30))
+        assert (packed[-1].arrival_time, schedule[-1].arrival_time) == ("13:25", "13:30")
+
+
+class TestBackfillKeepsMealsOnTime:
+    """Live 2026-10-21: spare stops slotted in before lunch were each
+    feasible, so backfill took them, and lunch slid from 11:30 to 14:34."""
+    DAY = date(2026, 7, 27)  # Monday
+
+    def place(self, place_id, category, **overrides):
+        defaults = dict(id=place_id, name=place_id, category=category, lat=16.43, lng=102.84, hours_periods=None)
+        defaults.update(overrides)
+        return make_place(**defaults)
+
+    def _morning_then_lunch(self):
+        morning = [self.place("a1", "สถานที่ท่องเที่ยว"), self.place("a2", "สวนสาธารณะ"),
+                   self.place("a3", "วัด"), self.place("a4", "พิพิธภัณฑ์")]
+        return morning + [self.place("r1", "ร้านอาหาร")], {"r1": "lunch"}
+
+    def test_a_spare_that_only_fits_before_lunch_is_left_out_when_lunch_would_run_late(self):
+        # A spare park may only start 06:00-10:30 or 16:00-18:30; with the day
+        # ending 17:00 the only place for it is the morning, ahead of lunch.
+        route, roles = self._morning_then_lunch()
+        start, end = datetime.combine(self.DAY, time(9, 0)), datetime.combine(self.DAY, time(17, 0))
+        assert rs._meal_lateness(rs._simulate_day_walk(route, REAL_HOTEL, self.DAY, start, end, "standard", roles), roles) == 0
+        spare = self.place("s1", "สวนสาธารณะ", lat=16.431, is_spare=True)
+        assert rs._find_best_backfill_insertion(route, REAL_HOTEL, self.DAY, start, end, "standard", roles, [spare]) == (None, None)
+
+    def test_a_stop_that_fits_after_lunch_still_gets_in(self):
+        route, roles = self._morning_then_lunch()
+        start, end = datetime.combine(self.DAY, time(9, 0)), datetime.combine(self.DAY, time(18, 0))
+        extra = self.place("x1", "สถานที่ท่องเที่ยว", lat=16.431)
+        place, pos = rs._find_best_backfill_insertion(route, REAL_HOTEL, self.DAY, start, end, "standard", roles, [extra])
+        assert place is not None
+        walk = rs._simulate_day_walk(route[:pos] + [place] + route[pos:], REAL_HOTEL, self.DAY, start, end, "standard", roles)
+        assert rs._meal_lateness(walk, roles) == 0
+
+
+class TestDayMeals:
+    def test_breakfast_only_when_asked_and_early_enough(self):
+        assert rs.day_meals(time(9, 0), time(18, 0)) == ["lunch"]
+        assert rs.day_meals(time(9, 0), time(18, 0), breakfast=True) == ["breakfast", "lunch"]
+        assert rs.day_meals(time(10, 0), time(21, 0), breakfast=True) == ["lunch", "dinner"]
+
+    def test_breakfast_takes_its_time_out_of_the_pace(self):
+        assert rs.pace_stop_range("standard", time(8, 0), time(18, 0), breakfast=True) < rs.pace_stop_range("standard", time(8, 0), time(18, 0))
+
+
+class TestBreakfastFirst:
+    DAY = date(2026, 7, 27)
+
+    def test_breakfast_is_the_days_first_stop(self):
+        # The park sits right by the hotel, the breakfast shop a bit further:
+        # by distance alone the park would come first.
+        park = make_place(id="park", name="Park", category="สวนสาธารณะ", lat=REAL_HOTEL.lat + 0.001, lng=REAL_HOTEL.lng, hours_periods=None)
+        shop = make_place(id="bf", name="Breakfast", category="ร้านอาหาร", subcategory="อาหารเช้า",
+                          lat=REAL_HOTEL.lat + 0.02, lng=REAL_HOTEL.lng, hours_periods=None)
+        sight = make_place(id="s1", name="Sight", category="สถานที่ท่องเที่ยว", lat=REAL_HOTEL.lat + 0.021, lng=REAL_HOTEL.lng, hours_periods=None)
+        route = rs.order_day_stops([park, shop, sight], REAL_HOTEL, self.DAY, time(8, 0), time(18, 0), "standard",
+                                   {"bf": "breakfast"}, must_go_ids={"bf"})
+        assert route[0].id == "bf"

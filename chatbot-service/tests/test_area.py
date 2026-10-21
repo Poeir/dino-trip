@@ -1,6 +1,8 @@
 """"แถว X" place search: parsing the question, resolving X, picking the places
 around it (src/services/rag/area.py), and how PlaceRetriever.search_chat_places
 wires it together with the intent categories. The database reads are faked."""
+import datetime
+
 import pytest
 
 from src.services.rag import area
@@ -12,7 +14,9 @@ from src.services.rag.area import (
     split_area_query,
     wanted_categories,
 )
-from src.services.rag.retriever import PlaceRetriever
+from src.services.rag.retriever import PlaceRetriever, is_generic_event_query
+
+BKK = datetime.timezone(datetime.timedelta(hours=7))
 
 # Real coordinates: บึงแก่นนคร and its neighbours in the city, ท่าพระ ~12 km south.
 LAKE = {"id": "lake", "name": "บึงแก่นนคร (เมืองขอนแก่น)", "category": "สวนสาธารณะ",
@@ -76,6 +80,7 @@ class TestSplitBareAreaQuery:
             ("ร้านอาหารในตำบลท่าพระ", "ร้านอาหารในตำบล"),
             ("เที่ยวท่าพระมีอะไรบ้าง", "เที่ยว มีอะไรบ้าง"),
             ("อยากไปเที่ยวท่าพระ ช่วยแนะนำหน่อย", "อยากไปเที่ยว ช่วยแนะนำหน่อย"),
+            ("พักท่าพระ แนะนำหน่อย", "พัก แนะนำหน่อย"),
         ],
     )
     def test_names_an_area_after_a_going_out_word(self, query, what):
@@ -121,9 +126,14 @@ class TestResolveArea:
         # "แถวในเมืองอะมีมั้ย": the question's tail runs into the name.
         assert resolve_area("ในเมืองอะมี", PLACES) == {"kind": "subdistrict", "name": "ในเมือง"}
 
-    @pytest.mark.parametrize("where", ["ขอนแก่น", "เมืองขอนแก่น", "ฉัน", "นี้", "มข."])
+    @pytest.mark.parametrize("where", ["ขอนแก่น", "เมืองขอนแก่น", "ฉัน", "นี้", "ดาวอังคาร"])
     def test_too_broad_or_unknown_resolves_to_nothing(self, where):
         assert resolve_area(where, PLACES) is None
+
+    @pytest.mark.parametrize("where", ["มข.", "มหาวิทยาลัยขอนแก่น", "KKU"])
+    def test_the_university_is_a_known_landmark(self, where):
+        # No single row stands for the campus; "แถวมข." used to resolve to nothing.
+        assert resolve_area(where, PLACES)["place"]["name"] == "มหาวิทยาลัยขอนแก่น"
 
 
 class TestAreaCandidates:
@@ -225,6 +235,44 @@ class TestSearchChatPlaces:
         out = r.search_chat_places("ร้านก๋วยเตี๋ยวแถวบึงแก่นนคร", limit=3)
         assert [p["id"] for p in out] == ["noodle"]
 
+    def test_marker_that_names_nothing_still_finds_the_bare_area(self):
+        # "ใกล้เคียง" splits as "ใกล้ เคียง"; the ท่าพระ before it is the real area.
+        r = FakeRetriever(search=[FAR_CAFE])
+        out = r.search_chat_places("พักอยู่ที่ท่าพระ แนะนำที่เที่ยวใกล้เคียง", limit=3)
+        assert out and all(p.get("area_note") for p in out)
+
+    def test_staying_somewhere_asks_for_anything_there(self):
+        # Live: "ฉันพักอยู่ท่าพระ แนะนำให้ไปไหนดี" answered with shops elsewhere in town.
+        r = FakeRetriever(search=[FAR_CAFE])
+        out = r.search_chat_places("ฉันพักอยู่ท่าพระ แนะนำให้ไปไหนดี", limit=3)
+        assert [p["id"] for p in out][:2] == ["golf", "timo"]
+        assert r.search_calls == []
+
+    def test_vegetarian_question_only_gets_places_with_a_vegetarian_menu(self):
+        # Live: "ร้านอาหารมังสวิรัติ" got a beef noodle shop and two grills.
+        veg = {**RESTAURANT_NEAR_LAKE, "amenities": ["ที่จอดรถ", "มีเมนูมังสวิรัติ"]}
+        veg_cafe = {**FAR_CAFE, "amenities": ["มีเมนูมังสวิรัติ"]}
+        r = FakeRetriever(search=[NOODLE_NEAR_LAKE, veg])
+        r._directory = lambda: [p for p in PLACES if p["id"] not in ("rest", "far")] + [veg, veg_cafe]
+        assert [p["id"] for p in r.search_chat_places("ร้านอาหารมังสวิรัติในขอนแก่น", limit=3)] == ["rest"]
+        assert [p["id"] for p in r.search_chat_places("มีร้านวีแกนไหม", limit=3)] == ["rest", "far"]
+        # Around an area, still only the ones that have it.
+        assert [p["id"] for p in r.search_chat_places("ร้านมังสวิรัติแถวบึงแก่นนคร", limit=3)] == ["rest"]
+
+    def test_late_night_question_only_gets_places_open_then(self, monkeypatch):
+        # Live: "หิวตอนตีหนึ่ง แถวมข." was told nothing is open.
+        from src.services.rag import retriever as retriever_module
+        monkeypatch.setattr(retriever_module, "now_bangkok", lambda: datetime.datetime(2026, 10, 21, 17, 0, tzinfo=BKK))
+        late = [{"open": {"day": d, "hour": 17, "minute": 0}, "close": {"day": (d + 1) % 7, "hour": 3, "minute": 0}} for d in range(7)]
+        day = [{"open": {"day": d, "hour": 9, "minute": 0}, "close": {"day": d, "hour": 16, "minute": 0}} for d in range(7)]
+        near_kku_late = place("late", "ลาบก้อยหลังมข.", "ร้านอาหาร", 16.4799, 102.8164, subdistrict="ศิลา") | {"hours_periods": late}
+        near_kku_day = place("day", "ข้าวมันไก่หลังมข.", "ร้านอาหาร", 16.4800, 102.8160, subdistrict="ศิลา", reviews=999) | {"hours_periods": day}
+        r = FakeRetriever(search=[near_kku_day])
+        r._directory = lambda: [*PLACES, near_kku_late, near_kku_day]
+        out = r.search_chat_places("หิวตอนตีหนึ่ง แถวมข.มีร้านไหนเปิดบ้าง", limit=3)
+        assert [p["id"] for p in out] == ["late"]
+        assert "ตี 1" in out[0]["open_note"] and "มหาวิทยาลัยขอนแก่น" in out[0]["area_note"]
+
     def test_unresolved_area_falls_back_to_the_plain_search(self):
         r = FakeRetriever(search=[FAR_CAFE])
         assert r.search_chat_places("ร้านอาหารใกล้ฉัน", limit=3) == [FAR_CAFE]
@@ -244,3 +292,15 @@ class TestSearchChatPlaces:
 
 def test_landmark_radius_constants_are_ordered():
     assert area.LANDMARK_RADIUS_KM < area.WIDER_RADIUS_KM
+
+
+class TestGenericEventQuery:
+    @pytest.mark.parametrize("query", ["ช่วงนี้มีงานอะไรน่าไปบ้าง", "มีอีเวนท์อะไรบ้าง", "เสาร์อาทิตย์นี้มีกิจกรรมอะไรไหม"])
+    def test_whats_on_lists_upcoming_events(self, query):
+        # Live: the search on these words found 1 of the 7 live events.
+        assert is_generic_event_query(query)
+
+    @pytest.mark.parametrize("query", ["มีงานคอนเสิร์ตของ BTS ที่ขอนแก่นไหม", "ลอยกระทงที่ขอนแก่นจัดที่ไหน",
+                                       "มีคอนเสิร์ตเดือนธันวาคมไหม", "ร้านอาหารแถวบึง"])
+    def test_a_named_kind_of_event_is_still_searched(self, query):
+        assert not is_generic_event_query(query)

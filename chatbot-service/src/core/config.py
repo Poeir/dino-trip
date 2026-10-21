@@ -13,60 +13,55 @@ API_KEY = os.environ.get("KKU_API_KEY")
 # what this app has always shipped with, so an unset .env behaves identically
 # to before.
 #
-# LLM_PROVIDER picks the backend: "kku" (default, API_KEY above) or "vertex"
-# (Vertex AI's OpenAI-compatible endpoint, auth via Application Default
-# Credentials -- see src/core/llm_client.py). Vertex needs VERTEX_PROJECT, and
-# model names there carry a "google/" prefix.
+# ONE LLM for the whole service: chat, trip planner (generator + judge),
+# event extraction, place descriptions and the data scripts all use
+# LLM_PROVIDER + MODEL_NAME, through src/core/llm_client.py. Switching
+# provider or model is a two-line .env change.
+#
+# LLM_PROVIDER:
+#   "anthropic" -- Claude (ANTHROPIC_API_KEY). JSON calls go through the native
+#                  Anthropic SDK with schema-enforced structured outputs.
+#   "kku"       -- KKU's Gemini gateway (KKU_API_KEY above), OpenAI-compatible.
+#   "vertex"    -- Vertex AI's OpenAI-compatible endpoint, auth via Application
+#                  Default Credentials. Needs VERTEX_PROJECT; model names carry
+#                  a "google/" prefix.
+# On kku/vertex, JSON calls can only ask for "a JSON object" (the gateway's
+# json_schema mode is confirmed broken), so their output is parsed and retried
+# rather than guaranteed.
 LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "kku").strip().lower()
-if LLM_PROVIDER not in ("kku", "vertex"):
-    raise ValueError(f"LLM_PROVIDER must be 'kku' or 'vertex', got {LLM_PROVIDER!r}")
+if LLM_PROVIDER not in ("anthropic", "kku", "vertex"):
+    raise ValueError(f"LLM_PROVIDER must be 'anthropic', 'kku' or 'vertex', got {LLM_PROVIDER!r}")
 VERTEX_PROJECT = os.environ.get("VERTEX_PROJECT")
 VERTEX_LOCATION = os.environ.get("VERTEX_LOCATION", "global")
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
+ANTHROPIC_WORKSPACE_ID = os.environ.get("ANTHROPIC_WORKSPACE_ID")
 
-if LLM_PROVIDER == "vertex":
+if LLM_PROVIDER == "anthropic":
+    # OpenAI-compatible endpoint, used for chat text/streaming only.
+    _default_base_url = "https://api.anthropic.com/v1/"
+    _default_model = "claude-haiku-5-5"
+elif LLM_PROVIDER == "vertex":
     if not VERTEX_PROJECT:
         raise ValueError("LLM_PROVIDER=vertex requires VERTEX_PROJECT. Check chatbot-service/.env.")
     _host = "aiplatform.googleapis.com" if VERTEX_LOCATION == "global" else f"{VERTEX_LOCATION}-aiplatform.googleapis.com"
     _default_base_url = f"https://{_host}/v1/projects/{VERTEX_PROJECT}/locations/{VERTEX_LOCATION}/endpoints/openapi"
-    _default_model, _default_trip_model, _default_desc_model = (
-        "google/gemini-2.5-flash", "google/gemini-2.5-pro", "google/gemini-2.5-flash")
+    _default_model = "google/gemini-2.5-flash"
 else:
     _default_base_url = "https://gen.ai.kku.ac.th/api/v1"
-    _default_model, _default_trip_model, _default_desc_model = "gemini-2.5-flash", "gemini-2.5-pro", "gemini-3.7-flash"
+    _default_model = "gemini-2.5-flash"
 
 BASE_URL = os.environ.get("LLM_BASE_URL", _default_base_url)
 MODEL_NAME = os.environ.get("MODEL_NAME", _default_model)
 
-# Experimental: run the chatbot (rewrite + answer) on Claude via Anthropic's
-# OpenAI-compatible endpoint while everything else stays on LLM_PROVIDER.
-# Unset = chat uses LLM_PROVIDER/MODEL_NAME as before. Set CHAT_LLM_PROVIDER=
-# anthropic + ANTHROPIC_API_KEY to try it; also update LLM_PRICE_*_PER_M, since
-# usage cost is computed from those (haiku-5-5 is 0.1 / 0.5).
-CHAT_LLM_PROVIDER = os.environ.get("CHAT_LLM_PROVIDER", "").strip().lower() or None
-if CHAT_LLM_PROVIDER not in (None, "anthropic"):
-    raise ValueError(f"CHAT_LLM_PROVIDER must be empty or 'anthropic', got {CHAT_LLM_PROVIDER!r}")
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
-ANTHROPIC_WORKSPACE_ID = os.environ.get("ANTHROPIC_WORKSPACE_ID")
-ANTHROPIC_BASE_URL = os.environ.get("ANTHROPIC_BASE_URL", "https://api.anthropic.com/v1/")
-CHAT_MODEL_NAME = os.environ.get("CHAT_MODEL_NAME", "claude-haiku-5-5") if CHAT_LLM_PROVIDER else MODEL_NAME
-
-# Trip planner (generator + judge) only -- kept separate from MODEL_NAME so
-# trying a different model there doesn't also change chat/events extraction.
-# Currently pointed at the pro tier of the same model family: lowest risk of
-# breaking the response_format={"type": "json_object"} behavior this gateway
-# needs (the stricter json_schema mode is confirmed broken on it), same
-# provider integration as the already-proven gemini-2.5-flash, just a larger
-# model. NOTE: judge.py's PASS_SCORE_THRESHOLD was calibrated against
-# gemini-2.5-flash's scoring behavior -- re-run the live test battery before
-# trusting that threshold after changing this.
-TRIP_PLANNER_MODEL_NAME = os.environ.get("TRIP_PLANNER_MODEL_NAME", _default_trip_model)
-
-# scripts/generate_descriptions.py only -- same "kept separate" reasoning as
-# TRIP_PLANNER_MODEL_NAME above, plus it's genuinely useful here: this script
-# burns through a model's daily quota on the KKU gateway fast (~600+ calls in
-# one run), so being able to point it at a different provider (e.g. gpt-5.4)
-# without touching chat/events/trip-planner is the point, not just hygiene.
-DESCRIPTION_MODEL_NAME = os.environ.get("DESCRIPTION_MODEL_NAME", _default_desc_model)
+# Settings from before there was one LLM. They no longer do anything; named
+# here so a leftover .env line is visible in the logs instead of silently
+# meaning something it doesn't.
+RETIRED_LLM_SETTINGS = [
+    name for name in ("CHAT_LLM_PROVIDER", "CHAT_MODEL_NAME", "TRIP_PLANNER_MODEL_NAME", "DESCRIPTION_MODEL_NAME", "ANTHROPIC_BASE_URL")
+    if os.environ.get(name)
+]
+if RETIRED_LLM_SETTINGS:
+    print(f"[!] Ignoring retired LLM settings {RETIRED_LLM_SETTINGS}: set LLM_PROVIDER and MODEL_NAME instead.")
 
 # Not validated here (unlike SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY below) --
 # scripts/embed_content.py imports this module too and never touches the LLM,

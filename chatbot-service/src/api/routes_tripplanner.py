@@ -20,8 +20,12 @@ def generate_trip_llm(user_input: TripInput):
         return TripResponse(itinerary=[], total_distance_km=0, total_cost_estimate=0, note="Not found")
 
     pace_inst, budget_inst = service.get_dynamic_instructions(user_input)
-    spares = service.build_spare_pool(user_input, hotel, {p.id for p in candidates})
-    planner = LLMTripPlanner(candidates, start_point=hotel, must_go_ids=must_go_ids, spare_places=spares)
+    candidate_ids = {p.id for p in candidates}
+    spares = service.build_spare_pool(user_input, hotel, candidate_ids)
+    meal_pool = service.build_meal_pool(user_input, candidate_ids)
+    planner = LLMTripPlanner(
+        candidates, start_point=hotel, must_go_ids=must_go_ids, spare_places=spares, meal_pool=meal_pool,
+    )
 
     # No fallback to a deterministic planner on failure -- surface the error
     # so the frontend shows it and lets the user retry, per the plan's

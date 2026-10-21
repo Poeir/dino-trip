@@ -1,22 +1,21 @@
-import json
 import logging
 import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Set, Tuple
 
 
-from src.core.llm_client import make_llm_client
-from src.core.config import TRIP_PLANNER_MODEL_NAME
+from src.core.llm_client import complete_json
+from src.core.config import MODEL_NAME
 from . import route_scheduler
-from .json_utils import clean_json_string
 from src.core.usage import UsageTracker
 from .judge import TripItineraryJudge
-from .models import DailyItinerary, JudgeVerdict, Place, TripInput
+from .models import BREAKFAST_PREFERENCE, DailyItinerary, JudgeVerdict, Place, TripInput, meal_food_kinds
 
 logger = logging.getLogger(__name__)
 
-# Max "generate -> judge" cycles before giving up on quality and returning the
-# last itinerary anyway. Kept small and NOT an env var (application-logic
+# Max generation rounds. Every round is judged; the first one accepted is
+# returned, else the best of them (fewest major issues, then no dropped
+# picks, then score). Kept small and NOT an env var (application-logic
 # tunable, not a deployment secret) -- together with the per-call timeouts
 # below it is what bounds worst-case latency: nothing else in this stack
 # (Caddy, the browser's fetch) times a trip request out.
@@ -50,13 +49,85 @@ MAX_RESTAURANTS_PER_DAY = 2
 # docstring) -- one number, not two that can drift apart.
 MAX_CAFES_PER_DAY = route_scheduler.CATEGORY_DAILY_CAP["คาเฟ่"]
 
+# A day's lunch is eaten near that day's other places, and dinner near them
+# or near the hotel. Farther than this (the scheduler's in-town/intercity
+# boundary) and the restaurant can't serve that meal: a live Phu Wiang day
+# (~60 km out) had its only restaurant back in the city, eaten at 16:56.
+MEAL_MAX_KM = route_scheduler.INTERCITY_THRESHOLD_KM
+_MEAL_WINDOWS = route_scheduler.MEAL_WINDOWS
+
+# Shape of the generator's reply. Enforced on Claude (structured outputs);
+# on the Gemini providers it's only described by the prompt's example, so
+# _build_itinerary_from_llm_days keeps validating what it reads either way.
+# place_id is deliberately not an enum of the candidate ids: a schema that
+# changes every request would pay Claude's schema-compile cost every time.
+ITINERARY_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "itinerary": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "day": {"type": "integer"},
+                    "places": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "place_id": {"type": "string"},
+                                "meal_role": {"type": "string", "enum": ["breakfast", "lunch", "dinner"]},
+                            },
+                            "required": ["place_id"],
+                            "additionalProperties": False,
+                        },
+                    },
+                },
+                "required": ["day", "places"],
+                "additionalProperties": False,
+            },
+        },
+        "rationale": {"type": "string"},
+    },
+    "required": ["itinerary", "rationale"],
+    "additionalProperties": False,
+}
+
+# Thai weekday names as they start each line of places.hours (Google's
+# weekday_text in Thai), indexed by Python's weekday() (0 = Monday).
+_THAI_WEEKDAYS = ("วันจันทร์", "วันอังคาร", "วันพุธ", "วันพฤหัสบดี", "วันศุกร์", "วันเสาร์", "วันอาทิตย์")
+
+
+def _format_minutes(minutes: int) -> str:
+    hours, rest = divmod(minutes, 60)
+    if not hours:
+        return f"{rest}m"
+    return f"{hours}h{rest:02d}m" if rest else f"{hours}h"
+
+
+def hours_for_trip(hours: Optional[str], weekdays: Set[int]) -> str:
+    """places.hours cut down to the trip's weekdays, on one line. The full
+    week for every candidate was most of the prompt on short trips. Text that
+    isn't one line per Thai weekday ("ทุกวัน 8:30–0:00", English) is kept
+    whole, just joined onto one line."""
+    if not hours:
+        return "unknown"
+    lines = [line.strip() for line in hours.split("\n") if line.strip()]
+    wanted = tuple(_THAI_WEEKDAYS[w] for w in sorted(weekdays))
+    kept = [line for line in lines if line.startswith(wanted)]
+    return "; ".join(kept or lines)
+
 
 class LLMTripPlanner:
     def __init__(
         self, candidates: List[Place], start_point: Place = None, must_go_ids: Optional[Set[str]] = None,
-        spare_places: Optional[List[Place]] = None,
+        spare_places: Optional[List[Place]] = None, meal_pool: Optional[List[Place]] = None,
     ):
         self.candidates = candidates
+        # orchestrator.build_meal_pool: every usable restaurant beyond the
+        # candidates, never shown to the LLM -- _ensure_meals draws a day's
+        # lunch/dinner from it when the day's own picks can't serve that meal.
+        self.meal_pool = meal_pool or []
         # orchestrator.build_spare_pool: never shown to the LLM (not in the
         # prompt, not in location_map), only appended to the backfill pool.
         self.spare_places = spare_places or []
@@ -70,8 +141,7 @@ class LLMTripPlanner:
         # of the trip, etc.) can still drop one -- see last_dropped_must_go.
         self.must_go_ids = must_go_ids or set()
         self.location_map = {loc.id: loc for loc in candidates}
-        self.default_model = TRIP_PLANNER_MODEL_NAME
-        self.client = make_llm_client(timeout=GENERATE_TIMEOUT_S, max_retries=LLM_MAX_RETRIES)
+        self.default_model = MODEL_NAME
         self.judge = TripItineraryJudge()
         # One tracker for the whole trip (every generate + judge call, retries
         # included); the route attaches metadata and calls finish().
@@ -83,6 +153,9 @@ class LLMTripPlanner:
         # the final schedule despite the priority above, for the caller to
         # surface to the user instead of failing silently.
         self.last_dropped_must_go: List[Place] = []
+        # Also set by _build_itinerary_from_llm_days, see there.
+        self.last_dropped_places: List[Tuple[int, Place]] = []
+        self.last_drops_need_regen = False
 
     def generate_prompt(self, user_input: TripInput, pace_instruction: str, budget_instruction: str, feedback_block: str = "") -> str:
         # No lat/lng here, deliberately -- geographic ordering is entirely
@@ -91,17 +164,39 @@ class LLMTripPlanner:
         # places fit the trip and which day they belong on; giving it
         # coordinates would just invite it back into distance/time
         # arithmetic it's structurally unreliable at.
+        trip_start_date = datetime.strptime(user_input.start_date, "%Y-%m-%d")
+        trip_weekdays = {(trip_start_date + timedelta(days=i)).weekday() for i in range(user_input.trip_duration_days)}
+        # Visit length per place, so the picks for a day can actually fit it:
+        # without it the LLM put four Phu Wiang sites (two national parks at
+        # 2 h each, plus ~1 h of driving each way) on one 09:00-18:00 day and
+        # the scheduler had to drop two of them, round after round.
         places_str = "".join(
             f"- ID: {loc.id}, Name: {loc.name}, Category: {loc.category}, Rating: {loc.rating}, "
-            f"District: {loc.district or 'unknown'}, Hours: {loc.hours or 'unknown'}\n"
+            f"{f'Type: {loc.subcategory}, ' if loc.subcategory else ''}"
+            f"District: {loc.district or 'unknown'}, Visit: ~{_format_minutes(route_scheduler.get_visit_duration(loc, user_input.trip_pace))}, "
+            f"Hours: {hours_for_trip(loc.hours, trip_weekdays)}\n"
             for loc in self.candidates
         )
 
-        trip_start_date = datetime.strptime(user_input.start_date, "%Y-%m-%d")
         day_dates_str = ", ".join(
             f"Day {i + 1} = {(trip_start_date + timedelta(days=i)).strftime('%Y-%m-%d (%A)')}"
             for i in range(user_input.trip_duration_days)
         )
+        # Which meals the daily window can hold -- the LLM used to tag a
+        # "dinner" on days ending 18:00 (dinner starts 17:30), which the
+        # scheduler then had to throw away, leaving the day without lunch.
+        start_t = datetime.strptime(user_input.start_time, "%H:%M").time()
+        end_t = datetime.strptime(user_input.end_time, "%H:%M").time()
+        meals = route_scheduler.day_meals(start_t, end_t, breakfast=BREAKFAST_PREFERENCE in user_input.food_preferences)
+        if meals:
+            meals_str = (
+                f"each day has exactly {' and '.join(meals)} -- pick one \"ร้านอาหาร\" per meal, with that meal_role, "
+                f"open at that time on that day and in or near the District of that day's other places"
+            )
+            if "breakfast" in meals:
+                meals_str += " (breakfast: a restaurant of Type อาหารเช้า near the accommodation, open in the morning)"
+        else:
+            meals_str = "the daily window holds no full meal -- at most one \"ร้านอาหาร\" per day, without a meal_role"
 
         # Appended at the very end, deliberately: models weight the tail of a
         # long prompt more heavily as "the final word".
@@ -122,9 +217,11 @@ class LLMTripPlanner:
         - Pace: {user_input.trip_pace}
         - Budget: {user_input.budget_level}
         - Interests: {', '.join(user_input.interests)}
+        - Food preferences: {', '.join(user_input.food_preferences) or '(none)'}
         - Must Go: {', '.join(user_input.must_go)}
         - Start: {user_input.start_time}, End: {user_input.end_time}
         - Calendar dates per day: {day_dates_str}
+        - Meals: {meals_str}
 
         [DYNAMIC CONSTRAINTS]
         {pace_instruction}
@@ -139,9 +236,10 @@ class LLMTripPlanner:
         3. Align with commonsense: Do not put heavy restaurants back-to-back. Mix attractions, cafes, and restaurants logically across each day.
         4. Do not include "Accommodation/Hotels" in the plan! Only include tourist attractions, cafes, and restaurants. The system will order each day's stops, assign times, and add the return trip to your accommodation automatically.
         5. Each place_id may appear AT MOST ONCE across the entire itinerary -- never assign the same place to two days, or twice on the same day.
-        6. If a day includes two "ร้านอาหาร" (restaurant) places, set "meal_role" to "lunch" on one and "dinner" on the other so each gets scheduled at the right time of day. Omit "meal_role" entirely otherwise (single restaurant that day, or non-restaurant places).
-        7. Prefer grouping places from the same or nearby District together within a single day. Spreading far-apart Districts across one day risks the scheduler being unable to fit every pick in time -- when the candidate list offers a same-day alternative in a closer District, prefer it.
-        8. Do not put more than {MAX_CAFES_PER_DAY} "คาเฟ่" (cafe) places on the same day. Stacking several cafes back-to-back reads as repetitive, not a real itinerary -- prefer at most one cafe per day alongside attractions/restaurants, two only if the day is otherwise light.
+        6. Restaurants follow the "Meals" line above: one "ร้านอาหาร" per listed meal per day, its "meal_role" set to that meal ("lunch" or "dinner"), and no extra restaurants. When there are Food preferences, meals' restaurants should have a "Type" from them (rotate through them across meals and days when there are several), but never the same Type for lunch and dinner on one day: when a day has more meals than there are preferences, the extra meal is a different Type. A "เบเกอรี่/ของหวาน" preference means cafes of that Type; "อาหารเช้า" means the breakfast. Never put "meal_role" on non-restaurant places. Fill the rest of each day's hours with attractions/cafes suited to the time of day -- not only evening places on a day that starts in the morning.
+        7. Each day's picks must fit its window ({user_input.start_time}-{user_input.end_time}): add up their "Visit" times, about 1 hour per meal, ~10 minutes between places in the same District, and about 1 hour each way between the city and an outlying District. Prefer grouping places from the same or nearby District together within a single day. Spreading far-apart Districts across one day risks the scheduler being unable to fit every pick in time -- when the candidate list offers a same-day alternative in a closer District, prefer it.
+        8. Vary each day: at most {MAX_CAFES_PER_DAY} "คาเฟ่" (cafe) places, and at most {route_scheduler.DEFAULT_CATEGORY_DAILY_CAP} places of any other single Category (e.g. "สวนสาธารณะ"), on the same day. Mix categories within a day and spread a big category across days.
+        9. "rationale": 1-2 short sentences in Thai, written to the traveller, explaining why these places and this grouping by day suit their request (interests, pace, budget, nearby districts together). Talk only about the trip itself: never mention times, scores, IDs, these rules, the candidate list, places that are missing or could not be included, or how the plan was produced.
 
         [EXAMPLE JSON OUTPUT FORMAT]
         {{
@@ -153,39 +251,27 @@ class LLMTripPlanner:
                         {{"place_id": "ID_FROM_LIST"}}
                     ]
                 }}
-            ]
+            ],
+            "rationale": "เน้นวัดและพิพิธภัณฑ์ตามที่สนใจ โดยจัดสถานที่ในอำเภอเดียวกันไว้วันเดียวกันเพื่อลดการเดินทาง"
         }}
         {feedback_section}
         """
 
     def _call_llm_for_itinerary(self, prompt: str) -> dict:
-        response = self.client.chat.completions.create(
-            model=self.default_model,
-            messages=[
-                {"role": "system", "content": "You are a helpful travel assistant. Output JSON only."},
-                {"role": "user", "content": prompt},
-            ],
-            stream=False,
-            # Low temperature + JSON mode: this is a structured-output task, not
-            # a creative one -- 0.7 was carried over from the old project's
-            # free-text chat settings and made malformed JSON (which we
-            # deliberately don't fall back on, see routes_tripplanner.py) more
-            # likely than it needed to be.
-            #
-            # Tried OpenAI's stricter response_format={"type": "json_schema", ...}
-            # (schema-enforced structured output) on this gateway -- it doesn't
-            # error, but silently ignores the schema and returns free-form prose
-            # instead of JSON at all, which is worse than plain json_object mode.
-            # The KKU gateway's gemini-2.5-flash proxy doesn't genuinely support
-            # it; sticking with json_object + the retry loop below.
+        # Low temperature (Gemini only; Claude takes none): a structured-output
+        # task, not a creative one -- 0.7 carried over from the old project's
+        # chat settings made malformed JSON more likely than it needed to be.
+        return complete_json(
+            system="You are a helpful travel assistant. Output JSON only.",
+            user=prompt,
+            schema=ITINERARY_SCHEMA,
+            timeout=GENERATE_TIMEOUT_S,
+            max_retries=LLM_MAX_RETRIES,
             temperature=0.2,
-            response_format={"type": "json_object"},
+            usage=self.usage,
+            label="generate",
+            model=self.default_model,
         )
-        # Recorded before parsing so a malformed-JSON attempt (retried) is
-        # still counted -- it was billed.
-        self.usage.record_response("generate", self.default_model, response)
-        content = response.choices[0].message.content
-        return json.loads(clean_json_string(content))
 
     def _generate_itinerary_data(self, prompt: str) -> dict:
         t0 = time.time()
@@ -208,8 +294,8 @@ class LLMTripPlanner:
         # Not cumulative across rounds -- only the latest verdict's feedback
         # is used, avoiding piling up contradictory feedback if the cap is
         # ever raised later.
-        issues_str = "\n".join(f"- {issue}" for issue in verdict.issues) or f"- {verdict.feedback}"
-        return f"{issues_str}\n{verdict.feedback}".strip()
+        # verdict.feedback already pairs each issue (majors first) with its fix.
+        return verdict.feedback or "\n".join(f"- {issue}" for issue in verdict.issues)
 
     def _build_drop_feedback(self, dropped_by_day: Dict[int, List[Tuple[Place, str]]]) -> str:
         # Deterministic counterpart to _build_feedback_block: the judge is
@@ -232,8 +318,9 @@ class LLMTripPlanner:
             parts = ", ".join(f"{p.name} ({p.district or 'unknown district'}) -- {reason}" for p, reason in dropped_by_day[day_num])
             lines.append(f"- Day {day_num}: {parts}")
         lines.append("Prefer clustering each day's picks by District (see rule 7), and keep at most "
-                      f"{MAX_RESTAURANTS_PER_DAY} \"ร้านอาหาร\" (see rule 6) and {MAX_CAFES_PER_DAY} \"คาเฟ่\" "
-                      "(see rule 8) per day, so fewer picks are dropped like this.")
+                      f"{MAX_RESTAURANTS_PER_DAY} \"ร้านอาหาร\" (see rule 6), {MAX_CAFES_PER_DAY} \"คาเฟ่\" and "
+                      f"{route_scheduler.DEFAULT_CATEGORY_DAILY_CAP} of any other Category (see rule 8) per day, "
+                      "so fewer picks are dropped like this.")
         return "\n".join(lines)
 
     def _build_post_schedule_feedback(self, final_itinerary: List[DailyItinerary]) -> str:
@@ -381,7 +468,7 @@ class LLMTripPlanner:
 
     def _enforce_restaurant_cap_and_roles(
         self, day_assignments: Dict[int, List[Place]], meal_roles: Dict[str, str],
-        used_ids: Set[str], trip_start_date, trip_duration_days: int,
+        used_ids: Set[str], trip_start_date, trip_duration_days: int, max_per_day: int = MAX_RESTAURANTS_PER_DAY,
     ) -> List[Tuple[int, Place]]:
         """Deterministic backstop for two related gaps STRICT RULE 6 alone
         can't guarantee:
@@ -400,8 +487,9 @@ class LLMTripPlanner:
         how that pair came to be. Returns the (day_num, place) pairs that had
         nowhere to go, for the caller to fold into the same drop-feedback
         loop as order_day_stops-level drops (see _build_drop_feedback)."""
+        # `max_per_day` is 3 on trips with a planned breakfast.
         dropped = self._enforce_category_cap(
-            day_assignments, "ร้านอาหาร", MAX_RESTAURANTS_PER_DAY,
+            day_assignments, "ร้านอาหาร", max_per_day,
             used_ids, trip_start_date, trip_duration_days,
         )
 
@@ -415,8 +503,9 @@ class LLMTripPlanner:
             restaurants = [p for p in places if p.category == "ร้านอาหาร"]
             if len(restaurants) != 2:
                 continue
-            if {meal_roles.get(p.id) for p in restaurants} == {"lunch", "dinner"}:
-                continue
+            roles = {meal_roles.get(p.id) for p in restaurants}
+            if roles == {"lunch", "dinner"} or "breakfast" in roles:
+                continue  # complete, or a breakfast pair that _ensure_meals sorts out
             meal_roles[restaurants[0].id] = "lunch"
             meal_roles[restaurants[1].id] = "dinner"
 
@@ -458,23 +547,48 @@ class LLMTripPlanner:
 
     def solve_route_with_llm(self, user_input: TripInput, pace_instruction: str, budget_instruction: str) -> Tuple[List[DailyItinerary], str]:
         feedback_block = ""
-        final_itinerary = None
-        verdict = None
-        drop_feedback = ""
+        # Best round so far: (sort key, itinerary, rationale, dropped picks). A
+        # regenerated plan isn't always better than the one it replaces, so
+        # every round is judged and the best one is returned, not the last.
+        best = None
 
         for judge_round in range(1, MAX_JUDGE_ATTEMPTS + 1):
             prompt = self.generate_prompt(user_input, pace_instruction, budget_instruction, feedback_block)
             data = self._generate_itinerary_data(prompt)
             final_itinerary, drop_feedback = self._build_itinerary_from_llm_days(data, user_input)
+            dropped_must_go = self.last_dropped_must_go
+            # The generator's own user-facing explanation (prompt rule 9).
+            # The judge writes one too, after seeing the real schedule, and
+            # that one wins when the judge ran.
+            gen_rationale = str(data.get("rationale") or "").strip()
 
-            verdict = self.judge.evaluate(user_input, final_itinerary)
-            is_last_round = judge_round == MAX_JUDGE_ATTEMPTS
+            scheduled_ids = {slot.place.id for day in final_itinerary for slot in day.schedule}
+            didnt_fit = self.last_dropped_places
+            didnt_fit_ids = {p.id for _, p in didnt_fit}
+            unused = [p for p in self.candidates if p.id not in scheduled_ids and p.id not in didnt_fit_ids]
+            verdict = self.judge.evaluate(user_input, final_itinerary, unused=unused, dropped=didnt_fit)
+            rationale = verdict.rationale or gen_rationale
+            drops_need_regen = self.last_drops_need_regen
+            accepted = verdict.passed and not drops_need_regen
+            key = (verdict.major_issues, drops_need_regen, -verdict.score)
+            if best is None or key < best[0]:
+                best = (key, final_itinerary, rationale, dropped_must_go)
 
-            # Passing isn't enough on its own anymore -- the judge never
-            # evaluates geographic fit (by design), so a plan that dropped
-            # picks due to distance could otherwise return immediately here
-            # with the drop never having been given a chance to be fixed.
-            if verdict.passed and not drop_feedback:
+            if judge_round == MAX_JUDGE_ATTEMPTS and not accepted:
+                _, best_itinerary, best_rationale, best_dropped = best
+                logger.info(
+                    "trip planner: no round fully accepted in %d attempt(s); returning the best (majors=%d, dropped=%s, score=%.2f)",
+                    MAX_JUDGE_ATTEMPTS, best[0][0], best[0][1], -best[0][2],
+                )
+                # last_dropped_must_go must describe the itinerary returned.
+                self.last_dropped_must_go = best_dropped
+                return best_itinerary, best_rationale
+
+            # A pass is accepted unless the drops need fixing on their own
+            # (a must-go missing, a day empty or without a restaurant; see
+            # last_drops_need_regen). An optional pick that didn't fit is not
+            # worth another round once the judge is happy with the result.
+            if accepted:
                 if verdict.judge_call_failed:
                     # Not a genuine evaluation -- see JudgeVerdict.judge_call_failed.
                     # Still returned as-is (fail-open is deliberate, see judge.py),
@@ -486,14 +600,11 @@ class LLMTripPlanner:
                     )
                 else:
                     logger.info("trip planner: judge passed on round %d/%d (score=%.2f)", judge_round, MAX_JUDGE_ATTEMPTS, verdict.score)
-                return final_itinerary, verdict.rationale
-
-            if is_last_round:
-                break  # give up on quality/fit, return the last itinerary anyway (see warning below)
+                return final_itinerary, rationale
 
             logger.info(
-                "trip planner: round %d/%d not accepted (judge passed=%s score=%.2f, dropped_places=%s) - regenerating",
-                judge_round, MAX_JUDGE_ATTEMPTS, verdict.passed, verdict.score, bool(drop_feedback),
+                "trip planner: round %d/%d not accepted (judge passed=%s majors=%d score=%.2f, drops_need_regen=%s) - regenerating",
+                judge_round, MAX_JUDGE_ATTEMPTS, verdict.passed, verdict.major_issues, verdict.score, drops_need_regen,
             )
             feedback_parts = []
             if not verdict.passed:
@@ -502,59 +613,218 @@ class LLMTripPlanner:
                 feedback_parts.append(drop_feedback)
             feedback_block = "\n".join(feedback_parts).strip()
 
-        if not verdict.passed:
-            logger.warning(
-                "trip planner: judge did not pass within %d attempt(s), returning last itinerary anyway (final score=%.2f, issues=%s)",
-                MAX_JUDGE_ATTEMPTS, verdict.score, verdict.issues,
-            )
-        if drop_feedback:
-            logger.warning("trip planner: still dropping places after %d attempt(s), returning last itinerary anyway:\n%s", MAX_JUDGE_ATTEMPTS, drop_feedback)
-        return final_itinerary, verdict.rationale
+        raise AssertionError("unreachable: the last round always returns")
+
+    def _day_anchor(self, day_places: List[Place]) -> Optional[Place]:
+        """Centre of a day's non-restaurant places, or the hotel when it has none."""
+        located = [p for p in day_places if p.category != "ร้านอาหาร" and p.lat is not None and p.lng is not None]
+        if not located:
+            return self.start_point
+        return Place(
+            id="day_centroid", name="day_centroid",
+            lat=sum(p.lat for p in located) / len(located), lng=sum(p.lng for p in located) / len(located),
+        )
+
+    def _meal_distance(self, loc: Place, anchor: Optional[Place], meal: Optional[str]) -> float:
+        """How far `loc` is from where that meal is eaten: the day's places,
+        or for breakfast/dinner also the hotel (the day starts/ends there)."""
+        if loc.lat is None or loc.lng is None:
+            return 0.0
+        dists = [route_scheduler.calculate_distance(anchor, loc)] if anchor else []
+        if meal in ("breakfast", "dinner") and self.start_point:
+            dists.append(route_scheduler.calculate_distance(self.start_point, loc))
+        return min(dists) if dists else 0.0
+
+    def _serves_meal(self, loc: Place, meal: str, day_date, start_min: int, end_min: int, anchor: Optional[Place]) -> bool:
+        """Open for `meal` on that day, within the day's window, and near enough."""
+        return (
+            route_scheduler.open_for_meal(loc, [day_date], start_min, end_min, _MEAL_WINDOWS[meal])
+            and self._meal_distance(loc, anchor, meal) <= MEAL_MAX_KM
+        )
 
     def _pick_fallback_restaurant(
         self, day_places: List[Place], day_date, start_time_of_day, end_time_of_day, used_ids: Set[str],
+        meal: Optional[str] = None, kinds: Optional[List[str]] = None, avoid: Set[str] = frozenset(),
     ) -> Optional[Place]:
-        """Restaurant to top up a day that has none. Used to be "the first
-        unused restaurant in candidate order", which ignored when it opens
-        and where it is: confirmed on real data, a 09:00-18:00 day got an
-        evening-only restaurant (so lunch still never happened) and a
-        Phu Wiang day got an in-town one the scheduler then had to drop.
-        Order of preference: open at a meal time inside the day's window,
-        then at least visitable at some point in it, then closest to the day's other places (or the hotel when the day
-        has none), then best rated. Ties keep candidate order."""
+        """Restaurant to serve a day's `meal` ("lunch"/"dinner"; None = any
+        meal the window has), from the unused candidates and the meal pool.
+        `kinds` (subcategories, most wanted first) limits it to restaurants of
+        those kinds, ranked in that order after the open/near checks; kinds
+        in `avoid` (already eaten that day) go after the rest.
+        Used to be "the first unused restaurant in candidate order", which
+        ignored when it opens and where it is: a 09:00-18:00 day got an
+        evening-only restaurant and a Phu Wiang day an in-town one.
+        Order of preference: open at the meal time, then at least visitable
+        in the window, then within MEAL_MAX_KM, then a candidate (the LLM's
+        interest-matched pool) over the meal pool, then closest (2 km steps),
+        then best rated. Ties keep candidate order."""
         pool = [loc for loc in self.candidates if loc.id not in used_ids and loc.category == "ร้านอาหาร"]
+        candidate_ids = {loc.id for loc in pool}
+        pool += [loc for loc in self.meal_pool if loc.id not in used_ids and loc.id not in candidate_ids]
+        kind_rank = {k: i for i, k in enumerate(kinds or [])}
+        if kinds:
+            pool = [loc for loc in pool if loc.subcategory in kind_rank]
         if not pool:
             return None
 
         start_min = start_time_of_day.hour * 60 + start_time_of_day.minute
         end_min = end_time_of_day.hour * 60 + end_time_of_day.minute
-        if start_min <= 12 * 60 + 30 and end_min >= 13 * 60 + 30:
-            meal_min = 12 * 60 + 30
-        elif start_min <= 18 * 60 + 30 and end_min >= 19 * 60 + 30:
+        if meal == "breakfast":
+            meal_min = 8 * 60 + 30
+        elif meal == "lunch" or (meal is None and start_min <= 12 * 60 + 30 and end_min >= 13 * 60 + 30):
+            meal_min = 12 * 60 + 15
+        elif meal == "dinner" or (meal is None and start_min <= 18 * 60 + 30 and end_min >= 19 * 60 + 30):
             meal_min = 18 * 60 + 30
         else:
             meal_min = (start_min + end_min) // 2
+        meal_min = min(max(meal_min, start_min), end_min - route_scheduler.MEAL_MIN_OPEN_MINUTES)
         meal_dt = datetime(day_date.year, day_date.month, day_date.day, meal_min // 60, meal_min % 60)
-
-        located = [p for p in day_places if p.lat is not None and p.lng is not None]
-        if located:
-            anchor = Place(
-                id="day_centroid", name="day_centroid",
-                lat=sum(p.lat for p in located) / len(located), lng=sum(p.lng for p in located) / len(located),
-            )
-        else:
-            anchor = self.start_point
+        anchor = self._day_anchor(day_places)
+        window = _MEAL_WINDOWS.get(meal)
 
         def key(loc: Place):
             is_open = route_scheduler.check_is_open(loc, meal_dt)["is_open"]
             # Not open at the ideal meal time, but still visitable somewhere in
-            # the window, beats a place that can never be visited today (e.g.
-            # opens after the day ends) -- scheduling that one just drops it.
-            visitable = is_open or route_scheduler.open_for_meal(loc, [day_date], start_min, end_min)
-            dist = route_scheduler.calculate_distance(anchor, loc) if anchor and loc.lat is not None and loc.lng is not None else 0.0
-            return (not is_open, not visitable, dist, -(loc.rating or 0.0))
+            # the window (the meal's own window when there is one), beats a
+            # place that can never be visited -- scheduling that one drops it.
+            visitable = is_open or route_scheduler.open_for_meal(loc, [day_date], start_min, end_min, window)
+            dist = self._meal_distance(loc, anchor, meal)
+            return (
+                not is_open, not visitable, dist > MEAL_MAX_KM, loc.subcategory in avoid, kind_rank.get(loc.subcategory, 0),
+                loc.id not in candidate_ids, int(dist // 2), -(loc.rating or 0.0),
+            )
 
         return min(pool, key=key)
+
+    def _ensure_meals(
+        self, day_assignments: Dict[int, List[Place]], meal_roles: Dict[str, str], used_ids: Set[str],
+        trip_start_date, trip_duration_days: int, start_time_of_day, end_time_of_day,
+        food_kinds: Optional[List[str]] = None, breakfast: bool = False,
+    ) -> Set[str]:
+        """Every day gets one restaurant per meal its window can hold (lunch,
+        dinner), each open at that meal and near that day's places, and no
+        restaurant that isn't one of those meals. Returns the ids added here,
+        which ordering then treats as priority stops.
+
+        `food_kinds` (the traveller's food preferences, as restaurant
+        subcategories) come first: a meal goes to the LLM's restaurant of a
+        wanted kind, else one of a wanted kind is brought in, and only then
+        to any restaurant. Meal after meal the kinds rotate, so "อีสาน +
+        ก๋วยเตี๋ยว" alternates rather than one kind winning every meal.
+
+        Per day and meal: keep a restaurant already holding that role, else
+        give the role to a role-less one, if it serves the meal (_serves_meal);
+        otherwise bring one in from the candidates/meal pool
+        (_pick_fallback_restaurant). Restaurants left without a meal are taken
+        off the day -- a role-less restaurant used to be placed anywhere from
+        11:00 to 20:00, which put days' only meal at 14:55 or 17:07 -- unless
+        it's a must-go, or no restaurant could be found for a meal at all
+        (then the best leftover still feeds the traveller, role-less)."""
+        start_min = start_time_of_day.hour * 60 + start_time_of_day.minute
+        end_min = end_time_of_day.hour * 60 + end_time_of_day.minute
+        meals = route_scheduler.day_meals(start_time_of_day, end_time_of_day, breakfast=breakfast)
+        added: Set[str] = set()
+        if not meals:
+            return added  # a window with no mealtime (e.g. 14:00-17:00): restaurants stay as picked
+        food_kinds = list(food_kinds or [])
+        meal_no = 0  # meals served so far, for rotating food_kinds
+
+        def kinds_now() -> List[str]:
+            k = meal_no % len(food_kinds)
+            return food_kinds[k:] + food_kinds[:k]
+
+        for day_num in range(1, trip_duration_days + 1):
+            places = day_assignments.setdefault(day_num, [])
+            day_date = trip_start_date + timedelta(days=day_num - 1)
+            anchor = self._day_anchor(places)
+            restaurants = [p for p in places if p.category == "ร้านอาหาร"]
+            served: Dict[str, Place] = {}
+            # An evening market is where a Thai evening's food is: it serves
+            # dinner (and keeps its full evening visit) without a restaurant.
+            if "dinner" in meals:
+                market = next((p for p in places if route_scheduler.market_kind(p) == "evening"), None)
+                if market and not any(meal_roles.get(p.id) == "dinner" for p in restaurants):
+                    served["dinner"] = market
+
+            # Lunch/dinner kinds already eaten today: a kind is served at most
+            # once a day while another will do (live: one "ปิ้งย่าง/ชาบู"
+            # choice gave shabu at all four meals of a two-day trip).
+            day_kinds: Set[str] = set()
+
+            def take_llm_pick(meal, kinds=None, avoid=frozenset()) -> bool:
+                # Already holding this role first, then role-less, then LLM
+                # order -- a role that doesn't fit the window was already
+                # stripped by _resolve_unfittable_meal_roles. With `kinds`,
+                # only those, the earlier kind first; never a kind in `avoid`.
+                rank = {k: i for i, k in enumerate(kinds or [])}
+                options = sorted(
+                    (p for p in restaurants if p not in served.values() and meal_roles.get(p.id) in (meal, None)
+                     and (not kinds or p.subcategory in rank) and p.subcategory not in avoid),
+                    key=lambda p: (rank.get(p.subcategory, 0), meal_roles.get(p.id) != meal),
+                )
+                for p in options:
+                    if self._serves_meal(p, meal, day_date, start_min, end_min, anchor):
+                        served[meal] = p
+                        meal_roles[p.id] = meal
+                        return True
+                return False
+
+            def bring_in(meal, kinds=None, avoid=frozenset()) -> bool:
+                pick = self._pick_fallback_restaurant(places, day_date, start_time_of_day, end_time_of_day, used_ids, meal, kinds, avoid)
+                if not pick or pick.subcategory in avoid or not self._serves_meal(pick, meal, day_date, start_min, end_min, anchor):
+                    return False
+                places.append(pick)
+                used_ids.add(pick.id)
+                meal_roles[pick.id] = meal
+                served[meal] = pick
+                added.add(pick.id)
+                logger.info("trip planner: day %d %s -> %s", day_num, meal, pick.name)
+                return True
+
+            for meal in meals:
+                if meal in served:
+                    continue
+                if meal == "breakfast":
+                    # A breakfast shop first; any restaurant open then, after.
+                    # Not part of food_kinds' rotation (that's lunch/dinner).
+                    _ = take_llm_pick(meal, ["อาหารเช้า"]) or bring_in(meal, ["อาหารเช้า"]) or take_llm_pick(meal) or bring_in(meal)
+                    continue
+                # A wanted kind not eaten yet today; once every wanted kind
+                # has had its meal today, this meal is free -- any kind,
+                # preferring one not eaten today either.
+                # A kind already eaten today is avoided outright first (the
+                # LLM often picks the same kind for both meals), and only
+                # accepted when no other restaurant can serve the meal.
+                # Breakfast shops are avoided at lunch/dinner the same way
+                # (live: one open late was the LLM's dinner pick).
+                kinds = [k for k in kinds_now() if k not in day_kinds] if food_kinds else []
+                avoid = day_kinds | {"อาหารเช้า"}
+                if kinds and (take_llm_pick(meal, kinds) or bring_in(meal, kinds)):
+                    meal_no += 1
+                elif not (take_llm_pick(meal, avoid=avoid) or bring_in(meal, avoid=avoid)
+                          or take_llm_pick(meal) or bring_in(meal)):
+                    continue
+                if served[meal].subcategory:
+                    day_kinds.add(served[meal].subcategory)
+
+            unserved = [m for m in meals if m not in served]
+            for p in restaurants:
+                if p in served.values():
+                    continue
+                if p.id in self.must_go_ids:
+                    if meal_roles.get(p.id) not in meals:
+                        meal_roles.pop(p.id, None)
+                    continue
+                if unserved:
+                    # Nothing better exists for that meal: keep this one, role-less.
+                    unserved.pop(0)
+                    meal_roles.pop(p.id, None)
+                    continue
+                places.remove(p)
+                used_ids.discard(p.id)
+                meal_roles.pop(p.id, None)
+                logger.info("trip planner: day %d drops %s, not one of the day's meals", day_num, p.name)
+        return added
 
     def _build_itinerary_from_llm_days(self, data: dict, user_input: TripInput) -> Tuple[List[DailyItinerary], str]:
         """Turns the LLM's day-assignment output into a real itinerary:
@@ -597,9 +867,10 @@ class LLMTripPlanner:
                 used_ids.add(loc_id)
                 places_for_day.append(self.location_map[loc_id])
                 role = entry.get("meal_role")
-                if role in ("lunch", "dinner"):
+                if role in route_scheduler.MEAL_WINDOWS:
                     meal_roles[loc_id] = role
             day_assignments[day_num] = places_for_day
+        llm_pick_ids = set(used_ids)  # for TimeSlot.source
 
         # The "Must Go" list in generate_prompt() is only a hint -- STRICT
         # RULE 1 doesn't force the LLM to actually include every must-go id
@@ -628,16 +899,32 @@ class LLMTripPlanner:
             day_assignments, trip_start_date, user_input.trip_duration_days,
         )
 
+        wants_breakfast = BREAKFAST_PREFERENCE in user_input.food_preferences
+        trip_meals = route_scheduler.day_meals(start_time_of_day, end_time_of_day, breakfast=wants_breakfast)
         restaurant_cap_drops = self._enforce_restaurant_cap_and_roles(
             day_assignments, meal_roles, used_ids, trip_start_date, user_input.trip_duration_days,
+            max_per_day=max(MAX_RESTAURANTS_PER_DAY, len(trip_meals)),
         )
         self._resolve_unfittable_meal_roles(day_assignments, meal_roles, start_time_of_day, end_time_of_day)
         cafe_cap_drops = self._enforce_category_cap(
             day_assignments, "คาเฟ่", MAX_CAFES_PER_DAY,
             used_ids, trip_start_date, user_input.trip_duration_days,
         )
+        # Same relocate-or-drop for every other category, at
+        # route_scheduler.category_daily_cap (3) -- the "family + nature"
+        # trips' 4-5 parks a day were the LLM's own picks.
+        other_categories = sorted({
+            p.category for places in day_assignments.values() for p in places
+            if p.category not in ("คาเฟ่", None) and route_scheduler.category_daily_cap(p.category)
+        })
+        for category in other_categories:
+            for day_num, place in self._enforce_category_cap(
+                day_assignments, category, route_scheduler.category_daily_cap(category),
+                used_ids, trip_start_date, user_input.trip_duration_days,
+            ):
+                cafe_cap_drops.append((day_num, place))
         stop_min, stop_max = route_scheduler.pace_stop_range(
-            user_input.trip_pace, start_time_of_day, end_time_of_day,
+            user_input.trip_pace, start_time_of_day, end_time_of_day, breakfast=wants_breakfast,
         )
         pace_cap_drops = self._enforce_pace_cap(
             day_assignments, stop_max, used_ids, trip_start_date, user_input.trip_duration_days,
@@ -653,7 +940,8 @@ class LLMTripPlanner:
                 reason = "MUST-GO PLACE -- " + reason
             dropped_by_day.setdefault(day_num, []).append((place, reason))
         for day_num, place in cafe_cap_drops:
-            reason = f"day already had {MAX_CAFES_PER_DAY} \"คาเฟ่\" scheduled"
+            cap = route_scheduler.category_daily_cap(place.category)
+            reason = f"every day already had {cap} \"{place.category}\" scheduled"
             if place.id in self.must_go_ids:
                 reason = "MUST-GO PLACE -- " + reason
             dropped_by_day.setdefault(day_num, []).append((place, reason))
@@ -671,7 +959,13 @@ class LLMTripPlanner:
         # the user as something they asked for) and unioned into
         # order_day_stops' priority tier below, so the injected restaurant
         # isn't silently dropped like any other optional pick.
-        meal_fallback_ids: Set[str] = set()
+        meal_fallback_ids = self._ensure_meals(
+            day_assignments, meal_roles, used_ids, trip_start_date, user_input.trip_duration_days,
+            start_time_of_day, end_time_of_day,
+            food_kinds=meal_food_kinds(user_input.food_preferences), breakfast=wants_breakfast,
+        )
+        # A window with no mealtime still gets one restaurant on a day that
+        # has none (the old rule), placed by its opening hours.
         for day_num in range(1, user_input.trip_duration_days + 1):
             day_places = day_assignments.setdefault(day_num, [])
             if any(p.category == "ร้านอาหาร" for p in day_places):
@@ -734,11 +1028,27 @@ class LLMTripPlanner:
                     reason = "MUST-GO PLACE -- " + reason
                 dropped_by_day.setdefault(day_num, []).append((p, reason))
 
+        before_backfill = {d: {p.id for p in r} for d, r in routes.items()}
         routes = route_scheduler.backfill_underfilled_trip(
             routes, day_dates, meal_roles, self.start_point,
             start_time_of_day, end_time_of_day, user_input.trip_pace, backfill_pool,
             stop_range=(stop_min, stop_max),
         )
+
+        def source_of(place: Place, day_num: int) -> Optional[str]:
+            if place.category in (None, "ที่พัก"):
+                return None
+            if place.is_spare:
+                return "spare"
+            if place.id in meal_fallback_ids:
+                return "meal"
+            if place.id in llm_pick_ids:
+                return "llm"
+            if place.id in self.must_go_ids:
+                return "must_go"
+            if place.id in {p.id for p in routes[day_num]} - before_backfill.get(day_num, set()):
+                return "backfill"
+            return "gap_filler"
 
         final_itinerary = []
         for day_num in range(1, user_input.trip_duration_days + 1):
@@ -753,6 +1063,8 @@ class LLMTripPlanner:
                 must_go_ids=self.must_go_ids | meal_fallback_ids,
                 dropped=late_drops,
             )
+            for slot in schedule:
+                slot.source = source_of(slot.place, day_num)
             final_itinerary.append(DailyItinerary(
                 day=day_num, date=day_date.strftime("%Y-%m-%d"), schedule=schedule,
                 day_cost_estimate=day_cost, day_travel_time_total=day_travel,
@@ -778,4 +1090,16 @@ class LLMTripPlanner:
             self.location_map[mid] for mid in self.must_go_ids
             if mid not in scheduled_ids and mid in self.location_map
         ]
+        # Picks that didn't make it into the schedule, per day -- the judge is
+        # told not to suggest them again (live: it asked to add back a park
+        # the scheduler had just dropped for not fitting the day).
+        self.last_dropped_places = [
+            (day_num, p) for day_num, items in sorted(dropped_by_day.items())
+            for p, _ in items if p.id not in scheduled_ids
+        ]
+        # Worth a regenerate round on their own: a must-go that didn't make
+        # it, or a day left empty / without a restaurant. An optional pick
+        # dropped for not fitting is not -- live, the next round dropped the
+        # same park again, 26 s later, with the judge already happy.
+        self.last_drops_need_regen = bool(post_schedule_feedback) or bool(self.last_dropped_must_go)
         return final_itinerary, drop_feedback

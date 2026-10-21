@@ -4,6 +4,7 @@
 // like a seeded one.
 import { mapCategory } from '../../scripts/place-category.js'
 import { mapAdminArea } from './placeAdminArea.js'
+import { isLocalFood, LOCAL_FOOD_TAG } from './localFood.js'
 
 const priceLevelLabel = {
   PRICE_LEVEL_FREE: 'ไม่มีค่าใช้จ่าย',
@@ -152,7 +153,6 @@ function mapTags(category, goodForChildren, types, name) {
   if (category === 'วัด') tags.add('วัฒนธรรม/ศาสนา')
   if (category === 'สวนสาธารณะ' || category === 'สถานที่ท่องเที่ยว' || category === 'อุทยานแห่งชาติ') tags.add('ธรรมชาติ')
   if (category === 'คาเฟ่') tags.add('คาเฟ่')
-  if (category === 'ร้านอาหาร') tags.add('อาหารพื้นถิ่น')
   // Museums had no interest tag at all -- treating them as a cultural stop,
   // same as this dataset already treats วัด.
   if (category === 'พิพิธภัณฑ์') tags.add('วัฒนธรรม/ศาสนา')
@@ -162,6 +162,9 @@ function mapTags(category, goodForChildren, types, name) {
     if (FOOD_TYPE_TAGS[t]) tags.add(FOOD_TYPE_TAGS[t])
   }
   for (const t of tagsFromName(name || '')) tags.add(t)
+  // Only restaurants that really serve local food -- see lib/localFood.js
+  // (every restaurant used to get it, chains and sushi bars included).
+  if (isLocalFood({ name, category, tags: [...tags] })) tags.add(LOCAL_FOOD_TAG)
   return [...tags]
 }
 

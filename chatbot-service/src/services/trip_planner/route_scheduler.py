@@ -20,14 +20,29 @@ logger = logging.getLogger(__name__)
 # instead of Google's raw type slugs (place_of_worship, museum, ...) -- we
 # only keep one broad category per place, not the full types[] list the old
 # project had.
+#
+# Reviewed 2026-10-21 against 30 live trips:
+# - อุทยานแห่งชาติ had no entry, so Phu Wiang National Park (a 70 km drive)
+#   got the 60-minute default; 2 hours is a short visit to a national park.
+# - พิพิธภัณฑ์ 90 -> 75: Khon Kaen's museums are mostly small (median 164
+#   reviews); 90 also went to an outdoor dinosaur-footprint site.
+# - ตลาด is split by market_kind in get_visit_duration: an evening market is
+#   where the evening is spent (EVENING_MARKET_MINUTES), a daytime market is a
+#   walk through (this entry); a 2-hour daytime market read as padding.
 TYPE_DURATION_MAP = {
-    "พิพิธภัณฑ์": 90, "วัด": 45, "สวนสาธารณะ": 60,
-    "ตลาด": 120, "ร้านอาหาร": 60, "คาเฟ่": 45, "สถานที่ท่องเที่ยว": 60,
+    "พิพิธภัณฑ์": 75, "วัด": 45, "สวนสาธารณะ": 60, "อุทยานแห่งชาติ": 120,
+    "ตลาด": 60, "ร้านอาหาร": 60, "คาเฟ่": 45, "สถานที่ท่องเที่ยว": 60,
     "ห้างสรรพสินค้า": 90,
     # A souvenir shop is a quick stop to buy something, not a place to spend
     # the afternoon (as "ตลาด" one of them was booked for two hours).
     "ร้านของฝาก": 30,
 }
+# An evening market visited as the evening itself (no dinner restaurant that
+# day). After a dinner it's MARKET_AFTER_DINNER_MINUTES instead.
+EVENING_MARKET_MINUTES = 120
+# Buffet / grill-it-yourself meals take longer than a plate of food, but two
+# hours for lunch (live: a sukiyaki lunch 11:30-13:30) ate half the afternoon.
+BUFFET_MINUTES = 90
 
 BUFFET_KEYWORDS = ["หมูกระทะ", "ปิ้งย่าง", "บุฟเฟต์", "สุกี้", "ตี๋น้อย", "buffet", "barbecue", "bbq"]
 EVENING_KEYWORDS = ["หมูกระทะ", "ปิ้งย่าง", "บุฟเฟต์", "สุกี้", "ตี๋น้อย", "บาร์", "ตลาดกลางคืน"]
@@ -55,13 +70,20 @@ ANCHOR_MAX_WINDOW_MINUTES = 180
 # trip's end_time remain the only hard constraints, enforced by
 # check_is_open()/_simulate_day_walk()). This is what stops "lunch at 3pm"
 # and "temple visit at 8pm" from being scheduling-legal-but-nonsensical.
-MEAL_LUNCH_WINDOW = (11 * 60, 13 * 60 + 30)
+# Lunch from 11:30: an 11:00 floor let a lunch be seated at 10:30-11:00 on
+# live trips (2026-10-21), which reads as brunch, not lunch.
+MEAL_LUNCH_WINDOW = (11 * 60 + 30, 13 * 60 + 30)
 MEAL_DINNER_WINDOW = (17 * 60 + 30, 20 * 60)
+# Only planned when the traveller picks the "อาหารเช้า" food choice (otherwise
+# breakfast is assumed at the accommodation). Ends 09:45: a day starting at
+# 10:00 has no breakfast stop.
+MEAL_BREAKFAST_WINDOW = (7 * 60, 9 * 60 + 45)
+MEAL_WINDOWS = {"breakfast": MEAL_BREAKFAST_WINDOW, "lunch": MEAL_LUNCH_WINDOW, "dinner": MEAL_DINNER_WINDOW}
 CAFE_WINDOW = (13 * 60, 17 * 60)
 ATTRACTION_WINDOW = (8 * 60, 15 * 60)
 MARKET_EVENING_WINDOW = (17 * 60, 21 * 60)
 MARKET_MORNING_WINDOW = (6 * 60, 9 * 60 + 30)
-ATTRACTION_CATEGORIES = ("วัด", "สถานที่ท่องเที่ยว", "พิพิธภัณฑ์", "สวนสาธารณะ")
+ATTRACTION_CATEGORIES = ("วัด", "สถานที่ท่องเที่ยว", "พิพิธภัณฑ์", "สวนสาธารณะ", "อุทยานแห่งชาติ")
 
 # Cost-function weights for cheapest-insertion/Or-opt: how many detour-km one
 # minute outside a place's preferred window is "worth". 1/15 means 15
@@ -70,6 +92,20 @@ ATTRACTION_CATEGORIES = ("วัด", "สถานที่ท่องเท�
 # either one completely dominating the other.
 DISTANCE_WEIGHT = 1.0
 TIME_PENALTY_PER_MIN = 1.0 / 15.0
+# Minutes spent waiting at a door (for opening time, or a meal's start) cost
+# the same as minutes off-window. Without it waiting was free to the
+# optimizer: live trips arrived at lunch at 10:30 and sat until it opened
+# rather than visit something first.
+WAIT_PENALTY_PER_MIN = 1.0 / 15.0
+# A lunch/dinner (meal_role set) seated after its window closes costs this
+# much per minute instead of TIME_PENALTY_PER_MIN: 1 km of detour per 3
+# minutes late. At the general rate a late meal was cheaper than a detour or
+# a wait -- live trips ate "lunch" at 15:38 and 16:16 (2026-10-21).
+MEAL_LATE_PENALTY_PER_MIN = 1.0 / 3.0
+# Per stop ahead of the day's breakfast. Breakfast's window (07:00-09:45) is
+# wide enough that a park could come first and breakfast after it at 09:10
+# (live 2026-10-21) at no cost; breakfast is where the day starts.
+BREAKFAST_NOT_FIRST_PENALTY = 20.0
 # Applied per stop that a candidate route fails to fit at all (dropped by
 # _simulate_day_walk) -- large enough that cheapest-insertion/Or-opt never
 # prefers a cheaper-but-drops-a-stop route over a pricier-but-complete one.
@@ -85,6 +121,18 @@ DROPPED_STOP_PENALTY = 1000.0
 # entry here: they're excluded from both pools entirely (see
 # llm_extractor.py's backfill_pool construction), never just capped.
 CATEGORY_DAILY_CAP = {"คาเฟ่": 2}
+# Every other attraction category (restaurants excepted, see above) is held
+# to this many a day. Live 2026-10-21: "family + nature" days had 4-5
+# parks, nearly all of them the LLM's own picks.
+DEFAULT_CATEGORY_DAILY_CAP = 3
+
+
+def category_daily_cap(category: Optional[str]) -> Optional[int]:
+    """Max places of `category` in one day; None means uncapped (restaurants,
+    which the meal logic sizes, and uncategorised placeholders)."""
+    if not category or category in ("ร้านอาหาร", "ที่พัก"):
+        return None
+    return CATEGORY_DAILY_CAP.get(category, DEFAULT_CATEGORY_DAILY_CAP)
 
 # Soft cost (same "detour-km equivalent" units as DISTANCE_WEIGHT/
 # TIME_PENALTY_PER_MIN below) charged in _route_cost when two stops of one
@@ -168,7 +216,7 @@ def _category_cap_ok(existing: List[Place], candidate: Place) -> bool:
     added."""
     if candidate.is_spare and sum(1 for p in existing if p.is_spare) >= MAX_SPARE_STOPS_PER_DAY:
         return False
-    cap = CATEGORY_DAILY_CAP.get(candidate.category)
+    cap = category_daily_cap(candidate.category)
     if cap is None:
         return True
     return _category_count(existing, candidate.category) < cap
@@ -222,14 +270,14 @@ def get_visit_duration(loc: Place, pace: str, day_has_dinner: bool = False) -> i
     after-dinner stroll, not the two-hour evening it is when the market
     itself is where the day eats."""
     name_lower = loc.name.lower()
-    if any(kw in name_lower for kw in BUFFET_KEYWORDS):
-        return 120
+    if loc.category == "ร้านอาหาร" and any(kw in name_lower for kw in BUFFET_KEYWORDS):
+        return BUFFET_MINUTES
 
     kind = market_kind(loc)
     if kind == "morning":
         return MORNING_MARKET_MINUTES
-    if kind == "evening" and day_has_dinner:
-        return MARKET_AFTER_DINNER_MINUTES
+    if kind == "evening":
+        return MARKET_AFTER_DINNER_MINUTES if day_has_dinner else EVENING_MARKET_MINUTES
     return TYPE_DURATION_MAP.get(loc.category, 60)
 
 
@@ -268,7 +316,12 @@ def _fit_last_stop_visit(
 # a day's usable time into a target number of attractions (pace_stop_range).
 # Estimates for sizing only; the real time at each stop still comes from
 # get_visit_duration's per-category durations.
-PACE_MINUTES_PER_STOP = {"relaxed": 150, "standard": 105, "packed": 75}
+# Recalibrated 2026-10-21: live standard-pace days averaged ~80-85 minutes
+# per attraction (visit + drive), so at 105 a 09:00-18:00 day got 4-5 and was
+# back at the hotel around 15:30-16:00. Standard is now sized to fill the
+# window; relaxed keeps roughly an hour and a half of slack (filled by
+# longer stays, see _stretch_stays); packed is tighter than standard.
+PACE_MINUTES_PER_STOP = {"relaxed": 120, "standard": 85, "packed": 65}
 # Time reserved for one restaurant meal when the day's window covers it --
 # restaurants are excluded from the attraction count, so their time is
 # subtracted from the day instead.
@@ -289,13 +342,14 @@ def attraction_count(places: List[Place]) -> int:
     return sum(1 for p in places if p.category not in _NON_ATTRACTION_CATEGORIES)
 
 
-def pace_stop_range(pace: str, start_time_of_day: time, end_time_of_day: time) -> Tuple[int, int]:
+def pace_stop_range(pace: str, start_time_of_day: time, end_time_of_day: time, breakfast: bool = False) -> Tuple[int, int]:
     """(min, max) attractions for one day at `pace`, scaled to the day's
     window: usable minutes (window minus a meal break for each of lunch /
-    dinner the window covers) divided by PACE_MINUTES_PER_STOP[pace], floor
-    to ceil, never below 1 and never above MAX_STOPS_PER_DAY. A narrow window
-    therefore gets a small range and a wide one a bigger range instead of one
-    fixed number that only suits a 09:00-18:00 day."""
+    dinner the window covers, and for breakfast when the trip plans one, see
+    day_meals) divided by PACE_MINUTES_PER_STOP[pace], floor to ceil, never
+    below 1 and never above MAX_STOPS_PER_DAY. A narrow window therefore gets
+    a small range and a wide one a bigger range instead of one fixed number
+    that only suits a 09:00-18:00 day."""
     window_min = (
         datetime.combine(date.min, end_time_of_day) - datetime.combine(date.min, start_time_of_day)
     ).total_seconds() / 60
@@ -303,6 +357,8 @@ def pace_stop_range(pace: str, start_time_of_day: time, end_time_of_day: time) -
     if start_time_of_day <= _LUNCH_WINDOW[0] and end_time_of_day >= _LUNCH_WINDOW[1]:
         meals += 1
     if start_time_of_day <= _DINNER_WINDOW[0] and end_time_of_day >= _DINNER_WINDOW[1]:
+        meals += 1
+    if breakfast and meal_role_fits_window("breakfast", start_time_of_day, end_time_of_day):
         meals += 1
     usable = max(0.0, window_min - meals * MEAL_BREAK_MINUTES)
     raw = usable / PACE_MINUTES_PER_STOP.get(pace, PACE_MINUTES_PER_STOP["standard"])
@@ -541,10 +597,8 @@ def preferred_time_window(loc: Place, meal_role: Optional[str] = None) -> Option
     """Soft "should land around this time of day" window per category, in
     minutes-since-midnight. None means no preference (fully flexible)."""
     if loc.category == "ร้านอาหาร":
-        if meal_role == "dinner":
-            return MEAL_DINNER_WINDOW
-        if meal_role == "lunch":
-            return MEAL_LUNCH_WINDOW
+        if meal_role in MEAL_WINDOWS:
+            return MEAL_WINDOWS[meal_role]
         if is_evening_place(loc):
             return MEAL_DINNER_WINDOW
         # No role assigned and not an evening-only spot: any mealtime is
@@ -640,12 +694,20 @@ def meal_role_fits_window(role: str, start_time_of_day: time, end_time_of_day: t
     a restaurant "dinner", which can only start at 17:30 and so never fits --
     it was dropped on every run, after the planning walk had already counted
     the afternoon as taken. Callers drop the role instead (llm_extractor)."""
-    window = {"lunch": MEAL_LUNCH_WINDOW, "dinner": MEAL_DINNER_WINDOW}.get(role)
+    window = MEAL_WINDOWS.get(role)
     if window is None:
         return True
     start_min = start_time_of_day.hour * 60 + start_time_of_day.minute
     end_min = end_time_of_day.hour * 60 + end_time_of_day.minute
     return bool(meal_probe_minutes(start_min, end_min, window))
+
+
+def day_meals(start_time_of_day: time, end_time_of_day: time, breakfast: bool = False) -> List[str]:
+    """The meals a day with this window gets, in order: lunch and dinner when
+    the window can seat them, and breakfast too when the traveller asked for
+    it (the "อาหารเช้า" food choice) and the day starts early enough."""
+    wanted = ("breakfast", "lunch", "dinner") if breakfast else ("lunch", "dinner")
+    return [m for m in wanted if meal_role_fits_window(m, start_time_of_day, end_time_of_day)]
 
 
 # --- "can this restaurant actually be eaten at on this trip?" -----------------
@@ -773,20 +835,25 @@ def _route_cost(
     total = DROPPED_STOP_PENALTY * sum(1 for p in route if p.id not in surviving_ids)
     prev_category = None
     evening_markets_so_far = 0
-    for s in stops:
+    for index, s in enumerate(stops):
         total += s["dist"] * DISTANCE_WEIGHT
+        total += s["wait_min"] * WAIT_PENALTY_PER_MIN
+        if meal_roles.get(s["place"].id) == "breakfast":
+            total += index * BREAKFAST_NOT_FIRST_PENALTY
         if market_kind(s["place"]) == "evening":
             evening_markets_so_far += 1
         elif _is_dinner_stop(s["place"], meal_roles):
             total += evening_markets_so_far * MARKET_BEFORE_DINNER_PENALTY
-        window = preferred_time_window(s["place"], meal_roles.get(s["place"].id))
+        role = meal_roles.get(s["place"].id)
+        window = preferred_time_window(s["place"], role)
         if window:
             lo, hi = window
             arrival_min = s["arrival_at_door"].hour * 60 + s["arrival_at_door"].minute
             if arrival_min < lo:
                 total += (lo - arrival_min) * TIME_PENALTY_PER_MIN
             elif arrival_min > hi:
-                total += (arrival_min - hi) * TIME_PENALTY_PER_MIN
+                late_rate = MEAL_LATE_PENALTY_PER_MIN if role and s["place"].category in _MEAL_CATEGORIES else TIME_PENALTY_PER_MIN
+                total += (arrival_min - hi) * late_rate
         category = s["place"].category
         if category in ADJACENT_PENALTY_CATEGORIES and category == prev_category:
             total += ADJACENT_SAME_CATEGORY_PENALTY
@@ -1124,6 +1191,20 @@ def _largest_gap_minutes(stops: List[dict], start_dt: datetime, end_dt_bound: da
     return largest
 
 
+def _meal_lateness(walk: List[dict], meal_roles: Optional[Dict[str, str]]) -> int:
+    """Minutes the day's lunch/dinner are seated past their window, summed.
+    Live 2026-10-21: two spare stops slotted in before lunch (both feasible,
+    so allowed) pushed a lunch from 11:30 to 14:34."""
+    late = 0
+    for s in walk:
+        role = (meal_roles or {}).get(s["place"].id)
+        window = _forced_meal_window(s["place"], meal_roles)
+        if role and window:
+            start = s["start_activity_dt"].hour * 60 + s["start_activity_dt"].minute
+            late += max(0, start - window[1])
+    return late
+
+
 def _find_best_backfill_insertion(
     route: List[Place], hotel: Place, day_date: date,
     start_dt: datetime, end_dt_bound: datetime, pace: str,
@@ -1135,7 +1216,9 @@ def _find_best_backfill_insertion(
     backfill_underfilled_day (saturates one day) and
     backfill_underfilled_trip (spreads insertions across days) so the two
     can't drift apart on what counts as a valid insertion."""
-    baseline_ids = {s["place"].id for s in _simulate_day_walk(route, hotel, day_date, start_dt, end_dt_bound, pace, meal_roles)}
+    baseline_walk = _simulate_day_walk(route, hotel, day_date, start_dt, end_dt_bound, pace, meal_roles)
+    baseline_ids = {s["place"].id for s in baseline_walk}
+    baseline_late = _meal_lateness(baseline_walk, meal_roles)
     for tier in _filler_tiers(backfill_pool):
         best_key = None
         best_place = None
@@ -1149,6 +1232,8 @@ def _find_best_backfill_insertion(
                 survive_ids = {s["place"].id for s in walk}
                 if place.id not in survive_ids or not baseline_ids.issubset(survive_ids):
                     continue  # infeasible, or would evict an already-committed stop
+                if _meal_lateness(walk, meal_roles) > baseline_late:
+                    continue  # would push a lunch/dinner past its window
                 at = next(i for i, s in enumerate(walk) if s["place"].id == place.id)
                 if not _auto_added_ok(walk, at, meal_roles):
                     continue  # e.g. a market at an hour nobody goes to it
@@ -1451,6 +1536,7 @@ def _find_gap_filler(
 STRETCH_EXTRA_MINUTES = {
     "คาเฟ่": 45, "ร้านอาหาร": 30, "วัด": 15, "สวนสาธารณะ": 30, "พิพิธภัณฑ์": 30,
     "สถานที่ท่องเที่ยว": 30, "ตลาด": 30, "ห้างสรรพสินค้า": 30, "ร้านของฝาก": 15,
+    "อุทยานแห่งชาติ": 30,
 }
 # Share of that extra each pace gets. A packed trip asked for more stops, not
 # longer ones, so its idle time stays visible.

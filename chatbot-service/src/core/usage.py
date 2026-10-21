@@ -39,13 +39,15 @@ class UsageTracker:
         self._lock = threading.Lock()
 
     def record(self, label: str, model: str, usage) -> None:
-        """`usage` is the OpenAI-style usage object (or None -- some gateways
-        omit it, notably on streams without include_usage). A call with no
-        usage is still counted so `missing_usage` shows the numbers are low."""
+        """`usage` is an OpenAI-style usage object, an Anthropic one
+        (input_tokens/output_tokens, from llm_client.complete_json on Claude),
+        or None -- some gateways omit it, notably on streams without
+        include_usage. A call with no usage is still counted so
+        `missing_usage` shows the numbers are low."""
         entry = {"label": label, "model": model, "input": 0, "output": 0, "reasoning": 0, "usage_missing": usage is None}
         if usage is not None:
-            prompt = _as_int(getattr(usage, "prompt_tokens", 0))
-            completion = _as_int(getattr(usage, "completion_tokens", 0))
+            prompt = _as_int(getattr(usage, "prompt_tokens", None)) or _as_int(getattr(usage, "input_tokens", 0))
+            completion = _as_int(getattr(usage, "completion_tokens", None)) or _as_int(getattr(usage, "output_tokens", 0))
             total = _as_int(getattr(usage, "total_tokens", 0))
             details = getattr(usage, "completion_tokens_details", None)
             entry["input"] = prompt

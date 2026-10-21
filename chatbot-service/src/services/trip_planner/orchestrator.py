@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from itertools import zip_longest
 from src.core.db import find_place_by_name
 from src.services.rag.retriever import PlaceRetriever
-from .models import Place, TripInput, TripSummary, DaySummary
+from .models import BREAKFAST_PREFERENCE, FOOD_PREFERENCES, Place, TripInput, TripSummary, DaySummary
 from . import route_scheduler
 
 # Khon Kaen city center -- fallback location if the named accommodation isn't
@@ -105,6 +105,59 @@ def _rerank(rows: list, origin: Place | None, rng: random.Random) -> list:
     return sorted(rows, key=key)
 
 
+# Same-category places allowed in a row before _diversify moves to another
+# category (within one relevance tier).
+DIVERSITY_RUN = 2
+
+
+def _diversify(rows: list) -> list:
+    """Reorders one interest's ranked results so categories alternate: within
+    a relevance tier, the next row is the best-ranked one whose category has
+    been used least (in steps of DIVERSITY_RUN). "ครอบครัว"/"ธรรมชาติ" results
+    are mostly parks, and taking them in rank order handed the LLM a pool it
+    could only build park-after-park days from (live 2026-10-21)."""
+    remaining = list(rows)
+    counts: dict = {}
+    out = []
+    while remaining:
+        def key(item):
+            i, row = item
+            tier = math.floor((row.get("match_score") or 1.0) / RELEVANCE_TIER + 1e-9)
+            return (-tier, counts.get(row.get("category"), 0) // DIVERSITY_RUN, i)
+        i, row = min(enumerate(remaining), key=key)
+        out.append(row)
+        counts[row.get("category")] = counts.get(row.get("category"), 0) + 1
+        remaining.pop(i)
+    return out
+
+
+def _daytime_capacity(places: list, days: int) -> int:
+    """How many daytime stops `places` can really supply over `days`: each
+    category counts only up to its daily cap times the days. Ten cafes on a
+    two-day trip are four usable stops (2 a day) -- counting all ten, a
+    cafe-only trip looked full and came back to the hotel at 14:38 (live
+    2026-10-21)."""
+    per_category: dict = {}
+    for p in places:
+        if _is_daytime_stop(p):
+            per_category[p.category] = per_category.get(p.category, 0) + 1
+    total = 0
+    for category, n in per_category.items():
+        cap = route_scheduler.category_daily_cap(category)
+        total += n if cap is None else min(n, cap * days)
+    return total
+
+
+def _is_daytime_stop(place: Place) -> bool:
+    """Something to do before the evening: not a restaurant, an evening
+    market or an evening-only place."""
+    return (
+        place.category != "ร้านอาหาร"
+        and route_scheduler.market_kind(place) != "evening"
+        and not route_scheduler.is_evening_place(place)
+    )
+
+
 # Google's administrative_area_level_2 name for Khon Kaen's city district
 # (see import-places.js's mapDistrict()) comes back inconsistently across
 # rows -- confirmed against the live `places` table: "อำเภอเมืองขอนแก่น" (the
@@ -177,8 +230,8 @@ class TripBuilderService:
         # don't count toward that range. Rounded up on purpose: undercounting
         # here is what previously starved the LLM's candidate pool below what
         # a full day needs.
-        _, max_attractions = route_scheduler.pace_stop_range(
-            user_input.trip_pace, start_dt.time(), end_dt.time(),
+        min_attractions, max_attractions = route_scheduler.pace_stop_range(
+            user_input.trip_pace, start_dt.time(), end_dt.time(), breakfast=BREAKFAST_PREFERENCE in user_input.food_preferences,
         )
         places_per_day = max_attractions + 2
 
@@ -221,43 +274,80 @@ class TripBuilderService:
         # The meal search below is started at the same time; it's only read
         # if the interest results don't already hold enough restaurants.
         interest_futures = []
+        generic_future = None
         if remaining_slots > 0:
             interest_futures = [
                 search(query, candidate_pool_target * 5)
                 for query in (user_input.interests or [GENERIC_INTEREST_QUERY])
             ]
+            if user_input.interests:
+                # Read only if the interests can't fill the days (see below).
+                generic_future = search(GENERIC_INTEREST_QUERY, candidate_pool_target * 5)
         meal_future = search(MEAL_QUERY, meal_reserve_needed * 10)
+
+        def accept(row):
+            """The candidate `row` as a Place, or None if it's out for this trip."""
+            place_id = row.get("id")
+            if not place_id or place_id in existing_ids:
+                return None
+            place = Place(**row)
+            # price_level is null for most of this dataset (Google didn't
+            # return it) -- treat unknown as acceptable rather than
+            # excluding it, or budget filtering would return almost nothing.
+            if place.price_level is not None and place.price_level not in allowed_prices:
+                return None
+            if place.category == "ที่พัก" or place.category in excluded_categories:
+                return None
+            # Only applies to RAG-sourced candidates, same as the budget
+            # filter above -- must_go places are honored regardless of
+            # district. Rows without a district tag (place.district is
+            # None) are excluded here: don't show a place as "in the
+            # city" when we're not actually sure.
+            if user_input.area_scope == "เมือง" and not _is_mueang_district(place.district):
+                return None
+            return place
 
         interest_list = []
         if interest_futures:
-            per_interest_results = [_rerank(f.result(), origin, self.rng) for f in interest_futures]
+            per_interest_results = [_diversify(_rerank(f.result(), origin, self.rng)) for f in interest_futures]
             rag_results = [
                 row for group in zip_longest(*per_interest_results) for row in group if row is not None
             ]
 
             for row in rag_results:
-                place_id = row.get("id")
-                if not place_id or place_id in existing_ids:
-                    continue
-                place = Place(**row)
-                # price_level is null for most of this dataset (Google didn't
-                # return it) -- treat unknown as acceptable rather than
-                # excluding it, or budget filtering would return almost nothing.
-                if place.price_level is not None and place.price_level not in allowed_prices:
-                    continue
-                if place.category == "ที่พัก" or place.category in excluded_categories:
-                    continue
-                # Only applies to RAG-sourced candidates, same as the budget
-                # filter above -- must_go places are honored regardless of
-                # district. Rows without a district tag (place.district is
-                # None) are excluded here: don't show a place as "in the
-                # city" when we're not actually sure.
-                if user_input.area_scope == "เมือง" and not _is_mueang_district(place.district):
+                place = accept(row)
+                if not place:
                     continue
                 interest_list.append(place)
-                existing_ids.add(place_id)
+                existing_ids.add(place.id)
                 if len(interest_list) >= candidate_pool_target:
                     break
+
+        # --- Daytime top-up -----------------------------------------------
+        # Interests whose places are mostly evening ones (night markets,
+        # dinners) can't fill a day that starts in the morning: live
+        # "อาหารพื้นถิ่น + ช้อปปิ้ง" 08:00-21:00 trips had 5-6 hours of free
+        # time, and neither the LLM nor the judge could fix it -- nothing in
+        # the pool was open in the day. Popular daytime places are added
+        # until the trip has the pace's minimum of them for every day.
+        # Counted per category against the daily caps (_daytime_capacity), so a
+        # top-up only adds places that raise what the days can actually hold.
+        if generic_future is not None:
+            days = user_input.trip_duration_days
+            daytime_needed = min_attractions * days
+            have = _daytime_capacity(must_go_list + interest_list, days)
+            if have < daytime_needed:
+                for row in _diversify(_rerank(generic_future.result(), origin, self.rng)):
+                    if have >= daytime_needed:
+                        break
+                    place = accept(row)
+                    if not place or not _is_daytime_stop(place):
+                        continue
+                    with_it = _daytime_capacity(must_go_list + interest_list + [place], days)
+                    if with_it > have:
+                        interest_list.append(place)
+                        existing_ids.add(place.id)
+                        have = with_it
 
         # --- Meal reserve -------------------------------------------------
         # A day with no meal isn't a reasonable itinerary regardless of what
@@ -320,6 +410,28 @@ class TripBuilderService:
         def by_rating(rows):
             return sorted(rows, key=lambda r: (-(r.get("rating") or 0.0), -(r.get("review_count") or 0)))
 
+        # --- Food preferences ---------------------------------------------
+        # Restaurants (and bakery cafes) of the kinds the traveller asked for,
+        # best and nearest first, so the LLM can pick them for meals and
+        # llm_extractor._ensure_meals can fall back on them. Enough per kind
+        # to cover every meal of the trip between them.
+        if user_input.food_preferences:
+            meals_per_kind = max(2, math.ceil(meal_reserve_needed / len(user_input.food_preferences)) + 1)
+            for pref in user_input.food_preferences:
+                category, subcategory = FOOD_PREFERENCES[pref]
+                if category == "ร้านอาหาร":
+                    rows, wanted, check = self.retriever.list_restaurants(), meals_per_kind, acceptable_meal
+                else:
+                    rows, wanted, check = self.retriever.list_by_categories(("คาเฟ่",)), user_input.trip_duration_days, accept
+                added = 0
+                for row in _rerank([r for r in rows if r.get("subcategory") == subcategory], origin, self.rng):
+                    if added >= wanted:
+                        break
+                    place = check(row)
+                    if place:
+                        add_meal(place)
+                        added += 1
+
         have, have_lunch = meal_counts()
         if have < meal_reserve_needed or have_lunch < lunch_needed:
             # Relevance-ranked first (the old behaviour), over a wider net
@@ -344,6 +456,34 @@ class TripBuilderService:
                         have, have_lunch = have + 1, have_lunch + (1 if lunch_capable(place) else 0)
 
         return accommodation, must_go_list + interest_list, missing_must_go, {p.id for p in must_go_list}
+
+    def build_meal_pool(self, user_input: TripInput, exclude_ids: set) -> list:
+        """Every restaurant this trip could eat at, beyond the candidates the
+        LLM sees: same budget and area rules, open for a meal inside the
+        daily window on some trip day. llm_extractor draws a day's lunch or
+        dinner from here when the day's own picks can't serve it -- above all
+        a day out of town, where the candidates' restaurants are all in the
+        city (a Phu Wiang day used to get its only meal back in town at 17:00)."""
+        allowed_prices = BUDGET_PRICE_RANGES.get(user_input.budget_level, [0, 1, 2])
+        start = datetime.strptime(user_input.start_time, "%H:%M")
+        end = datetime.strptime(user_input.end_time, "%H:%M")
+        start_min, end_min = start.hour * 60 + start.minute, end.hour * 60 + end.minute
+        trip_start = datetime.strptime(user_input.start_date, "%Y-%m-%d").date()
+        trip_dates = [trip_start + timedelta(days=i) for i in range(user_input.trip_duration_days)]
+
+        pool = []
+        for row in self.retriever.list_restaurants():
+            if not row.get("id") or row["id"] in exclude_ids or row.get("lat") is None or row.get("lng") is None:
+                continue
+            place = Place(**row)
+            if place.price_level is not None and place.price_level not in allowed_prices:
+                continue
+            if user_input.area_scope == "เมือง" and not _is_mueang_district(place.district):
+                continue
+            if not route_scheduler.open_for_meal(place, trip_dates, start_min, end_min):
+                continue
+            pool.append(place)
+        return pool
 
     def build_spare_pool(self, user_input: TripInput, accommodation: Place, exclude_ids: set):
         """Spare places for this trip (see SPARE_CATEGORIES above), nearest
@@ -380,7 +520,9 @@ class TripBuilderService:
     def get_dynamic_instructions(self, user_input: TripInput):
         start = datetime.strptime(user_input.start_time, "%H:%M").time()
         end = datetime.strptime(user_input.end_time, "%H:%M").time()
-        lo, hi = route_scheduler.pace_stop_range(user_input.trip_pace, start, end)
+        lo, hi = route_scheduler.pace_stop_range(
+            user_input.trip_pace, start, end, breakfast=BREAKFAST_PREFERENCE in user_input.food_preferences,
+        )
         count = f"{lo}" if lo == hi else f"{lo}-{hi}"
         pace_instruction = {
             "relaxed": "- PACE (Relaxed): Schedule a slow-paced trip. Leave plenty of free time between activities. If there is a time gap > 45 mins, explicitly add '☕ พักผ่อนตามอัธยาศัย'.",

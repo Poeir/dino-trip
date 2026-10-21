@@ -11,8 +11,46 @@ from src.core.db import supabase
 from src.services.rag.embedder import encode_lock, get_model
 from src.services.rag.area import (
     area_candidates, is_specific, rank_in_area, resolve_area, split_area_query, split_bare_area_query,
+    wanted_categories,
 )
-from src.services.rag.synonyms import alias_variants, expand_query, intent_categories, strip_filler
+from src.services.rag.synonyms import alias_variants, expand_query, intent_amenities, intent_categories, strip_filler
+from src.services.rag.hours import is_open_at, requested_time, strip_time_words
+from src.core.clock import now_bangkok
+
+
+_EVENT_COLUMNS = (
+    "id,name,category,venue_name,date_range,admission,suitable_for,description,img,status,"
+    "event_start_date,event_end_date"
+)
+GENERIC_EVENT_LIMIT = 5
+_EVENT_WORDS = ("งาน", "อีเวนท์", "อีเว้นท์", "อีเวนต์", "event", "กิจกรรม", "เทศกาล")
+# Everything a "what's on" question says besides asking: if nothing is left
+# once these are out, it names no kind of event, so list what is coming up.
+_GENERIC_EVENT_WORDS = sorted(
+    ("ช่วงนี้", "ตอนนี้", "เดือนนี้", "สัปดาห์นี้", "อาทิตย์นี้", "เสาร์อาทิตย์นี้", "วีคเอนด์นี้", "เร็วๆนี้", "เร็วๆ นี้",
+     "ใกล้ๆนี้", "เร็ว ๆ นี้", "มี", "อะไร", "น่าไป", "น่าสนใจ", "เด็ด", "บ้าง", "ไหม", "มั้ย", "ที่", "ใน", "จังหวัด",
+     "ขอนแก่น", "แนะนำ", "หน่อย", "ครับ", "ค่ะ", "คะ", "ดีๆ", "ดี", "จัด", "เกิดขึ้น", "กำลัง", "จะ", "ไป", "เที่ยว",
+     "events", *_EVENT_WORDS),
+    key=len, reverse=True,
+)
+
+
+def is_generic_event_query(query: str) -> bool:
+    lowered = query.lower()
+    if not any(w in lowered for w in _EVENT_WORDS):
+        return False
+    for w in _GENERIC_EVENT_WORDS:
+        lowered = lowered.replace(w, " ")
+    return not "".join(c for c in lowered if c.isalnum())
+
+
+def _with_open_note(places: list[dict], asked) -> list[dict]:
+    """Tells the model the time check was done, so it doesn't redo it from
+    the hours text (copies: the rows may be the cached directory's)."""
+    if not asked:
+        return places
+    return [{**p, "open_note": f"เปิดอยู่{asked[1]} (ระบบตรวจจากเวลาเปิด-ปิดแล้ว)"} for p in places]
+
 
 # Replaces the old project's Chroma-query-then-Mongo-$in-fetch two-step --
 # match_places()/match_knowledge_base() (backend/supabase/migrations) do the
@@ -44,7 +82,7 @@ def embed(text: str) -> list[float]:
 # Columns the trip planner needs to build a Place -- explicit (not "*") so the
 # 384-float `embedding` column isn't shipped for every row.
 _RESTAURANT_COLUMNS = (
-    "id,name,category,rating,review_count,price,price_level,address,district,hours,hours_periods,"
+    "id,name,category,subcategory,rating,review_count,price,price_level,address,district,hours,hours_periods,"
     "business_status,phone,website,maps_url,lat,lng,description,amenities,tags,img"
 )
 _RESTAURANT_CACHE_TTL_S = 300
@@ -247,21 +285,55 @@ class PlaceRetriever:
 
         A database failure in either step falls back to the plain search."""
         try:
-            split = split_area_query(query)
             directory = None
-            if not split:
-                directory = self._directory()
-                split = split_bare_area_query(query, directory)
+            area = None
+            split = split_area_query(query)
             if split:
-                what, where = split
+                directory = self._directory()
+                area = resolve_area(split[1], directory)
+            if not area:
+                # No marker, or one that names nothing: "ใกล้เคียง" in
+                # "พักอยู่ที่ท่าพระ แนะนำที่เที่ยวใกล้เคียง" reads as "ใกล้ เคียง",
+                # which hid the ท่าพระ the question does name.
                 directory = directory or self._directory()
-                area = resolve_area(where, directory)
-                if area:
-                    candidates = area_candidates(area, directory, limit)
-                    ranked = None
-                    if is_specific(what):
-                        ranked = [p["id"] for p in self.search_and_expand(query, limit=_AREA_SEARCH_POOL)]
-                    return rank_in_area(candidates, what, ranked, limit)
+                split = split_bare_area_query(query, directory)
+                area = resolve_area(split[1], directory) if split else None
+            # Needs only a place's data answers: an amenity ("มังสวิรัติ") or
+            # being open at a time ("ตีหนึ่ง", "เปิดดึก"; hours.py). Only places
+            # that meet them, around the area if one is named, else the best.
+            needs = intent_amenities(query)
+            asked = requested_time(query, now_bangkok())
+            by_id = {p["id"]: p for p in directory}
+
+            def meets(p):
+                row = by_id.get(p["id"], p)
+                if not all(n in (row.get("amenities") or []) for n in needs):
+                    return False
+                return asked is None or is_open_at(row.get("hours_periods"), asked[0]) is True
+
+            if area:
+                what = split[0]
+                if asked:
+                    what = strip_time_words(what)
+                pool = [p for p in directory if meets(p)] if needs or asked else directory
+                candidates = area_candidates(area, pool, limit)
+                ranked = None
+                if is_specific(what):
+                    ranked = [p["id"] for p in self.search_and_expand(query, limit=_AREA_SEARCH_POOL)]
+                return _with_open_note(rank_in_area(candidates, what, ranked, limit), asked)
+
+            if needs or asked:
+                cats = wanted_categories(query)
+                def fits(p):
+                    return meets(p) and (not cats or p.get("category") in cats)
+                found = [p for p in self.search_and_expand(query, limit=_AREA_SEARCH_POOL) if fits(p)]
+                popular = sorted((p for p in directory if fits(p)), key=lambda p: p.get("review_count") or 0, reverse=True)
+                seen, out = set(), []
+                for p in found + popular:
+                    if p["id"] not in seen:
+                        seen.add(p["id"])
+                        out.append(p)
+                return _with_open_note(out[:limit], asked)
 
             cats = intent_categories(query)
             if cats:
@@ -287,6 +359,22 @@ class PlaceRetriever:
         match_events_hybrid already excludes cancelled events and (via
         `embedding is not null`) expired ones, since embedder.py's
         expire_events() clears an expired event's embedding on reindex."""
+        if is_generic_event_query(query):
+            try:
+                return self.upcoming_events(GENERIC_EVENT_LIMIT)
+            except Exception as e:
+                print(f"[!] upcoming events listing failed, using the search: {e}")
         query = expand_query(query)
         vec = embed(query)
         return rpc("match_events_hybrid", {"query_embedding": vec, "query_text": query, "match_count": limit})
+
+    def upcoming_events(self, limit: int):
+        """Events on now or still to come, soonest first -- what "ช่วงนี้มีงาน
+        อะไร" asks for. A search on those words found 1 of the 7 live events,
+        and not the one running that week."""
+        today = now_bangkok().date().isoformat()
+        rows = (
+            supabase.table("events").select(_EVENT_COLUMNS).neq("status", "cancelled").execute()
+        ).data or []
+        live = [e for e in rows if (e.get("event_end_date") or e.get("event_start_date") or "") >= today]
+        return sorted(live, key=lambda e: e.get("event_start_date") or "9999")[:limit]

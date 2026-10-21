@@ -6,16 +6,18 @@ import time
 import unicodedata
 from concurrent.futures import ThreadPoolExecutor
 from openai import BadRequestError
-from src.core.llm_client import make_llm_client
+from src.core.llm_client import sampling, shared_client
 from src.core.clock import BANGKOK_TZ, now_bangkok
-from src.core.config import CHAT_LLM_PROVIDER, CHAT_MODEL_NAME
+from src.core.config import MODEL_NAME
 from src.core.usage import UsageTracker
+from src.services.rag.hours import annotate_overnight
 from src.services.rag.retriever import PlaceRetriever
 
 logger = logging.getLogger(__name__)
 
-# Still a refusal (the model's own no-match text is never shown), but one
-# that says what the bot can do and how to ask again, instead of a dead end.
+# Only for a [NO_MATCH] tag with nothing after it: a no-match reply is
+# otherwise shown as the model wrote it (see chat()). Still says what the bot
+# can do and how to ask again, instead of a dead end.
 FALLBACK_MESSAGE = (
     "ขออภัยครับ น้องไดโนยังไม่มีข้อมูลเรื่องนี้ในระบบ "
     "ตอนนี้น้องไดโนช่วยแนะนำร้านอาหาร คาเฟ่ ที่เที่ยว วัด ตลาด และงานอีเวนต์ในขอนแก่นได้ครับ "
@@ -62,10 +64,8 @@ NO_MATCH_TAG = "[NO_MATCH]"
 # Separate from _SOURCES/MATCH_TAGS on purpose: a question about the bot
 # itself ("ชื่ออะไร", "ทำอะไรได้บ้าง") never cites places/kb/events, so it
 # doesn't belong in that combinatorial set, and it must NOT fall through to
-# NO_MATCH_TAG -- NO_MATCH replies have their text discarded and replaced
-# with FALLBACK_MESSAGE (see chat()/chat_stream()), which previously made
-# even "สวัสดี ชื่ออะไร" answer with the generic "ไม่มีข้อมูล..." fallback
-# despite the system prompt already telling the model its own name.
+# NO_MATCH_TAG -- when NO_MATCH replies were replaced with FALLBACK_MESSAGE,
+# that made even "สวัสดี ชื่ออะไร" answer "ไม่มีข้อมูล...".
 SOURCE_SELF = "SELF"
 MATCH_SELF_TAG = "[MATCH:SELF]"
 
@@ -83,9 +83,8 @@ MATCH_TAGS = tuple(
 )
 # The prompt shows the tag as "[MATCH:...]" for everything else, so the model
 # sometimes writes the no-match tag in that shape too. Unrecognized, it was
-# read as "model skipped the tag" and the whole reply -- the text that is
-# supposed to be hidden, recommendations of unrelated places included -- was
-# shown to the user with "[MATCH:NO_MATCH]" on the front.
+# read as "model skipped the tag" and the reply was shown with
+# "[MATCH:NO_MATCH]" on the front and every retrieved card attached.
 NO_MATCH_TAG_VARIANTS = (NO_MATCH_TAG, "[MATCH:NO_MATCH]")
 ALL_TAGS = (*MATCH_TAGS, MATCH_SELF_TAG, *NO_MATCH_TAG_VARIANTS)
 
@@ -149,9 +148,14 @@ REASONING_EFFORT = "low"
 
 REWRITE_PROMPT = """คุณเขียนคำถามล่าสุดของผู้ใช้ใหม่ให้เป็นประโยคที่เข้าใจได้ด้วยตัวเอง โดยไม่ต้องอ่านบทสนทนาก่อนหน้า
 - แทนคำอ้างอิงอย่าง "ร้านนั้น" "งานนั้น" "แล้วที่สองล่ะ" ด้วยชื่อจริงจากบทสนทนา
-- ถ้าคำถามล่าสุดเปลี่ยนหัวข้อใหม่หรือเข้าใจได้ด้วยตัวเองอยู่แล้ว ให้ตอบคำถามเดิมทุกตัวอักษร ห้ามเอาหัวข้อเก่ามาปน
+- ถ้าคำถามล่าสุดเปลี่ยนหัวข้อใหม่หรือเข้าใจได้ด้วยตัวเองอยู่แล้ว ให้ตอบคำถามเดิมทุกตัวอักษร (แก้ได้แค่คำที่พิมพ์ผิดชัดๆ เช่น "อนยู่" เป็น "อยู่") ห้ามเอาหัวข้อเก่ามาปน
 - ห้ามตอบคำถามเอง ห้ามเพิ่มข้อมูลที่ไม่มีในบทสนทนา
-- ตอบเฉพาะคำถามที่เขียนใหม่ บรรทัดเดียว ไม่มีคำอธิบายอื่น"""
+- ตอบเฉพาะคำถามที่เขียนใหม่ บรรทัดเดียว ครอบด้วยแท็ก <query></query> เช่น <query>ร้านบ้านมอเปิดกี่โมง</query> ห้ามมีคำเกริ่นหรือคำอธิบายอื่น"""
+
+# The rewritten query, taken from inside its tag. The model sometimes narrates
+# instead ("ผมจะเขียนคำถามใหม่ให้เข้าใจได้...") and that sentence was searched
+# as the query (seen live), so a reply without the tag is not used at all.
+_REWRITE_TAG_RE = re.compile(r"<query>(.*?)</query>", re.DOTALL)
 
 
 def clean_history(history) -> list[dict]:
@@ -216,6 +220,14 @@ def cited_only(cards: list[dict], reply: str) -> list[dict]:
     return cited or cards
 
 
+def named_only(cards: list[dict], reply: str) -> list[dict]:
+    """cited_only without its keep-everything fallback, for a no-match reply:
+    it only gets cards for the alternatives it actually offers, and an
+    "I don't have that" with no alternative gets none."""
+    normalized_reply = _normalize_name(reply)
+    return [c for c in cards if _named_in_reply(c["name"], normalized_reply)]
+
+
 def _clip(text: str | None, limit: int = MAX_CONTEXT_ITEM_CHARS) -> str:
     """A long description/article body trimmed for the prompt: the model needs
     the gist of 3+3+3 items, not every paragraph of each."""
@@ -233,14 +245,14 @@ def _tag_sources(tag: str) -> set[str]:
 class RAGChatbotService:
     def __init__(self):
         self.retriever = PlaceRetriever()
-        self.client = make_llm_client(CHAT_LLM_PROVIDER, timeout=LLM_TIMEOUT_S, max_retries=LLM_MAX_RETRIES)
-        self.model_name = CHAT_MODEL_NAME
+        self.client = shared_client(LLM_TIMEOUT_S, LLM_MAX_RETRIES)
+        self.model_name = MODEL_NAME
         self._reasoning_effort_supported = True
 
     @staticmethod
     def _temperature(value: float) -> dict:
         # Claude's newer models reject `temperature` outright (400 "deprecated").
-        return {} if CHAT_LLM_PROVIDER == "anthropic" else {"temperature": value}
+        return sampling(value)
 
     def _create(self, **kwargs):
         """The rewrite call: chat.completions.create with REASONING_EFFORT
@@ -285,8 +297,11 @@ class RAGChatbotService:
             )
             if usage:
                 usage.record_response("rewrite", self.model_name, response)
-            rewritten = (response.choices[0].message.content or "").strip().splitlines()
-            rewritten = rewritten[0].strip()[:MAX_REWRITE_CHARS] if rewritten else ""
+            found = _REWRITE_TAG_RE.search(response.choices[0].message.content or "")
+            lines = found.group(1).strip().splitlines() if found else []
+            rewritten = lines[0].strip()[:MAX_REWRITE_CHARS] if lines else ""
+            if not found:
+                logger.warning("query rewrite had no <query> tag, using raw message")
         except Exception as e:
             logger.warning("query rewrite failed, using raw message: %s", e)
             return user_message
@@ -366,12 +381,15 @@ class RAGChatbotService:
             f"คะแนน: {p.get('rating') or '-'} ดาว\n"
             f"รายละเอียด: {_clip(p.get('description')) or '-'}\n"
             f"ที่อยู่: {p.get('address') or '-'}\n"
-            f"เวลาเปิด-ปิด: {p.get('hours') or '-'}\n"
+            f"เวลาเปิด-ปิด: {annotate_overnight(p.get('hours')) or '-'}\n"
             f"ราคา: {p.get('price') or 'ไม่มีข้อมูลราคา'}\n"
             f"สิ่งอำนวยความสะดวก: {', '.join(p.get('amenities') or []) or 'ไม่มีข้อมูล'}"
             # Set by retriever.search_chat_places for "แถว X" questions: the
             # model may not work out distances itself (rule 4), so it is told.
             + (f"\nทำเลเทียบกับที่ผู้ใช้ถาม: {p['area_note']}" if p.get("area_note") else "")
+            # Set for "ตีหนึ่ง"/"เปิดดึก" questions: the search already kept
+            # only places open then (hours.py), so the model needn't recompute.
+            + (f"\nเวลาที่ผู้ใช้ถาม: {p['open_note']}" if p.get("open_note") else "")
             for p in places
         )
         kb_context = "\n---\n".join(
@@ -390,19 +408,23 @@ class RAGChatbotService:
         context_str = "\n---\n".join(filter(None, [place_context, kb_context, event_context])) or "ไม่มีข้อมูลที่ตรงกับคำถามในฐานข้อมูล"
 
         system_prompt = f"""
-        คุณคือ 'น้องไดโน' ผู้ช่วยส่วนตัวสำหรับการท่องเที่ยวในจังหวัดขอนแก่น เป็นมิตรและสุภาพ
+        คุณคือ 'น้องไดโน' ผู้ช่วยส่วนตัวสำหรับการท่องเที่ยวในจังหวัดขอนแก่น เป็นมิตรและสุภาพ เรียกตัวเองว่า "น้องไดโน" และลงท้ายด้วย "ครับ" เสมอ (ห้ามใช้ "ค่ะ"/"คะ")
         ขณะนี้คือ{current_time_text()} ตามเวลาประเทศไทย (ใช้ข้อมูลนี้ตัดสินว่าสถานที่เปิดหรือปิด และงานไหนผ่านไปแล้ว กำลังจัดอยู่ หรือยังไม่ถึง)
 
         [กฎเหล็ก]
         1. ขึ้นต้นคำตอบทุกครั้งด้วยแท็ก [MATCH:...] เป็นอันดับแรกเสมอ (ห้ามมีข้อความอื่นนำหน้าแท็ก) [ข้อมูลบริบท] ด้านล่างมี 3 ส่วนคือ "รายการสถานที่" (ร้าน/คาเฟ่/ที่เที่ยว), "ความรู้ทั่วไป" (ประวัติศาสตร์/วัฒนธรรม/การเดินทาง ฯลฯ), และ "รายการอีเวนท์" (งาน/เทศกาล/กิจกรรม):
            - ใส่ชื่อแหล่งข้อมูลที่คำตอบ "อ้างอิงจริง" ในแท็ก คั่นด้วยเครื่องหมาย + ตามลำดับ PLACES, KB, EVENTS เท่านั้น -- ใช้ได้แค่คำว่า {SOURCE_PLACES} (รายการสถานที่), {SOURCE_KB} (ความรู้ทั่วไป), {SOURCE_EVENTS} (รายการอีเวนท์) เช่น {MATCH_PLACES_TAG}, {MATCH_EVENTS_TAG}, {match_tag(SOURCE_PLACES, SOURCE_EVENTS)}, {match_tag(SOURCE_PLACES, SOURCE_KB, SOURCE_EVENTS)}
            - ใช้แหล่งข้อมูลที่ตรงกับสิ่งที่ตอบจริงเท่านั้น แม้จะตอบได้แค่บางส่วนของคำถามที่ถามหลายอย่างพร้อมกัน โดยที่แต่ละส่วนต้องตรงกับที่ผู้ใช้ถามจริงๆ (เช่น ผู้ใช้ถามทั้งร้านกาแฟและงานเทศกาล แต่บริบทมีแต่ร้านกาแฟ ก็ให้ใช้ {MATCH_PLACES_TAG} แนะนำร้านกาแฟที่มี แล้วบอกตรงๆ ว่าไม่มีข้อมูลงานเทศกาลในส่วนที่เหลือ)
-           - ใช้ {NO_MATCH_TAG} ถ้าไม่มีรายการใดใน [ข้อมูลบริบท] ตรงกับสิ่งที่ผู้ใช้ถามหาจริงๆ แม้แต่รายการเดียว -- ห้ามใช้ MATCH แค่เพราะบริบทมีรายการประเภทอื่นที่ "ใกล้เคียง" หรืออยู่ในขอนแก่นเหมือนกัน (เช่น ผู้ใช้ถามหา "น้ำตก" แต่บริบทมีแต่สะพานกับสวนน้ำ ซึ่งไม่ใช่น้ำตก เลยไม่นับว่าตรง ต้องใช้ {NO_MATCH_TAG} ห้ามหยิบสะพาน/สวนน้ำมาแนะนำแทน) แต่ถ้าผู้ใช้ถามหาเมนูหรือชนิดอาหารเฉพาะ (เช่น ซูชิ, เนื้อย่าง) และบริบทมีร้านที่เป็นประเภทอาหารนั้นตามชื่อ/ประเภท/แท็ก (เช่น ร้านอาหารญี่ปุ่นสำหรับซูชิ) ให้นับว่าตรง ใช้ MATCH แนะนำร้านนั้นได้ โดยบอกตรงๆ ว่าไม่มีข้อมูลเมนูเฉพาะรายการ ตามด้วยอะไรก็ได้สั้นๆ (ข้อความส่วนนี้จะไม่ถูกแสดงให้ผู้ใช้เห็น ระบบจะแสดงข้อความมาตรฐานแทน)
+           - ใช้ {NO_MATCH_TAG} ถ้าไม่มีรายการใดใน [ข้อมูลบริบท] ตรงกับสิ่งที่ผู้ใช้ถามหาจริงๆ แม้แต่รายการเดียว -- ห้ามใช้ MATCH แค่เพราะบริบทมีรายการประเภทอื่นที่ "ใกล้เคียง" หรืออยู่ในขอนแก่นเหมือนกัน (เช่น ผู้ใช้ถามหา "น้ำตก" แต่บริบทมีแต่สะพานกับสวนน้ำ ซึ่งไม่ใช่น้ำตก เลยไม่นับว่าตรง ต้องใช้ {NO_MATCH_TAG} ห้ามหยิบสะพาน/สวนน้ำมาแนะนำแทน) แต่ถ้าผู้ใช้ถามหาเมนูหรือชนิดอาหารเฉพาะ (เช่น ซูชิ, เนื้อย่าง) และบริบทมีร้านที่เป็นประเภทอาหารนั้นตามชื่อ/ประเภท/แท็ก (เช่น ร้านอาหารญี่ปุ่นสำหรับซูชิ) ให้นับว่าตรง ใช้ MATCH แนะนำร้านนั้นได้ โดยบอกตรงๆ ว่าไม่มีข้อมูลเมนูเฉพาะรายการ -- เช่นเดียวกับร้านที่สิ่งอำนวยความสะดวกระบุ "มีเมนูมังสวิรัติ" เมื่อผู้ใช้ถามหาร้านมังสวิรัติ/วีแกน/อาหารเจ ให้นับว่าตรง โดยบอกว่าเป็นร้านที่มีเมนูมังสวิรัติ ไม่ใช่ร้านมังสวิรัติล้วน
+           - ข้อความหลังแท็ก {NO_MATCH_TAG} จะแสดงให้ผู้ใช้เห็นจริง: บอกสั้นๆ ตรงๆ ว่าไม่มีข้อมูลเรื่องอะไร ถ้า [ข้อมูลบริบท] มีรายการที่ตอบความต้องการเดียวกันได้ (เช่น ถามคอนเสิร์ตเดือนธันวาคม แต่บริบทมีคอนเสิร์ตเดือนพฤศจิกายน) เสนอเป็นทางเลือกได้ไม่เกิน 3 รายการ โดยบอกให้ชัดว่าไม่ตรงกับที่ถามทุกข้อ ถ้าไม่มีรายการแบบนั้น ห้ามเสนอรายการประเภทอื่นแทนเด็ดขาด (เช่น ถามราคาทองหรือโรงแรม ห้ามเสนอร้านอาหาร ถามน้ำตก ห้ามเสนอสะพานหรือสวนน้ำ) ให้บอกสั้นๆ แทนว่าน้องไดโนช่วยแนะนำร้านอาหาร คาเฟ่ ที่เที่ยว และอีเวนท์ในขอนแก่นได้
         2. กรุณาตอบคำถามของผู้ใช้โดยอ้างอิงจาก [ข้อมูลบริบท] ด้านล่างนี้เท่านั้น
         3. หากมีข้อมูลในบริบท ให้สรุปและตอบอย่างเป็นธรรมชาติ
         4. ห้ามแต่งเติม หรือเดาข้อมูลสถานที่/งานขึ้นมาเองเด็ดขาด รวมถึงคุณสมบัติที่ไม่มีระบุใน [ข้อมูลบริบท] เช่น ที่จอดรถ, wifi, การเดินทาง/ระยะห่างจากจุดอื่น, วันที่จัดงานที่ไม่ได้ระบุไว้ -- ถ้าไม่มีข้อมูลด้านนี้ ให้บอกตรงๆ ว่าไม่มีข้อมูล ห้ามอนุมานจากที่อยู่หรือชื่อสถานที่/งานเอง
         5. ห้ามแนะนำอีเวนท์ที่ไม่ได้อยู่ใน [ข้อมูลบริบท] -- ระบบกรองอีเวนท์ที่จบไปแล้วหรือถูกยกเลิกออกให้แล้ว รายการอีเวนท์ที่เห็นในบริบทคือรายการที่ยังใช้ได้ทั้งหมด
-        6. หากมีประวัติการสนทนาก่อนหน้า ให้ใช้เพื่อเข้าใจคำอ้างอิงในคำถามล่าสุดเท่านั้น (เช่น "ร้านนั้น") ห้ามใช้ประวัติเป็นแหล่งข้อมูลข้อเท็จจริง ข้อเท็จจริงต้องมาจาก [ข้อมูลบริบท] เสมอ และประวัติของคำตอบก่อนหน้าไม่มีแท็ก แต่คำตอบใหม่ของคุณต้องขึ้นต้นด้วยแท็กตามกฎข้อ 1 ทุกครั้ง
+        6. หากมีประวัติการสนทนาก่อนหน้า ให้ใช้เพื่อเข้าใจคำอ้างอิงในคำถามล่าสุดเท่านั้น (เช่น "ร้านนั้น") ห้ามใช้ประวัติเป็นแหล่งข้อมูลข้อเท็จจริง ข้อเท็จจริงต้องมาจาก [ข้อมูลบริบท] เสมอ และประวัติของคำตอบก่อนหน้าไม่มีแท็ก แต่คำตอบใหม่ของคุณต้องขึ้นต้นด้วยแท็กตามกฎข้อ 1 ทุกครั้ง -- [ข้อมูลบริบท] ถูกค้นใหม่ทุกคำถาม จึงมักไม่มีสถานที่/งานที่เคยแนะนำไปแล้ว นั่นไม่ได้แปลว่าคำตอบก่อนหน้าผิด ห้ามขอโทษ ห้ามแก้ หรือห้ามวิจารณ์คำตอบก่อนหน้า ให้ตอบเฉพาะคำถามล่าสุด
+        8. ถ้าผู้ใช้ขอให้จัดทริป/วางแผนเที่ยวหลายวัน ให้แนะนำเฉพาะสถานที่และอีเวนท์ที่มีใน [ข้อมูลบริบท] เป็นตัวเลือก ห้ามแต่งตารางเวลา วิธีเดินทาง (เครื่องบิน รถทัวร์ รถไฟ แท็กซี่) หรือระยะเวลาเดินทางขึ้นมาเอง แล้วแนะนำให้ใช้เมนู "วางแผนทริป" ของเว็บ ซึ่งจัดเส้นทาง เวลา และระยะทางให้ได้จริง (เมนูนี้ไม่ได้หาหรือจองที่พักให้ และไม่ต้องพูดถึงเมนูนี้ในคำถามที่ไม่ได้ขอจัดทริป)
+        9. [ข้อมูลบริบท] เป็นแค่บางรายการที่ค้นเจอ ไม่ใช่ทั้งฐานข้อมูล ถ้าผู้ใช้ถามแบบเปรียบเทียบ (ถูกที่สุด ดีที่สุด ใกล้ที่สุด ดังที่สุด) ให้เทียบเฉพาะรายการในบริบท และบอกให้ชัดว่า "จากที่ค้นเจอ" ห้ามอ้างว่าเป็นที่สุดของทั้งขอนแก่น
+        10. เวลาเปิด-ปิดที่ปิดหลังเที่ยงคืนมีวงเล็บกำกับไว้แล้ว (เช่น "7:00–4:00 (ปิดตี 4 ของวันถัดไป)") ห้ามอ่านเป็นปิดตอนบ่าย หรือตีความเวลาเองเป็นอย่างอื่น
         7. ถ้าผู้ใช้ถามเกี่ยวกับตัวคุณเอง (ทักทาย, ชื่ออะไร, ทำอะไรได้บ้าง, คุยเล่นทั่วไปสั้นๆ) ให้ใช้แท็ก {MATCH_SELF_TAG} แทน {NO_MATCH_TAG} และตอบได้ตรงๆ โดยไม่ต้องมีข้อมูลใน [ข้อมูลบริบท] รองรับ -- สิ่งที่คุณทำได้จริงคือแนะนำร้านอาหาร คาเฟ่ สถานที่ท่องเที่ยว และอีเวนท์ในจังหวัดขอนแก่น จากฐานข้อมูลที่มี ห้ามอ้างว่าจองร้าน จองโรงแรม ซื้อตั๋ว หรือทำอย่างอื่นที่ทำไม่ได้จริง ใช้ {MATCH_SELF_TAG} เฉพาะคำถามเกี่ยวกับตัวคุณเองเท่านั้น คำถามความรู้ทั่วไปอื่นที่ไม่เกี่ยวกับตัวคุณ (ประวัติศาสตร์ เหตุการณ์ปัจจุบัน ความรู้วิชาการ ฯลฯ) ยังต้องใช้กฎข้อ 1-2 ตามปกติ (ตอบจาก [ข้อมูลบริบท] เท่านั้น ไม่มีก็ {NO_MATCH_TAG})
 
         [ข้อมูลบริบท]
@@ -441,18 +463,19 @@ class RAGChatbotService:
         llm_ms = (time.time() - t0) * 1000
 
         matched_tag = next((t for t in ALL_TAGS if raw_reply.startswith(t)), None)
-        is_fallback = matched_tag in NO_MATCH_TAG_VARIANTS
-        if is_fallback:
-            bot_reply = FALLBACK_MESSAGE
-            source_places = []
-            source_events = []
-        elif matched_tag:
+        # A no-match reply is shown as written: it says what is missing and
+        # may offer a close alternative (tested live: far more useful than
+        # one canned refusal for every question). FALLBACK_MESSAGE is only
+        # for a no-match tag with nothing after it.
+        no_match = matched_tag in NO_MATCH_TAG_VARIANTS
+        if matched_tag:
             bot_reply = raw_reply[len(matched_tag):].strip()
-            matched_sources = _tag_sources(matched_tag)
-            if SOURCE_PLACES not in matched_sources:
-                source_places = []
-            if SOURCE_EVENTS not in matched_sources:
-                source_events = []
+            if not no_match:
+                matched_sources = _tag_sources(matched_tag)
+                if SOURCE_PLACES not in matched_sources:
+                    source_places = []
+                if SOURCE_EVENTS not in matched_sources:
+                    source_events = []
         else:
             # Model didn't follow the tag instruction -- treat as a match
             # rather than silently dropping the answer.
@@ -460,18 +483,19 @@ class RAGChatbotService:
         if not bot_reply:
             # No content, or a tag with nothing after it.
             logger.warning("chat got an empty reply (tag=%s)", matched_tag)
-            bot_reply = ERROR_MESSAGE
+            bot_reply = FALLBACK_MESSAGE if no_match else ERROR_MESSAGE
             source_places = []
             source_events = []
-        source_places = cited_only(source_places, bot_reply)
-        source_events = cited_only(source_events, bot_reply)
+        pick_cards = named_only if no_match else cited_only
+        source_places = pick_cards(source_places, bot_reply)
+        source_events = pick_cards(source_events, bot_reply)
         total_ms = (time.time() - t_total0) * 1000
         logger.info(
             "chat done tag=%s retrieve_ms=%.0f llm_ms=%.0f total_ms=%.0f",
             matched_tag, timings["retrieve_ms"], llm_ms, total_ms,
         )
 
-        return {"reply": bot_reply, "places": source_places, "events": source_events, "usage": usage.finish()}
+        return {"reply": bot_reply, "places": source_places, "events": source_events, "no_match": no_match, "usage": usage.finish()}
 
     def chat_stream(self, user_message: str, history=None):
         """Generator yielding {"type": "token", "text": ...} chunks as the LLM
@@ -493,14 +517,11 @@ class RAGChatbotService:
                 yield event
         except Exception:
             logger.exception("chat_stream failed query=%r", user_message)
-            # A NO_MATCH turn has already shown its whole answer; only the
-            # hidden text was still being drained.
-            if emitted != FALLBACK_MESSAGE:
-                notice = f"\n\n{ERROR_MESSAGE}" if emitted else ERROR_MESSAGE
-                emitted += notice
-                yield {"type": "token", "text": notice}
+            notice = f"\n\n{ERROR_MESSAGE}" if emitted else ERROR_MESSAGE
+            emitted += notice
+            yield {"type": "token", "text": notice}
             usage.meta["failed"] = True
-            yield {"type": "done", "reply": emitted, "places": [], "events": [], "usage": usage.finish()}
+            yield {"type": "done", "reply": emitted, "places": [], "events": [], "no_match": False, "usage": usage.finish()}
 
     def _stream_turn(self, user_message: str, history, usage: UsageTracker):
         t_total0 = time.time()
@@ -535,7 +556,7 @@ class RAGChatbotService:
         full_text = ""
         tag_buffer = ""
         tag_resolved = False
-        is_fallback = False
+        no_match = False
         include_places = False
         include_events = False
         # Whitespace right after the tag (typically one space before the
@@ -560,26 +581,20 @@ class RAGChatbotService:
                 if matched_tag:
                     tag_resolved = True
                     if matched_tag in NO_MATCH_TAG_VARIANTS:
-                        # The model's own no-match text is hidden (drained
-                        # below, not yielded) -- but the frontend only ever
-                        # renders accumulated `token` events, it doesn't read
-                        # `reply` off the final `done` event. So the fallback
-                        # message itself has to go out as a token here, or a
-                        # NO_MATCH answer renders as a permanently empty
-                        # bubble (confirmed live: this was exactly that bug).
-                        is_fallback = True
-                        full_text = FALLBACK_MESSAGE
-                        yield {"type": "token", "text": FALLBACK_MESSAGE}
+                        # Shown as written, like chat(); cards only for
+                        # alternatives it names (named_only below).
+                        no_match = True
+                        include_places = include_events = True
                     else:
                         matched_sources = _tag_sources(matched_tag)
                         include_places = SOURCE_PLACES in matched_sources
                         include_events = SOURCE_EVENTS in matched_sources
-                        remainder = tag_buffer[len(matched_tag):].lstrip()
-                        if remainder:
-                            full_text += remainder
-                            yield {"type": "token", "text": remainder}
-                        else:
-                            skip_leading_ws = True
+                    remainder = tag_buffer[len(matched_tag):].lstrip()
+                    if remainder:
+                        full_text += remainder
+                        yield {"type": "token", "text": remainder}
+                    else:
+                        skip_leading_ws = True
                 elif not any(t.startswith(tag_buffer) for t in ALL_TAGS):
                     # Doesn't match any tag prefix -- model skipped the tag
                     # instruction. Treat everything buffered so far as a
@@ -591,9 +606,6 @@ class RAGChatbotService:
                     yield {"type": "token", "text": tag_buffer}
                 # else: still an ambiguous prefix of one of the tags, keep buffering
                 continue
-
-            if is_fallback:
-                continue  # drain the hidden no-match text without yielding it
 
             if skip_leading_ws:
                 delta = delta.lstrip()
@@ -609,20 +621,20 @@ class RAGChatbotService:
             # ended mid-tag: the frontend hides an empty bot bubble, so the
             # user would otherwise see no answer and no error.
             logger.warning("chat_stream got an empty reply (tag_buffer=%r)", tag_buffer)
-            full_text = ERROR_MESSAGE
+            full_text = FALLBACK_MESSAGE if no_match else ERROR_MESSAGE
             include_places = False
             include_events = False
-            yield {"type": "token", "text": ERROR_MESSAGE}
+            yield {"type": "token", "text": full_text}
 
         llm_ms = (time.time() - t0) * 1000
-        final_reply = FALLBACK_MESSAGE if is_fallback else full_text
-        final_places = cited_only(source_places, full_text) if include_places else []
-        final_events = cited_only(source_events, full_text) if include_events else []
+        pick_cards = named_only if no_match else cited_only
+        final_places = pick_cards(source_places, full_text) if include_places else []
+        final_events = pick_cards(source_events, full_text) if include_events else []
         total_ms = (time.time() - t_total0) * 1000
         logger.info(
-            "chat_stream done fallback=%s include_places=%s include_events=%s retrieve_ms=%.0f llm_ms=%.0f total_ms=%.0f",
-            is_fallback, include_places, include_events, timings["retrieve_ms"], llm_ms, total_ms,
+            "chat_stream done no_match=%s include_places=%s include_events=%s retrieve_ms=%.0f llm_ms=%.0f total_ms=%.0f",
+            no_match, include_places, include_events, timings["retrieve_ms"], llm_ms, total_ms,
         )
 
         usage.record("answer", self.model_name, stream_usage)
-        yield {"type": "done", "reply": final_reply, "places": final_places, "events": final_events, "usage": usage.finish()}
+        yield {"type": "done", "reply": full_text, "places": final_places, "events": final_events, "no_match": no_match, "usage": usage.finish()}

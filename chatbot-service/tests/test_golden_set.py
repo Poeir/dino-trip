@@ -17,7 +17,7 @@ API calls/time. Run explicitly:
 """
 import pytest
 
-from src.services.chatbot.agent import FALLBACK_MESSAGE, RAGChatbotService
+from src.services.chatbot.agent import RAGChatbotService
 
 pytestmark = pytest.mark.live
 
@@ -117,25 +117,25 @@ class TestAreaAndSituationQueries:
 
     def test_restaurants_around_a_landmark(self, svc):
         result = svc.chat("ร้านอาหารแถวบึงแก่นนคร")
-        assert result["reply"] != FALLBACK_MESSAGE
+        assert not result["no_match"]
         assert result["places"]
         assert all(p["category"] == "ร้านอาหาร" for p in result["places"])
 
     def test_going_out_in_a_subdistrict(self, svc):
         result = svc.chat("อยากเที่ยวแถวท่าพระ ช่วยแนะนำหน่อย")
-        assert result["reply"] != FALLBACK_MESSAGE
+        assert not result["no_match"]
         assert result["places"]
 
     def test_what_is_around_a_mall(self, svc):
         result = svc.chat("แถวเซ็นทรัลขอนแก่นมีอะไรบ้าง")
-        assert result["reply"] != FALLBACK_MESSAGE
+        assert not result["no_match"]
         assert result["places"]
 
     def test_something_the_area_does_not_have_is_refused(self, svc):
         # ท่าพระ has no Japanese restaurant: the area's noodle shop must not
         # be offered as sushi.
         result = svc.chat("ร้านซูชิแถวท่าพระ")
-        assert result["reply"] == FALLBACK_MESSAGE
+        assert result["no_match"]
         assert result["places"] == []
 
     def test_rainy_day_gets_indoor_places(self, svc):
@@ -145,7 +145,7 @@ class TestAreaAndSituationQueries:
 
     def test_souvenirs_get_a_souvenir_shop_or_the_silk_article(self, svc):
         result = svc.chat("ซื้อของฝากที่ไหนดี")
-        assert result["reply"] != FALLBACK_MESSAGE
+        assert not result["no_match"]
         assert all(p["category"] == "ร้านของฝาก" for p in result["places"])
 
 
@@ -155,7 +155,7 @@ class TestNoMatchCorrectness:
 
     def test_unrelated_math_question(self, svc):
         result = svc.chat("ช่วยแก้สมการ 2x + 5 = 15 หน่อย")
-        assert result["reply"] == FALLBACK_MESSAGE
+        assert result["no_match"]
         assert result["places"] == []
 
     def test_category_that_genuinely_does_not_exist(self, svc):
@@ -163,7 +163,7 @@ class TestNoMatchCorrectness:
         # Khon-Kaen-adjacent, above the similarity floor) and the model used
         # to recommend them as if they were waterfalls -- must refuse instead.
         result = svc.chat("มีที่เที่ยวธรรมชาติแนวน้ำตกหรือทะเลบัวแดงหรือเปล่า")
-        assert result["reply"] == FALLBACK_MESSAGE
+        assert result["no_match"]
         assert result["places"] == []
 
     def test_gibberish(self, svc):
@@ -225,8 +225,9 @@ class TestEventRetrievalCorrectness:
 
     def test_nonexistent_event_type_is_refused(self, svc):
         result = svc.chat("มีงานคอนเสิร์ตของ BTS ที่ขอนแก่นไหม")
-        assert result["reply"] == FALLBACK_MESSAGE
-        assert result["events"] == []
+        assert result["no_match"]
+        # Other concerts may be offered as alternatives, never as BTS.
+        assert not any("BTS" in n for n in event_names(result))
 
     def test_event_answer_does_not_leak_event_cards_on_kb_only_question(self, svc):
         result = svc.chat("ประวัติศาสตร์ขอนแก่นเป็นมายังไง")
@@ -277,7 +278,7 @@ class TestMultiTurnCorrectness:
         admits_no_data = "ไม่" in r2["reply"] and any(
             p in r2["reply"] for p in ("ระบุ", "ข้อมูล", "ยืนยัน")
         )
-        assert r2["reply"] == FALLBACK_MESSAGE or admits_no_data, r2["reply"]
+        assert r2["no_match"] or admits_no_data, r2["reply"]
 
     def test_followup_answer_never_leaks_a_raw_tag(self, svc):
         # History assistant turns carry no [MATCH] tag; the model must still

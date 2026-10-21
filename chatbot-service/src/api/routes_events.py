@@ -1,4 +1,3 @@
-import json
 import logging
 from datetime import date
 
@@ -6,14 +5,14 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from src.core.clock import today_bangkok
-from src.core.llm_client import make_llm_client
-from src.core.config import MODEL_NAME
-from src.services.trip_planner.json_utils import clean_json_string
+from src.core.llm_client import complete_json
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/events", tags=["Events"])
-client = make_llm_client()
+
+# An admin is waiting on this; the SDK default would be 600s.
+EXTRACT_TIMEOUT_S = 60
 
 # Matches the admin event form fields 1:1 (frontend/src/admin/EventsTab.jsx) --
 # the LLM's raw JSON is never trusted as-is, only these keys are ever read
@@ -22,6 +21,16 @@ EVENT_FIELDS = ["name", "category", "dateRange", "venueName", "admission", "orga
 # Machine-readable bounds (YYYY-MM-DD, Gregorian) -- these drive the computed
 # ongoing/upcoming/ended status, so they must be valid dates or empty.
 DATE_FIELDS = ["eventStartDate", "eventEndDate"]
+
+EVENT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        **{f: {"type": "string"} for f in EVENT_FIELDS + DATE_FIELDS if f != "suitableFor"},
+        "suitableFor": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": EVENT_FIELDS + DATE_FIELDS,
+    "additionalProperties": False,
+}
 
 
 def _valid_iso_date(val) -> str:
@@ -71,16 +80,14 @@ def extract_event(req: ExtractEventRequest):
         raise HTTPException(status_code=400, detail="ข้อความว่างเปล่า")
 
     try:
-        response = client.chat.completions.create(
-            model=MODEL_NAME,
-            messages=[
-                {"role": "system", "content": "You extract structured event data from Thai Facebook posts. Output JSON only."},
-                {"role": "user", "content": build_prompt(text)},
-            ],
+        data = complete_json(
+            system="You extract structured event data from Thai Facebook posts. Output JSON only.",
+            user=build_prompt(text),
+            schema=EVENT_SCHEMA,
+            timeout=EXTRACT_TIMEOUT_S,
             temperature=0.1,
-            response_format={"type": "json_object"},
+            label="events",
         )
-        data = json.loads(clean_json_string(response.choices[0].message.content))
     except Exception as e:
         logger.error("event extraction failed: %s", e)
         raise HTTPException(status_code=502, detail=f"ดึงข้อมูลจากข้อความไม่สำเร็จ: {e}")

@@ -16,6 +16,7 @@ class Place(BaseModel):
     price: Optional[str] = None
     price_level: Optional[int] = None
     address: Optional[str] = None
+    subcategory: Optional[str] = None  # ร้านอาหาร/คาเฟ่ sub-type (backend lib/placeSubcategory.js); drives food_preferences
     district: Optional[str] = None  # Google administrative_area_level_2, e.g. "เมืองขอนแก่น" (see import-places.js's mapDistrict())
     hours: Optional[str] = None
     hours_periods: Optional[List[Dict[str, Any]]] = None
@@ -71,6 +72,32 @@ TRIP_PACES = ("relaxed", "standard", "packed")
 BUDGET_LEVELS = ("ประหยัด", "ปานกลาง", "หรูหรา")
 AREA_SCOPES = ("เมือง", "ทั่วขอนแก่น")
 
+# The trip form's "อยากกินอะไร" choices (frontend seed.js foodPreferenceList)
+# -> (category, places.subcategory) they select. Restaurant ones steer the
+# day's lunch/dinner; the bakery one steers which cafes are offered.
+FOOD_PREFERENCES = {
+    "อาหารอีสาน": ("ร้านอาหาร", "อาหารอีสาน"),
+    "ปิ้งย่าง/ชาบู": ("ร้านอาหาร", "ปิ้งย่าง/ชาบู"),
+    "ญี่ปุ่น/เกาหลี": ("ร้านอาหาร", "ญี่ปุ่น/เกาหลี"),
+    "ก๋วยเตี๋ยว": ("ร้านอาหาร", "ก๋วยเตี๋ยว"),
+    # Special: adds a breakfast meal to every day that starts early enough
+    # (route_scheduler.day_meals), served by a breakfast shop.
+    "อาหารเช้า": ("ร้านอาหาร", "อาหารเช้า"),
+    "เวียดนาม": ("ร้านอาหาร", "เวียดนาม"),
+    "เบเกอรี่/ของหวาน": ("คาเฟ่", "เบเกอรี่/ของหวาน"),
+}
+# Was an interest until 2026-10-21; old clients and saved trips still send it.
+LEGACY_LOCAL_FOOD_INTEREST = "อาหารพื้นถิ่น"
+BREAKFAST_PREFERENCE = "อาหารเช้า"
+
+
+def meal_food_kinds(food_preferences) -> List[str]:
+    """Restaurant subcategories wanted at lunch/dinner (breakfast is its own meal)."""
+    return [
+        FOOD_PREFERENCES[p][1] for p in food_preferences
+        if FOOD_PREFERENCES[p][0] == "ร้านอาหาร" and p != BREAKFAST_PREFERENCE
+    ]
+
 
 class TripInput(BaseModel):
     # Field caps exist because this endpoint is public and these values are
@@ -91,6 +118,8 @@ class TripInput(BaseModel):
     accommodation_lng: Optional[float] = Field(default=None, ge=-180, le=180)
     must_go: List[Annotated[str, Field(max_length=200)]] = Field(default_factory=list, max_length=30)
     interests: List[Annotated[str, Field(max_length=100)]] = Field(default_factory=list, max_length=30)
+    # Kinds of food wanted at meals (keys of FOOD_PREFERENCES); empty = no preference.
+    food_preferences: List[Annotated[str, Field(max_length=50)]] = Field(default_factory=list, max_length=len(FOOD_PREFERENCES))
     trip_pace: str = Field(default="relaxed", max_length=30)  # relaxed | standard | packed
     budget_level: str = Field(default="ปานกลาง", max_length=30)  # ประหยัด | ปานกลาง | หรูหรา -- matches the frontend's budgetList directly
     area_scope: str = Field(default="ทั่วขอนแก่น", max_length=30)  # เมือง | ทั่วขอนแก่น -- matches the frontend's areaScopeList directly
@@ -140,6 +169,24 @@ class TripInput(BaseModel):
             raise ValueError(f"area_scope must be one of {AREA_SCOPES}")
         return value
 
+    @field_validator("food_preferences")
+    @classmethod
+    def _known_food(cls, value: List[str]) -> List[str]:
+        unknown = [v for v in value if v not in FOOD_PREFERENCES]
+        if unknown:
+            raise ValueError(f"food_preferences must be among {tuple(FOOD_PREFERENCES)}")
+        return list(dict.fromkeys(value))
+
+    @model_validator(mode="after")
+    def _local_food_interest_moves_to_food(self) -> "TripInput":
+        """"อาหารพื้นถิ่น" left the interests for the food choices (as Isan
+        food); a request that still sends it as an interest gets that."""
+        if LEGACY_LOCAL_FOOD_INTEREST in self.interests:
+            self.interests = [i for i in self.interests if i != LEGACY_LOCAL_FOOD_INTEREST]
+            if "อาหารอีสาน" not in self.food_preferences:
+                self.food_preferences = [*self.food_preferences, "อาหารอีสาน"]
+        return self
+
     @model_validator(mode="after")
     def _day_ends_after_it_starts(self) -> "TripInput":
         if datetime.strptime(self.end_time, "%H:%M") <= datetime.strptime(self.start_time, "%H:%M"):
@@ -157,6 +204,13 @@ class TimeSlot(BaseModel):
     wait_time_min: int = 0
     is_anchor: bool = False  # place had a narrow real opening window that day and anchored the schedule around it
     meal_role: Optional[str] = None  # "lunch" | "dinner" | None, for ร้านอาหาร category places
+    # Who put this stop in the day (llm_extractor._build_itinerary_from_llm_days):
+    # "llm" (the generator's pick), "must_go" (the user's, injected when the
+    # LLM left it out), "meal" (a restaurant brought in for a lunch/dinner),
+    # "backfill" (an unpicked candidate topping up a short day), "gap_filler"
+    # (an unpicked candidate filling idle time), "spare" (the spare pool the
+    # LLM never sees). None for the hotel leg and free-time blocks.
+    source: Optional[str] = None
 
 
 class DailyItinerary(BaseModel):
@@ -195,11 +249,10 @@ class TripResponse(BaseModel):
 class JudgeVerdict(BaseModel):
     """Internal-only -- never returned from the API as-is (its `rationale`
     field is copied into TripResponse.planning_rationale)."""
-    passed: bool
-    score: float              # 0.0-1.0, as reported by the judge LLM
-    pacing_ok: bool           # STRICT RULE #3 (back-to-back heavy meals, logical mix, pace density)
-    intent_match_ok: bool     # reflects interests/must_go/budget_level beyond candidate-list filtering
-    issues: List[str] = []
+    passed: bool              # no "major" issue (see judge.py)
+    score: float              # 0.0-1.0, as reported by the judge LLM; for logs and choosing between rounds
+    major_issues: int = 0     # issues the judge rated major: a traveller would mind, and other picks could fix
+    issues: List[str] = []    # "[major] Day 2: problem" / "[minor] ..."
     feedback: str = ""        # re-injected verbatim into the next generation prompt (model-facing)
     rationale: str = ""       # short Thai, user-facing explanation of the plan's logic (human-facing)
     # True only when evaluate() never got a real verdict from the judge LLM

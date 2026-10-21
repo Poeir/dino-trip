@@ -169,18 +169,32 @@ class TestChatTagParsing:
         assert len(result["places"]) == 1
         assert len(result["events"]) == 1
 
-    def test_no_match_returns_fallback_message_and_no_cards(self):
-        svc = make_service(response_text=f"{NO_MATCH_TAG} ไม่เกี่ยวกับขอนแก่นเลย", events=[make_event_row()])
+    def test_no_match_shows_the_models_own_reply_without_cards(self):
+        svc = make_service(response_text=f"{NO_MATCH_TAG} น้องไดโนช่วยแก้สมการไม่ได้ครับ", events=[make_event_row()])
+        result = svc.chat("แก้สมการ 2x=4")
+        assert result["reply"] == "น้องไดโนช่วยแก้สมการไม่ได้ครับ"
+        assert result["no_match"] is True
+        assert result["places"] == []  # cited_only would have kept every card here
+        assert result["events"] == []
+
+    def test_no_match_gets_cards_only_for_the_alternatives_it_names(self):
+        svc = make_service(response_text=f"{NO_MATCH_TAG} ไม่มีงานเดือนธันวาคม แต่มี Test Festival ครับ", events=[make_event_row()])
+        result = svc.chat("งานเดือนธันวาคม")
+        assert [e["name"] for e in result["events"]] == ["Test Festival"]
+        assert result["places"] == []
+
+    def test_no_match_with_nothing_after_the_tag_uses_the_fallback(self):
+        svc = make_service(response_text=NO_MATCH_TAG)
         result = svc.chat("แก้สมการ 2x=4")
         assert result["reply"] == FALLBACK_MESSAGE
-        assert result["places"] == []
-        assert result["events"] == []
+        assert result["places"] == [] and result["events"] == []
 
     def test_no_match_written_in_match_shape_is_still_a_no_match(self):
         # Seen live: "[MATCH:NO_MATCH] ..." was shown to the user as-is.
-        svc = make_service(response_text="[MATCH:NO_MATCH] ไม่มีข้อมูลท่าพระ แต่แนะนำวัด...", events=[make_event_row()])
+        svc = make_service(response_text="[MATCH:NO_MATCH] ไม่มีข้อมูลท่าพระครับ", events=[make_event_row()])
         result = svc.chat("อยากไปเที่ยวท่าพระ")
-        assert result["reply"] == FALLBACK_MESSAGE
+        assert result["reply"] == "ไม่มีข้อมูลท่าพระครับ"
+        assert result["no_match"] is True
         assert result["places"] == [] and result["events"] == []
 
     def test_missing_tag_is_treated_as_a_match_not_dropped(self):
@@ -245,24 +259,27 @@ class TestChatStreamTagParsing:
         assert len(done["places"]) == 1
         assert len(done["events"]) == 1
 
-    def test_no_match_in_match_shape_streams_the_fallback_not_the_tag(self):
-        svc = make_service(stream_text="[MATCH:NO_MATCH] ตอนนี้ไม่มีข้อมูลท่าพระ แนะนำวัดป่า...")
+    def test_no_match_in_match_shape_streams_the_reply_not_the_tag(self):
+        svc = make_service(stream_text="[MATCH:NO_MATCH] ตอนนี้ไม่มีข้อมูลท่าพระครับ")
         tokens, done = self._collect(svc, "อยากไปเที่ยวท่าพระ")
-        assert tokens == done["reply"] == FALLBACK_MESSAGE
-        assert "MATCH" not in tokens and "วัดป่า" not in tokens
+        assert tokens == done["reply"] == "ตอนนี้ไม่มีข้อมูลท่าพระครับ"
+        assert done["no_match"] is True
         assert done["places"] == [] and done["events"] == []
 
-    def test_no_match_streams_fallback_text_not_the_hidden_reasoning(self):
-        # Regression: this used to yield zero token events, so the frontend
-        # (which only renders accumulated tokens, never the final `reply`
-        # field) showed a permanently empty chat bubble.
-        svc = make_service(stream_text=f"{NO_MATCH_TAG} เหตุผลภายในที่ไม่ควรโชว์ผู้ใช้")
-        tokens, done = self._collect(svc, "แก้สมการ 2x=4")
-        assert tokens == FALLBACK_MESSAGE
-        assert "เหตุผลภายใน" not in tokens  # the model's hidden reasoning never leaks out
-        assert done["reply"] == FALLBACK_MESSAGE
+    def test_no_match_stream_gets_cards_only_for_named_alternatives(self):
+        svc = make_service(stream_text=f"{NO_MATCH_TAG} ไม่มีงานเดือนธันวาคม แต่มี Test Festival ครับ", events=[make_event_row()])
+        tokens, done = self._collect(svc, "งานเดือนธันวาคม")
+        assert tokens == "ไม่มีงานเดือนธันวาคม แต่มี Test Festival ครับ"
+        assert [e["name"] for e in done["events"]] == ["Test Festival"]
         assert done["places"] == []
-        assert done["events"] == []
+
+    def test_no_match_with_nothing_after_the_tag_streams_the_fallback(self):
+        # The frontend only renders `token` events, so the fallback must go
+        # out as one or the bubble stays empty.
+        svc = make_service(stream_text=NO_MATCH_TAG)
+        tokens, done = self._collect(svc, "แก้สมการ 2x=4")
+        assert tokens == done["reply"] == FALLBACK_MESSAGE
+        assert done["places"] == [] and done["events"] == []
 
     def test_tag_split_across_many_small_chunks_still_resolves(self):
         # chunk_size=1 forces "[MATCH:PLACES]" to arrive one character at a
@@ -289,7 +306,7 @@ class RewriteAwareCompletions:
     """Distinguishes the query-rewrite call (temperature=0) from the answer
     call (temperature=0.1), recording both."""
 
-    def __init__(self, rewrite_text="ร้าน X เปิดกี่โมง", answer_text=f"{MATCH_PLACES_TAG} ตอบครับ", fail_rewrite=False):
+    def __init__(self, rewrite_text="<query>ร้าน X เปิดกี่โมง</query>", answer_text=f"{MATCH_PLACES_TAG} ตอบครับ", fail_rewrite=False):
         self.rewrite_text = rewrite_text
         self.answer_text = answer_text
         self.fail_rewrite = fail_rewrite
@@ -338,7 +355,7 @@ class TestMultiTurn:
         assert msgs[1]["content"] == "แนะนำร้านกาแฟหน่อย"
 
     def test_retrieval_uses_rewritten_query_not_raw_followup(self):
-        svc, _ = make_multiturn_service(rewrite_text="ร้าน X เปิดกี่โมง")
+        svc, _ = make_multiturn_service()
         svc.chat("แล้วร้านนั้นเปิดกี่โมง", history=HISTORY)
         assert svc.retriever.place_queries == ["ร้าน X เปิดกี่โมง"]
         assert svc.retriever.kb_queries == ["ร้าน X เปิดกี่โมง"]
@@ -360,9 +377,20 @@ class TestMultiTurn:
         assert svc.retriever.place_queries == ["แล้วร้านนั้นเปิดกี่โมง"]
 
     def test_rewrite_keeps_only_first_line(self):
-        svc, _ = make_multiturn_service(rewrite_text="ร้าน X เปิดกี่โมง\nคำอธิบายเพิ่มเติม")
+        svc, _ = make_multiturn_service(rewrite_text="<query>ร้าน X เปิดกี่โมง\nคำอธิบายเพิ่มเติม</query>")
         svc.chat("เปิดกี่โมง", history=HISTORY)
         assert svc.retriever.place_queries == ["ร้าน X เปิดกี่โมง"]
+
+    def test_rewrite_ignores_text_around_the_tag(self):
+        svc, _ = make_multiturn_service(rewrite_text="ผมจะเขียนคำถามใหม่ครับ\n<query>ร้าน X เปิดกี่โมง</query>")
+        svc.chat("เปิดกี่โมง", history=HISTORY)
+        assert svc.retriever.place_queries == ["ร้าน X เปิดกี่โมง"]
+
+    def test_untagged_rewrite_falls_back_to_raw_message(self):
+        # Live: the model's own preamble was searched as the query.
+        svc, _ = make_multiturn_service(rewrite_text="ผมจะเขียนคำถามใหม่ให้เข้าใจได้โดยไม่ต้องอ่านบทสนทนาก่อนหน้า")
+        svc.chat("ฉันพักอยู่ท่าพระ แนะนำให้ไปไหนดี", history=HISTORY)
+        assert svc.retriever.place_queries == ["ฉันพักอยู่ท่าพระ แนะนำให้ไปไหนดี"]
 
     def test_stream_path_uses_history_and_rewrite(self):
         svc, c = make_multiturn_service()
@@ -397,7 +425,7 @@ class TestLatencyGuards:
         assert svc.client.options == []
 
     def test_all_three_sources_are_searched_with_the_same_query(self):
-        svc, _ = make_multiturn_service(rewrite_text="ร้าน X เปิดกี่โมง")
+        svc, _ = make_multiturn_service(rewrite_text="<query>ร้าน X เปิดกี่โมง</query>")
         svc.chat("เปิดกี่โมง", history=HISTORY)
         r = svc.retriever
         assert r.place_queries == r.kb_queries == r.event_queries == ["ร้าน X เปิดกี่โมง"]
@@ -496,11 +524,11 @@ class TestTurnFailures:
         assert tokens == done["reply"] == f"ร้านแรกคือ\n\n{ERROR_MESSAGE}"
         assert done["places"] == []
 
-    def test_stream_dying_after_a_no_match_answer_adds_nothing(self):
+    def test_stream_dying_mid_no_match_answer_appends_the_error(self):
         svc = make_service()
-        svc.client.chat.completions.create = lambda **kw: make_failing_stream(f"{NO_MATCH_TAG} เหตุผลภายใน")
+        svc.client.chat.completions.create = lambda **kw: make_failing_stream(f"{NO_MATCH_TAG} ไม่มีข้อมูล")
         tokens, done = self._collect(svc, "แก้สมการ 2x=4")
-        assert tokens == done["reply"] == FALLBACK_MESSAGE
+        assert tokens == done["reply"] == f"ไม่มีข้อมูล\n\n{ERROR_MESSAGE}"
 
     @pytest.mark.parametrize("stream_text", ["", MATCH_PLACES_TAG, f"{MATCH_PLACES_TAG}  ", "[MATCH:PLA"])
     def test_empty_reply_streams_the_error_message_not_an_empty_bubble(self, stream_text):

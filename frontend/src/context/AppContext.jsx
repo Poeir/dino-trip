@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  categories, categoryIcons, interestList, budgetList, budgetMeta, areaScopeList, areaScopeMeta
+  categories, categoryIcons, interestList, foodPreferenceList, LEGACY_LOCAL_FOOD_INTEREST, budgetList, budgetMeta, areaScopeList, areaScopeMeta
 } from '../data/seed.js'
 import { useThaiAddress } from '../lib/thaiAddress.js'
 import {
@@ -119,7 +119,7 @@ const initialState = {
   // `accommodation` is null until picked, then { name, address, lat, lng }
   // (name/address only present when picked via search, not a dragged pin --
   // see onAccommodationSelect/onAccommodationLocationChange).
-  tripForm: { startDate: '', endDate: '', interests: [], budget: 'ปานกลาง', areaScope: 'ทั่วขอนแก่น', accommodation: null, mustGo: [], pace: 'standard', dailyStart: '09:00', dailyEnd: '18:00' },
+  tripForm: { startDate: '', endDate: '', interests: [], foodPrefs: [], budget: 'ปานกลาง', areaScope: 'ทั่วขอนแก่น', accommodation: null, mustGo: [], pace: 'standard', dailyStart: '09:00', dailyEnd: '18:00' },
   mustGoQuery: '',
   // Populated by a debounced fetchPlaces({search}) as mustGoQuery changes
   // (see the effect below) -- used to be a client-side filter over the
@@ -681,6 +681,10 @@ export function AppProvider({ children }) {
     const has = s.tripForm.interests.includes(tag)
     return { tripForm: { ...s.tripForm, interests: has ? s.tripForm.interests.filter((x) => x !== tag) : [...s.tripForm.interests, tag] } }
   })
+  const toggleFoodPref = (kind) => setState((s) => {
+    const prefs = s.tripForm.foodPrefs || []
+    return { tripForm: { ...s.tripForm, foodPrefs: prefs.includes(kind) ? prefs.filter((x) => x !== kind) : [...prefs, kind] } }
+  })
   const setBudget = (b) => setState((s) => ({ tripForm: { ...s.tripForm, budget: b } }))
   const setAreaScope = (a) => setState((s) => ({ tripForm: { ...s.tripForm, areaScope: a } }))
 
@@ -762,11 +766,17 @@ export function AppProvider({ children }) {
     if (!input || !input.start_date) return current
     const end = new Date(`${input.start_date}T00:00:00Z`)
     end.setUTCDate(end.getUTCDate() + Math.max(0, (input.trip_duration_days || 1) - 1))
+    // Trips saved before the food choices existed have "อาหารพื้นถิ่น" as an
+    // interest; it is the "อาหารอีสาน" food choice now (same as chatbot-service).
+    const savedInterests = input.interests || []
+    const foodPrefs = [...(input.food_preferences || [])]
+    if (savedInterests.includes(LEGACY_LOCAL_FOOD_INTEREST) && !foodPrefs.includes('อาหารอีสาน')) foodPrefs.push('อาหารอีสาน')
     return {
       ...current,
       startDate: input.start_date,
       endDate: end.toISOString().slice(0, 10),
-      interests: input.interests || [],
+      interests: savedInterests.filter((i) => i !== LEGACY_LOCAL_FOOD_INTEREST),
+      foodPrefs,
       budget: input.budget_level || current.budget,
       areaScope: input.area_scope || current.areaScope,
       accommodation: (input.accommodation_name || input.accommodation_lat != null)
@@ -842,12 +852,19 @@ export function AppProvider({ children }) {
         accommodation_lng: f.accommodation?.lng ?? null,
         must_go: f.mustGo,
         interests: f.interests,
+        food_preferences: f.foodPrefs || [],
         trip_pace: f.pace,
         budget_level: f.budget,
         area_scope: f.areaScope,
         start_time: f.dailyStart,
         end_time: f.dailyEnd,
       }
+      // Started now so it loads while the trip is being planned, not after.
+      // Caught here: a failure only costs the QR badges (see below).
+      const scannablePromise = fetchScannablePlaces().catch((err) => {
+        console.error('Fetching QR points for trip plan places failed (continuing without them):', err)
+        return null
+      })
       const resp = await requestTripPlan(tripRequest)
       if (!resp.itinerary || resp.itinerary.length === 0) {
         setState({ tripPlanning: false, tripFormError: resp.note || 'ไม่พบสถานที่ที่ตรงกับเงื่อนไข ลองปรับความสนใจหรืองบประมาณดูนะครับ' })
@@ -864,15 +881,11 @@ export function AppProvider({ children }) {
       // place missing from this map -- see its totalPoints reduce), instead
       // of losing the plan entirely.
       let qrPointsByPlaceId = new Map()
-      if (placeIds.length) {
-        try {
-          // Live QRs only, with the points a scan really awards (not places.qr_points).
-          const scannable = await fetchScannablePlaces()
-          const wanted = new Set(placeIds)
-          qrPointsByPlaceId = new Map(scannable.filter((p) => wanted.has(p.id)).map((p) => [p.id, { hasQR: true, qrPoints: p.qrPoints }]))
-        } catch (err) {
-          console.error('Fetching QR points for trip plan places failed (continuing without them):', err)
-        }
+      // Live QRs only, with the points a scan really awards (not places.qr_points).
+      const scannable = await scannablePromise
+      if (placeIds.length && Array.isArray(scannable)) {
+        const wanted = new Set(placeIds)
+        qrPointsByPlaceId = new Map(scannable.filter((p) => wanted.has(p.id)).map((p) => [p.id, { hasQR: true, qrPoints: p.qrPoints }]))
       }
       let plan = tripResponseToPlan(resp, f.startDate, qrPointsByPlaceId)
       // Save it right away -- generating costs an LLM run, and refreshing the
@@ -1190,6 +1203,14 @@ export function AppProvider({ children }) {
       iconBg: active ? 'linear-gradient(135deg,#66BB6A,#388E3C)' : '#c8d6cc'
     }
   })
+  const foodPreferenceOptionsView = foodPreferenceList.map((kind) => {
+    const active = (s.tripForm.foodPrefs || []).includes(kind)
+    return {
+      label: kind, onClick: () => toggleFoodPref(kind), letter: kind.charAt(0),
+      bg: active ? '#FFF3E0' : '#fff', color: active ? '#E65100' : '#3c463f', borderColor: active ? '#EF6C00' : '#E7E3D2',
+      iconBg: active ? 'linear-gradient(135deg,#FFA726,#EF6C00)' : '#d9cfc4'
+    }
+  })
   const budgetOptionsView = budgetList.map((b) => {
     const active = b === s.tripForm.budget
     return {
@@ -1227,6 +1248,7 @@ export function AppProvider({ children }) {
   const tripFormSummaryView = {
     dateRangeLabel: s.tripForm.startDate === s.tripForm.endDate ? s.tripForm.startDate : `${s.tripForm.startDate} - ${s.tripForm.endDate}`,
     interests: s.tripForm.interests,
+    foodPrefs: s.tripForm.foodPrefs || [],
     budget: s.tripForm.budget,
     areaScope: s.tripForm.areaScope,
     paceLabel: paceList.find((p) => p.key === s.tripForm.pace)?.label || s.tripForm.pace,
@@ -1312,7 +1334,7 @@ export function AppProvider({ children }) {
     resetPasswordsMatch: s.resetForm.confirmPassword.length > 0 && s.resetForm.password === s.resetForm.confirmPassword,
     categoriesView, categoriesViewIcons,
     chatMessagesView: s.chatMessages.map((m) => ({ ...m, align: m.from === 'user' ? 'flex-end' : 'flex-start', bg: m.from === 'user' ? '#2E7D32' : '#f0efe7', color: m.from === 'user' ? '#fff' : '#1f2a24' })),
-    interestOptionsView, budgetOptionsView, areaScopeOptionsView, paceOptionsView, datePresetOptions, mustGoSuggestionsView, mustGoChipsView, tripFormSummaryView,
+    interestOptionsView, foodPreferenceOptionsView, budgetOptionsView, areaScopeOptionsView, paceOptionsView, datePresetOptions, mustGoSuggestionsView, mustGoChipsView, tripFormSummaryView,
     isStep0: s.tripStep === 0, isStep1: s.tripStep === 1, isStep2: s.tripStep === 2, isStep3: s.tripStep === 3,
     primaryLabel: s.tripStep === 3 ? 'สร้างแผนการเดินทาง →' : 'ถัดไป →',
     onPrimaryStep: s.tripStep === 3 ? submitTripForm : nextStep,

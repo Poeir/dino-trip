@@ -66,7 +66,7 @@ def force_passing_judge(planner):
     """Forces the judge to pass on the first round, so tests that only care
     about the day-assignment -> itinerary pipeline don't also have to model
     judge interaction."""
-    planner.judge.evaluate = lambda user_input, itinerary: JudgeVerdict(
+    planner.judge.evaluate = lambda user_input, itinerary, **_: JudgeVerdict(
         passed=True, score=1.0, pacing_ok=True, intent_match_ok=True, rationale="looks good",
     )
 
@@ -360,8 +360,21 @@ class TestUnfittableMealRole:
         en = next(s for s in itinerary[0].schedule if s.place.id == "en")
         assert en.meal_role == "dinner"
 
-    def test_only_restaurant_of_the_day_keeps_its_place_without_the_role(self):
+    def test_unfittable_dinner_gives_way_to_a_lunch_that_opens_at_noon(self):
+        # The day (09:00-18:00) only holds lunch, and "en" opens at 15:00: it
+        # used to stay as the day's only meal, eaten mid-afternoon.
         planner = LLMTripPlanner(candidates=self._places(), start_point=self.HOTEL)
+        itinerary, _ = self._build(planner, [{"place_id": "temple"}, {"place_id": "en", "meal_role": "dinner"}])
+        meals = {s.place.id: s.meal_role for s in itinerary[0].schedule if s.place.category == "ร้านอาหาร"}
+        assert meals == {"noodle": "lunch"}
+        from datetime import datetime as _dt, timedelta as _td
+        noodle = next(s for s in itinerary[0].schedule if s.place.id == "noodle")
+        seated = (_dt.strptime(noodle.arrival_time, "%H:%M") + _td(minutes=noodle.wait_time_min)).strftime("%H:%M")
+        assert "11:30" <= seated <= "13:30"
+
+    def test_only_restaurant_of_the_day_is_kept_when_nothing_serves_lunch(self):
+        places = [p for p in self._places() if p.id != "noodle"]
+        planner = LLMTripPlanner(candidates=places, start_point=self.HOTEL)
         itinerary, _ = self._build(planner, [{"place_id": "temple"}, {"place_id": "en", "meal_role": "dinner"}])
         en = next(s for s in itinerary[0].schedule if s.place.id == "en")
         assert en.meal_role is None
@@ -469,7 +482,7 @@ class TestSolveRouteWithLLMJudgeRegeneration:
         calls = []
         original = planner._call_llm_for_itinerary
         planner._call_llm_for_itinerary = lambda prompt: (calls.append(prompt), original(prompt))[1]
-        planner.judge.evaluate = lambda user_input, itinerary: JudgeVerdict(
+        planner.judge.evaluate = lambda user_input, itinerary, **_: JudgeVerdict(
             passed=True, score=1.0, pacing_ok=True, intent_match_ok=True, rationale="ok",
         )
 
@@ -484,11 +497,11 @@ class TestSolveRouteWithLLMJudgeRegeneration:
         planner._call_llm_for_itinerary = lambda prompt: (prompts.append(prompt), original(prompt))[1]
 
         verdicts = [
-            JudgeVerdict(passed=False, score=0.2, pacing_ok=False, intent_match_ok=True,
-                         issues=["too many cafes"], feedback="add a restaurant instead", rationale=""),
-            JudgeVerdict(passed=True, score=0.9, pacing_ok=True, intent_match_ok=True, rationale="fixed"),
+            JudgeVerdict(passed=False, score=0.2, major_issues=1,
+                         issues=["[major] Day 1: too many cafes"], feedback="add a restaurant instead", rationale=""),
+            JudgeVerdict(passed=True, score=0.9, rationale="fixed"),
         ]
-        planner.judge.evaluate = lambda user_input, itinerary: verdicts.pop(0)
+        planner.judge.evaluate = lambda user_input, itinerary, **_: verdicts.pop(0)
 
         result, rationale = planner.solve_route_with_llm(self._user_input(), "", "")
         assert len(prompts) == 2
@@ -496,20 +509,107 @@ class TestSolveRouteWithLLMJudgeRegeneration:
         assert "add a restaurant instead" in prompts[1]
         assert rationale == "fixed"
 
-    def test_judge_fails_every_attempt_returns_last_itinerary_without_raising(self):
+    def test_judge_fails_every_attempt_returns_the_best_round_without_raising(self):
         planner = self._planner_with_one_place()
-        planner.judge.evaluate = lambda user_input, itinerary: JudgeVerdict(
-            passed=False, score=0.1, pacing_ok=False, intent_match_ok=False,
-            issues=["bad"], feedback="try harder", rationale="best effort so far",
-        )
+        judged = []
+
+        def judge(user_input, itinerary, **_):
+            judged.append(itinerary)
+            # Round 1 has 3 major issues, round 2 only 1: round 2 is the better one.
+            majors = 3 if len(judged) == 1 else 1
+            return JudgeVerdict(
+                passed=False, score=0.1, major_issues=majors,
+                issues=["[major] Trip: bad"], feedback="try harder", rationale=f"judge on round {len(judged)}",
+            )
+        planner.judge.evaluate = judge
         calls = []
-        original = planner._call_llm_for_itinerary
-        planner._call_llm_for_itinerary = lambda prompt: (calls.append(prompt), original(prompt))[1]
+        planner._call_llm_for_itinerary = lambda prompt: (calls.append(prompt), {
+            "itinerary": [{"day": 1, "places": [{"place_id": "p1"}]}], "rationale": f"generator round {len(calls)}",
+        })[1]
 
         result, rationale = planner.solve_route_with_llm(self._user_input(), "", "")
         assert len(calls) == MAX_JUDGE_ATTEMPTS
+        assert len(judged) == MAX_JUDGE_ATTEMPTS   # every round is judged now
         assert result[0].schedule  # still a valid itinerary
-        assert rationale == "best effort so far"
+        assert rationale == f"judge on round {MAX_JUDGE_ATTEMPTS}"
+
+    def test_a_worse_regenerated_round_does_not_replace_the_first(self):
+        planner = self._planner_with_one_place()
+        verdicts = [
+            JudgeVerdict(passed=False, score=0.6, major_issues=1, feedback="fix it", rationale="first"),
+            JudgeVerdict(passed=False, score=0.4, major_issues=2, feedback="fix it", rationale="second"),
+        ]
+        planner.judge.evaluate = lambda user_input, itinerary, **_: verdicts.pop(0)
+        _, rationale = planner.solve_route_with_llm(self._user_input(), "", "")
+        assert rationale == "first"
+
+    def _far_pick_planner(self, must_go_ids=None):
+        near = make_place(id="p1", name="Near", category="คาเฟ่", lat=16.44, lng=102.84, hours_periods=None)
+        # ~400 km away: can never fit a day, so the scheduler drops it.
+        far = make_place(id="far", name="FarAway", category="วัด", lat=20.0, lng=100.0, hours_periods=None)
+        planner = LLMTripPlanner(candidates=[near, far], start_point=HOTEL, must_go_ids=must_go_ids)
+        calls = []
+        planner._call_llm_for_itinerary = lambda prompt: (calls.append(prompt), {
+            "itinerary": [{"day": 1, "places": [{"place_id": "p1"}, {"place_id": "far"}]}],
+        })[1]
+        seen = {}
+
+        def judge(user_input, itinerary, unused=None, dropped=None):
+            seen["dropped"] = [p.id for _, p in dropped or []]
+            seen["unused"] = [p.id for p in unused or []]
+            return JudgeVerdict(passed=True, score=0.9, rationale="ok")
+        planner.judge.evaluate = judge
+        return planner, calls, seen
+
+    def test_an_optional_pick_that_did_not_fit_is_no_reason_to_regenerate(self):
+        planner, calls, seen = self._far_pick_planner()
+        planner.solve_route_with_llm(self._user_input(), "", "")
+        assert len(calls) == 1
+        # ...and the judge is told it didn't fit, not offered it as unused.
+        assert seen["dropped"] == ["far"] and "far" not in seen["unused"]
+
+    def test_a_must_go_that_did_not_fit_still_triggers_another_round(self):
+        planner, calls, _ = self._far_pick_planner(must_go_ids={"far"})
+        planner.solve_route_with_llm(self._user_input(), "", "")
+        assert len(calls) == MAX_JUDGE_ATTEMPTS
+
+    def test_the_judge_is_shown_the_candidates_left_unused(self):
+        used = make_place(id="p1", name="Place1", category="คาเฟ่", lat=16.44, lng=102.84, hours_periods=None)
+        # Closed, so backfill can't add it to the day either.
+        spare = make_place(id="p2", name="Unpicked", category="วัด", lat=16.44, lng=102.84, hours_periods=None,
+                           business_status="CLOSED_TEMPORARILY")
+        planner = LLMTripPlanner(candidates=[used, spare], start_point=HOTEL)
+        planner._call_llm_for_itinerary = lambda prompt: {"itinerary": [{"day": 1, "places": [{"place_id": "p1"}]}]}
+        seen = {}
+
+        def judge(user_input, itinerary, unused=None, **_):
+            seen["unused"] = [p.id for p in unused or []]
+            return JudgeVerdict(passed=True, score=0.9, rationale="ok")
+        planner.judge.evaluate = judge
+        planner.solve_route_with_llm(self._user_input(), "", "")
+        assert "p2" in seen["unused"] and "p1" not in seen["unused"]
+
+    def test_judge_rationale_wins_when_the_judge_ran(self):
+        planner = self._planner_with_one_place()
+        planner._call_llm_for_itinerary = lambda prompt: {
+            "itinerary": [{"day": 1, "places": [{"place_id": "p1"}]}], "rationale": "from the generator",
+        }
+        planner.judge.evaluate = lambda user_input, itinerary, **_: JudgeVerdict(
+            passed=True, score=0.9, pacing_ok=True, intent_match_ok=True, rationale="from the judge",
+        )
+        _, rationale = planner.solve_route_with_llm(self._user_input(), "", "")
+        assert rationale == "from the judge"
+
+    def test_generator_rationale_when_the_judge_wrote_none(self):
+        planner = self._planner_with_one_place()
+        planner._call_llm_for_itinerary = lambda prompt: {
+            "itinerary": [{"day": 1, "places": [{"place_id": "p1"}]}], "rationale": "from the generator",
+        }
+        planner.judge.evaluate = lambda user_input, itinerary, **_: JudgeVerdict(
+            passed=True, score=0.0, pacing_ok=True, intent_match_ok=True, rationale="", judge_call_failed=True,
+        )
+        _, rationale = planner.solve_route_with_llm(self._user_input(), "", "")
+        assert rationale == "from the generator"
 
     def test_judge_call_failed_still_accepted_immediately_but_logged_distinctly(self, caplog):
         # judge_call_failed=True is judge.py's fail-open path (see judge.py's
@@ -522,7 +622,7 @@ class TestSolveRouteWithLLMJudgeRegeneration:
         calls = []
         original = planner._call_llm_for_itinerary
         planner._call_llm_for_itinerary = lambda prompt: (calls.append(prompt), original(prompt))[1]
-        planner.judge.evaluate = lambda user_input, itinerary: JudgeVerdict(
+        planner.judge.evaluate = lambda user_input, itinerary, **_: JudgeVerdict(
             passed=True, score=0.0, pacing_ok=True, intent_match_ok=True,
             rationale="", judge_call_failed=True,
         )
@@ -542,12 +642,60 @@ class TestSolveRouteWithLLMJudgeRegeneration:
             raise ValueError("bad json")
         planner._call_llm_for_itinerary = always_fail
 
-        def judge_should_not_be_called(user_input, itinerary):
+        def judge_should_not_be_called(user_input, itinerary, **_):
             raise AssertionError("judge.evaluate should never be called when generation fails technically")
         planner.judge.evaluate = judge_should_not_be_called
 
         with pytest.raises(ValueError):
             planner.solve_route_with_llm(self._user_input(), "", "")
+
+
+class TestSlotSource:
+    def test_each_stop_says_who_put_it_in_the_day(self):
+        picked = make_place(id="c1", name="PickedCafe", category="คาเฟ่", lat=16.441, lng=102.841, hours_periods=None)
+        unpicked = make_place(id="w1", name="UnpickedTemple", category="วัด", lat=16.442, lng=102.842, hours_periods=None)
+        restaurant = make_place(id="r1", name="Restaurant", category="ร้านอาหาร", lat=16.443, lng=102.843, hours_periods=None)
+        planner = LLMTripPlanner(candidates=[picked, unpicked, restaurant], start_point=HOTEL_PLACE)
+        user_input = TripInput(trip_duration_days=1, start_date="2026-08-03", accommodation_name="Hotel", trip_pace="packed")
+        itinerary, _ = planner._build_itinerary_from_llm_days({"itinerary": [{"day": 1, "places": [{"place_id": "c1"}]}]}, user_input)
+        sources = {s.place.id: s.source for s in itinerary[0].schedule}
+        assert sources["c1"] == "llm"
+        assert sources["r1"] == "meal"                         # brought in for lunch
+        assert sources["w1"] in ("backfill", "gap_filler")     # the LLM never picked it
+        hotel_leg = itinerary[0].schedule[-1]
+        assert hotel_leg.source is None
+
+
+class TestHoursForTrip:
+    WEEK = "วันจันทร์: ปิดทำการ\nวันอังคาร: 7:00–21:00\nวันพุธ: 7:00–21:00\nวันพฤหัสบดี: 7:00–21:00\nวันศุกร์: 7:00–21:00\nวันเสาร์: 7:00–21:00\nวันอาทิตย์: 8:00–20:00"
+
+    def test_keeps_only_the_trips_weekdays_on_one_line(self):
+        from src.services.trip_planner.llm_extractor import hours_for_trip
+        assert hours_for_trip(self.WEEK, {0, 6}) == "วันจันทร์: ปิดทำการ; วันอาทิตย์: 8:00–20:00"
+
+    def test_other_formats_are_kept_whole(self):
+        from src.services.trip_planner.llm_extractor import hours_for_trip
+        assert hours_for_trip("ทุกวัน 8:30–0:00", {2}) == "ทุกวัน 8:30–0:00"
+        assert hours_for_trip("Monday: 9 AM–5 PM\nTuesday: Closed", {0}) == "Monday: 9 AM–5 PM; Tuesday: Closed"
+        assert hours_for_trip(None, {0}) == "unknown"
+
+    def test_prompt_shows_only_trip_days(self):
+        place = make_place(id="p1", name="Place1", category="คาเฟ่", hours=self.WEEK)
+        planner = LLMTripPlanner(candidates=[place])
+        # 2026-08-03 is a Monday; a one-day trip shouldn't list Sunday's hours.
+        user_input = TripInput(trip_duration_days=1, start_date="2026-08-03", accommodation_name="Hotel")
+        prompt = planner.generate_prompt(user_input, "", "")
+        assert "วันจันทร์: ปิดทำการ" in prompt
+        assert "วันอาทิตย์" not in prompt
+
+    def test_prompt_shows_each_places_visit_length(self):
+        park = make_place(id="np", name="NationalPark", category="อุทยานแห่งชาติ")
+        cafe = make_place(id="c1", name="Cafe", category="คาเฟ่")
+        planner = LLMTripPlanner(candidates=[park, cafe])
+        user_input = TripInput(trip_duration_days=1, start_date="2026-08-03", accommodation_name="Hotel")
+        prompt = planner.generate_prompt(user_input, "", "")
+        assert "Name: NationalPark, Category: อุทยานแห่งชาติ" in prompt and "Visit: ~2h," in prompt
+        assert "Visit: ~45m," in prompt
 
 
 class TestMustGoProtection:
@@ -627,15 +775,27 @@ class TestPaceAttractionRange:
     LLM's picks, the min is topped up from unused candidates, restaurants
     don't count and cafes do."""
 
+    # Rotated so the per-category daily cap (3) never decides what fits.
+    CATEGORIES = ("สถานที่ท่องเที่ยว", "วัด", "สวนสาธารณะ", "พิพิธภัณฑ์")
+
     def _wats(self, n, **overrides):
         # Tightly clustered so geography never decides what fits.
         return [
             make_place(
-                id=f"w{i}", name=f"Wat{i}", category="สถานที่ท่องเที่ยว", rating=3.0 + i * 0.1,
+                id=f"w{i}", name=f"Wat{i}", category=self.CATEGORIES[i % len(self.CATEGORIES)], rating=3.0 + i * 0.1,
                 lat=16.44 + i * 0.001, lng=102.84, hours_periods=None, **overrides,
             )
             for i in range(n)
         ]
+
+    def test_one_category_is_capped_at_three_a_day(self):
+        same = [
+            make_place(id=f"p{i}", name=f"Park{i}", category="สวนสาธารณะ", lat=16.44 + i * 0.001, lng=102.84, hours_periods=None)
+            for i in range(6)
+        ]
+        planner = LLMTripPlanner(candidates=same, start_point=HOTEL)
+        stops = self._run(planner, [p.id for p in same], "packed")
+        assert sum(1 for p in stops if p.category == "สวนสาธารณะ") == 3
 
     def _run(self, planner, llm_places, pace, start="09:00", end="18:00"):
         force_passing_judge(planner)
@@ -726,7 +886,7 @@ class TestGuaranteedRestaurantPerDay:
         result, _ = planner.solve_route_with_llm(user_input, "", "")
         assert "Restaurant1" in [s.place.name for s in result[0].schedule]
 
-    def test_day_with_a_restaurant_already_picked_is_left_alone(self):
+    def _one_restaurant_day(self, end_time):
         r1 = make_place(id="r1", name="R1", category="ร้านอาหาร", lat=16.44, lng=102.84, hours_periods=None)
         spare = make_place(id="spare", name="SpareRestaurant", category="ร้านอาหาร", lat=16.44, lng=102.84, hours_periods=None)
         planner = LLMTripPlanner(candidates=[r1, spare], start_point=HOTEL_PLACE)
@@ -734,12 +894,42 @@ class TestGuaranteedRestaurantPerDay:
         planner._call_llm_for_itinerary = lambda prompt: {"itinerary": [{"day": 1, "places": [{"place_id": "r1"}]}]}
         user_input = TripInput(
             trip_duration_days=1, start_date="2026-08-03", accommodation_name="Hotel",
-            start_time="09:00", end_time="20:00",
+            start_time="09:00", end_time=end_time,
         )
         result, _ = planner.solve_route_with_llm(user_input, "", "")
-        names = {s.place.name for s in result[0].schedule}
-        assert "R1" in names
-        assert "SpareRestaurant" not in names
+        return {s.place.name: s.meal_role for s in result[0].schedule if s.place.category == "ร้านอาหาร"}
+
+    def test_a_day_out_of_town_eats_lunch_out_there_not_back_in_the_city(self):
+        # Live 2026-10-21: a Phu Wiang day (~55 km out) had only an in-town
+        # restaurant, eaten at 16:56 after driving back.
+        sights = [
+            make_place(id=f"dino{i}", name=f"Dino{i}", category="พิพิธภัณฑ์", lat=16.66 + i * 0.03, lng=102.37 - i * 0.03, hours_periods=None)
+            for i in range(4)
+        ]
+        city = make_place(id="city", name="CityRestaurant", category="ร้านอาหาร", lat=16.44, lng=102.84, hours_periods=None)
+        local = make_place(id="local", name="PhuWiangRestaurant", category="ร้านอาหาร", lat=16.70, lng=102.33, hours_periods=None)
+        planner = LLMTripPlanner(candidates=sights + [city], start_point=HOTEL_PLACE, meal_pool=[local])
+        force_passing_judge(planner)
+        planner._call_llm_for_itinerary = lambda prompt: {"itinerary": [{"day": 1, "places": [
+            *({"place_id": s.id} for s in sights), {"place_id": "city", "meal_role": "lunch"},
+        ]}]}
+        user_input = TripInput(
+            trip_duration_days=1, start_date="2026-08-03", accommodation_name="Hotel",
+            start_time="09:00", end_time="18:00",
+        )
+        result, _ = planner.solve_route_with_llm(user_input, "", "")
+        meals = {s.place.name: s for s in result[0].schedule if s.place.category == "ร้านอาหาร"}
+        assert {name: s.meal_role for name, s in meals.items()} == {"PhuWiangRestaurant": "lunch"}
+        # ...and at lunchtime, not after the day's sights (live: 16:16).
+        from datetime import datetime as _dt, timedelta as _td
+        lunch = meals["PhuWiangRestaurant"]
+        assert (_dt.strptime(lunch.arrival_time, "%H:%M") + _td(minutes=lunch.wait_time_min)).strftime("%H:%M") <= "13:30"
+
+    def test_a_lunch_only_day_with_its_restaurant_is_left_alone(self):
+        assert self._one_restaurant_day("18:00") == {"R1": "lunch"}
+
+    def test_a_day_that_reaches_dinner_gets_a_dinner_too(self):
+        assert self._one_restaurant_day("20:00") == {"R1": "lunch", "SpareRestaurant": "dinner"}
 
 
 class TestPickFallbackRestaurant:
@@ -854,3 +1044,175 @@ class TestBuildPostScheduleFeedback:
         feedback = LLMTripPlanner(candidates=[rest])._build_post_schedule_feedback(
             [self._day(self._real_slot(rest), self._hotel_leg())])
         assert feedback == ""
+
+
+class TestFoodPreferences:
+    """TripInput.food_preferences: meals go to restaurants of the wanted kinds."""
+
+    @staticmethod
+    def rest(place_id, kind, lat=16.441, lng=102.841):
+        return make_place(id=place_id, name=place_id, category="ร้านอาหาร", subcategory=kind, lat=lat, lng=lng, hours_periods=None)
+
+    def _meals(self, planner, picks, days=1, food=(), end="18:00"):
+        user_input = TripInput(
+            trip_duration_days=days, start_date="2026-08-03", accommodation_name="Hotel",
+            start_time="09:00", end_time=end, food_preferences=list(food),
+        )
+        itinerary, _ = planner._build_itinerary_from_llm_days({"itinerary": picks}, user_input)
+        return [{s.place.id: s.meal_role for s in day.schedule if s.place.category == "ร้านอาหาร"} for day in itinerary]
+
+    def test_a_wanted_kind_replaces_the_llms_other_restaurant(self):
+        sight = make_place(id="a1", name="Sight", category="สถานที่ท่องเที่ยว", lat=16.441, lng=102.841, hours_periods=None)
+        sushi, isan = self.rest("sushi", "ญี่ปุ่น/เกาหลี"), self.rest("isan", "อาหารอีสาน")
+        planner = LLMTripPlanner(candidates=[sight, sushi], start_point=HOTEL_PLACE, meal_pool=[isan])
+        meals = self._meals(planner, [{"day": 1, "places": [{"place_id": "a1"}, {"place_id": "sushi", "meal_role": "lunch"}]}],
+                            food=["อาหารอีสาน"])
+        assert meals == [{"isan": "lunch"}]
+
+    def test_no_preference_keeps_the_llms_restaurant(self):
+        sight = make_place(id="a1", name="Sight", category="สถานที่ท่องเที่ยว", lat=16.441, lng=102.841, hours_periods=None)
+        sushi, isan = self.rest("sushi", "ญี่ปุ่น/เกาหลี"), self.rest("isan", "อาหารอีสาน")
+        planner = LLMTripPlanner(candidates=[sight, sushi], start_point=HOTEL_PLACE, meal_pool=[isan])
+        meals = self._meals(planner, [{"day": 1, "places": [{"place_id": "a1"}, {"place_id": "sushi", "meal_role": "lunch"}]}])
+        assert meals == [{"sushi": "lunch"}]
+
+    def test_kinds_rotate_meal_after_meal(self):
+        pool = [self.rest("isan1", "อาหารอีสาน"), self.rest("isan2", "อาหารอีสาน"),
+                self.rest("noodle1", "ก๋วยเตี๋ยว"), self.rest("noodle2", "ก๋วยเตี๋ยว")]
+        sights = [make_place(id=f"a{i}", name=f"Sight{i}", category="สถานที่ท่องเที่ยว", lat=16.441, lng=102.841, hours_periods=None)
+                  for i in range(2)]
+        planner = LLMTripPlanner(candidates=sights, start_point=HOTEL_PLACE, meal_pool=pool)
+        meals = self._meals(planner, [{"day": 1, "places": [{"place_id": "a0"}]}, {"day": 2, "places": [{"place_id": "a1"}]}],
+                            days=2, food=["อาหารอีสาน", "ก๋วยเตี๋ยว"])
+        kinds = [next(iter(day)).rstrip("12") for day in meals]
+        assert kinds == ["isan", "noodle"]
+
+    def test_falls_back_to_any_restaurant_when_no_wanted_kind_exists(self):
+        sight = make_place(id="a1", name="Sight", category="สถานที่ท่องเที่ยว", lat=16.441, lng=102.841, hours_periods=None)
+        sushi = self.rest("sushi", "ญี่ปุ่น/เกาหลี")
+        planner = LLMTripPlanner(candidates=[sight, sushi], start_point=HOTEL_PLACE)
+        meals = self._meals(planner, [{"day": 1, "places": [{"place_id": "a1"}, {"place_id": "sushi", "meal_role": "lunch"}]}],
+                            food=["เวียดนาม"])
+        assert meals == [{"sushi": "lunch"}]
+
+    def test_prompt_shows_the_preferences_and_each_restaurants_type(self):
+        isan = self.rest("isan", "อาหารอีสาน")
+        planner = LLMTripPlanner(candidates=[isan])
+        user_input = TripInput(trip_duration_days=1, start_date="2026-08-03", accommodation_name="Hotel", food_preferences=["อาหารอีสาน"])
+        prompt = planner.generate_prompt(user_input, "", "")
+        assert "Food preferences: อาหารอีสาน" in prompt
+        assert "Type: อาหารอีสาน" in prompt
+
+
+class TestFoodPreferenceInput:
+    def test_unknown_choice_is_rejected(self):
+        with pytest.raises(ValueError):
+            TripInput(trip_duration_days=1, start_date="2026-08-03", accommodation_name="H", food_preferences=["พิซซ่า"])
+
+    def test_old_local_food_interest_becomes_isan_food(self):
+        t = TripInput(trip_duration_days=1, start_date="2026-08-03", accommodation_name="H", interests=["คาเฟ่", "อาหารพื้นถิ่น"])
+        assert t.interests == ["คาเฟ่"]
+        assert t.food_preferences == ["อาหารอีสาน"]
+
+    def test_duplicates_are_dropped(self):
+        t = TripInput(trip_duration_days=1, start_date="2026-08-03", accommodation_name="H", food_preferences=["ก๋วยเตี๋ยว", "ก๋วยเตี๋ยว"])
+        assert t.food_preferences == ["ก๋วยเตี๋ยว"]
+
+
+class TestBreakfast:
+    """The "อาหารเช้า" food choice adds a breakfast meal to days that start early enough."""
+
+    @staticmethod
+    def shop(place_id, kind, open_h, close_h, lat=16.433, lng=102.824):
+        periods = [{"open": {"day": d, "hour": open_h, "minute": 0}, "close": {"day": d, "hour": close_h, "minute": 0}} for d in range(7)]
+        return make_place(id=place_id, name=place_id, category="ร้านอาหาร", subcategory=kind, lat=lat, lng=lng, hours_periods=periods)
+
+    def _day(self, food, start="09:00", end="18:00"):
+        sights = [make_place(id=f"a{i}", name=f"Sight{i}", category=cat, lat=16.44 + i * 0.002, lng=102.84, hours_periods=None)
+                  for i, cat in enumerate(["วัด", "พิพิธภัณฑ์", "สวนสาธารณะ"])]
+        breakfast = self.shop("joke", "อาหารเช้า", 6, 11)
+        lunch = self.shop("isan", "อาหารอีสาน", 10, 21)
+        planner = LLMTripPlanner(candidates=sights + [lunch], start_point=HOTEL_PLACE, meal_pool=[breakfast])
+        user_input = TripInput(trip_duration_days=1, start_date="2026-08-03", accommodation_name="Hotel",
+                               start_time=start, end_time=end, food_preferences=list(food))
+        itinerary, _ = planner._build_itinerary_from_llm_days(
+            {"itinerary": [{"day": 1, "places": [{"place_id": s.id} for s in sights] + [{"place_id": "isan", "meal_role": "lunch"}]}]},
+            user_input,
+        )
+        return itinerary[0].schedule
+
+    def test_breakfast_comes_first_in_the_morning(self):
+        schedule = self._day(["อาหารเช้า"])
+        first = schedule[0]
+        assert (first.place.id, first.meal_role) == ("joke", "breakfast")
+        assert first.arrival_time <= "09:45"
+        assert {s.place.id: s.meal_role for s in schedule if s.place.category == "ร้านอาหาร"} == {"joke": "breakfast", "isan": "lunch"}
+
+    def test_no_breakfast_unless_asked_for(self):
+        assert "joke" not in {s.place.id for s in self._day([])}
+
+    def test_no_breakfast_on_a_day_that_starts_late(self):
+        assert "joke" not in {s.place.id for s in self._day(["อาหารเช้า"], start="10:00")}
+
+
+class TestOneKindPerDay:
+    @staticmethod
+    def rest(place_id, kind):
+        return make_place(id=place_id, name=place_id, category="ร้านอาหาร", subcategory=kind, lat=16.441, lng=102.841, hours_periods=None)
+
+    def _meals(self, food, days=1):
+        sights = [make_place(id=f"a{i}", name=f"Sight{i}", category="สถานที่ท่องเที่ยว", lat=16.441, lng=102.841, hours_periods=None)
+                  for i in range(days)]
+        pool = [self.rest(f"grill{i}", "ปิ้งย่าง/ชาบู") for i in range(4)] + [self.rest(f"isan{i}", "อาหารอีสาน") for i in range(4)]
+        planner = LLMTripPlanner(candidates=sights, start_point=HOTEL_PLACE, meal_pool=pool)
+        user_input = TripInput(trip_duration_days=days, start_date="2026-08-03", accommodation_name="Hotel",
+                               start_time="09:00", end_time="20:00", food_preferences=food)
+        itinerary, _ = planner._build_itinerary_from_llm_days(
+            {"itinerary": [{"day": d + 1, "places": [{"place_id": f"a{d}"}]} for d in range(days)]}, user_input)
+        return [{s.meal_role: s.place.subcategory for s in day.schedule if s.meal_role} for day in itinerary]
+
+    def test_a_single_kind_gets_one_meal_a_day_and_the_other_is_different(self):
+        for day in self._meals(["ปิ้งย่าง/ชาบู"], days=2):
+            assert sorted(day.values()) == ["ปิ้งย่าง/ชาบู", "อาหารอีสาน"]
+
+    def test_two_kinds_share_the_day(self):
+        assert sorted(self._meals(["ปิ้งย่าง/ชาบู", "อาหารอีสาน"])[0].values()) == ["ปิ้งย่าง/ชาบู", "อาหารอีสาน"]
+
+    def test_the_same_kind_twice_only_when_nothing_else_exists(self):
+        sights = [make_place(id="a0", name="Sight", category="สถานที่ท่องเที่ยว", lat=16.441, lng=102.841, hours_periods=None)]
+        pool = [self.rest(f"grill{i}", "ปิ้งย่าง/ชาบู") for i in range(2)]
+        planner = LLMTripPlanner(candidates=sights, start_point=HOTEL_PLACE, meal_pool=pool)
+        user_input = TripInput(trip_duration_days=1, start_date="2026-08-03", accommodation_name="Hotel",
+                               start_time="09:00", end_time="20:00", food_preferences=["ปิ้งย่าง/ชาบู"])
+        itinerary, _ = planner._build_itinerary_from_llm_days({"itinerary": [{"day": 1, "places": [{"place_id": "a0"}]}]}, user_input)
+        assert sorted(s.meal_role for s in itinerary[0].schedule if s.meal_role) == ["dinner", "lunch"]
+
+
+class TestOneKindPerDayWithLlmPicks:
+    """Live 2026-10-21: the LLM itself picked two Isan restaurants (lunch and
+    dinner) for an "อาหารอีสาน"-only trip; the rule only steered fallbacks."""
+
+    def test_the_llms_second_same_kind_restaurant_is_swapped_for_another_kind(self):
+        rest = TestOneKindPerDay.rest
+        sight = make_place(id="a0", name="Sight", category="สถานที่ท่องเที่ยว", lat=16.441, lng=102.841, hours_periods=None)
+        isan_lunch, isan_dinner, noodle = rest("isan_l", "อาหารอีสาน"), rest("isan_d", "อาหารอีสาน"), rest("noodle", "ก๋วยเตี๋ยว")
+        planner = LLMTripPlanner(candidates=[sight, isan_lunch, isan_dinner], start_point=HOTEL_PLACE, meal_pool=[noodle])
+        user_input = TripInput(trip_duration_days=1, start_date="2026-08-03", accommodation_name="Hotel",
+                               start_time="09:00", end_time="20:00", food_preferences=["อาหารอีสาน"])
+        itinerary, _ = planner._build_itinerary_from_llm_days({"itinerary": [{"day": 1, "places": [
+            {"place_id": "a0"}, {"place_id": "isan_l", "meal_role": "lunch"}, {"place_id": "isan_d", "meal_role": "dinner"},
+        ]}]}, user_input)
+        meals = {s.meal_role: s.place.id for s in itinerary[0].schedule if s.meal_role}
+        assert meals == {"lunch": "isan_l", "dinner": "noodle"}
+
+
+def test_a_breakfast_shop_is_not_a_dinner_when_another_restaurant_can_be():
+    rest = TestOneKindPerDay.rest
+    sight = make_place(id="a0", name="Sight", category="สถานที่ท่องเที่ยว", lat=16.441, lng=102.841, hours_periods=None)
+    planner = LLMTripPlanner(candidates=[sight, rest("isan", "อาหารอีสาน"), rest("joke", "อาหารเช้า")],
+                             start_point=HOTEL_PLACE, meal_pool=[rest("noodle", "ก๋วยเตี๋ยว")])
+    user_input = TripInput(trip_duration_days=1, start_date="2026-08-03", accommodation_name="Hotel", start_time="09:00", end_time="20:00")
+    itinerary, _ = planner._build_itinerary_from_llm_days({"itinerary": [{"day": 1, "places": [
+        {"place_id": "a0"}, {"place_id": "isan", "meal_role": "lunch"}, {"place_id": "joke", "meal_role": "dinner"},
+    ]}]}, user_input)
+    assert {s.meal_role: s.place.id for s in itinerary[0].schedule if s.meal_role} == {"lunch": "isan", "dinner": "noodle"}

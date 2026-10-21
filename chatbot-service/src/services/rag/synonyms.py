@@ -129,6 +129,28 @@ INTENT_CATEGORIES: dict[str, tuple[str, ...]] = {
 }
 
 
+# Same idea for a need an `amenities` value answers. "ร้านอาหารมังสวิรัติ"
+# came back with a beef noodle shop and two grills: 17 places carry
+# "มีเมนูมังสวิรัติ" (Google's servesVegetarianFood), but only in amenities
+# and deep in the description, which the search doesn't weigh.
+VEGETARIAN = "มีเมนูมังสวิรัติ"
+INTENT_AMENITIES: dict[str, str] = {
+    "มังสวิรัติ": VEGETARIAN,
+    "วีแกน": VEGETARIAN,
+    "vegan": VEGETARIAN,
+    "vegetarian": VEGETARIAN,
+    "อาหารเจ": VEGETARIAN,
+    "กินเจ": VEGETARIAN,
+    "ไม่กินเนื้อ": VEGETARIAN,
+    "ไม่ทานเนื้อ": VEGETARIAN,
+}
+
+
+def intent_amenities(query: str) -> list[str]:
+    lowered = query.lower()
+    return list(dict.fromkeys(a for keyword, a in INTENT_AMENITIES.items() if keyword in lowered))
+
+
 def intent_categories(query: str) -> list[str]:
     lowered = query.lower()
     return list(dict.fromkeys(c for keyword, cats in INTENT_CATEGORIES.items() if keyword in lowered for c in cats))

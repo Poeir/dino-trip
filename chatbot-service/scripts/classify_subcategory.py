@@ -19,8 +19,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.core.config import MODEL_NAME
-from src.core.llm_client import make_llm_client
-from src.services.trip_planner.json_utils import clean_json_string
+from src.core.llm_client import complete_json
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 log = logging.getLogger("classify_subcategory")
@@ -43,6 +42,29 @@ SYSTEM_PROMPT = """คุณจัดประเภทย่อยของร�
 
 BATCH = 8
 MAX_ATTEMPTS = 3
+TIMEOUT_S = 120
+
+RESULT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "results": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string"},
+                    "subcategory": {"type": "string"},
+                    "confidence": {"type": "string", "enum": ["high", "low"]},
+                    "reason": {"type": "string"},
+                },
+                "required": ["id", "subcategory", "confidence", "reason"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["results"],
+    "additionalProperties": False,
+}
 
 
 def describe(p: dict) -> dict:
@@ -63,17 +85,14 @@ def build_prompt(batch: list) -> str:
     return f"รายการ subcategory ที่เลือกได้ตามหมวด:\n{lists}\n\nร้านที่ต้องจัด (ข้อมูล):\n{items}"
 
 
-def classify_batch(client, batch: list) -> dict:
+def classify_batch(batch: list) -> dict:
     by_id = {str(p["id"]): p for p in batch}
     for attempt in range(1, MAX_ATTEMPTS + 1):
         try:
-            resp = client.chat.completions.create(
-                model=MODEL_NAME,
-                messages=[{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": build_prompt(batch)}],
-                temperature=0,
-                response_format={"type": "json_object"},
+            data = complete_json(
+                system=SYSTEM_PROMPT, user=build_prompt(batch), schema=RESULT_SCHEMA,
+                timeout=TIMEOUT_S, temperature=0, label="classify",
             )
-            data = json.loads(clean_json_string(resp.choices[0].message.content))
             out = {}
             for r in data.get("results", []):
                 p = by_id.get(str(r.get("id")))
@@ -114,11 +133,10 @@ def main():
         pending = pending[: args.limit]
     log.info("%d rows total, %d already done, %d to classify (model %s)", len(places), len(done), len(pending), MODEL_NAME)
 
-    client = make_llm_client()
     for i in range(0, len(pending), BATCH):
         batch = pending[i : i + BATCH]
         try:
-            got = classify_batch(client, batch)
+            got = classify_batch(batch)
         except Exception as e:  # noqa: BLE001
             log.error("Stopping (%s). Re-run to resume; %d rows saved.", e, len(done))
             break

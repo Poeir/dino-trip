@@ -26,7 +26,6 @@ Deliberately NOT scraping Wongnai/Facebook/TripAdvisor directly (ToS risk);
 search snippets from those sites are normal search-engine indexing, not us
 fetching their pages ourselves.
 """
-import json
 import logging
 import re
 from typing import Dict, List, Optional
@@ -34,10 +33,9 @@ from urllib.parse import urlparse
 
 import requests
 from bs4 import BeautifulSoup
-from openai import OpenAI
 
-from src.core.config import DESCRIPTION_MODEL_NAME, SERPER_API_KEY
-from src.services.trip_planner.json_utils import clean_json_string
+from src.core.config import LLM_PROVIDER, MODEL_NAME, SERPER_API_KEY
+from src.core.llm_client import complete_json
 
 logger = logging.getLogger(__name__)
 
@@ -96,21 +94,21 @@ SYSTEM_PROMPT = (
 MAX_LLM_ATTEMPTS = 2  # the KKU gateway occasionally returns an empty message.content for no
                        # apparent reason (~10-15% of calls in testing) -- one retry clears most of these
 
-# The KKU gateway enforces a *daily* quota per model, not per key -- a run of
-# ~600 places can burn through one model's quota partway in. Rather than stop
-# and require a manual restart with a different DESCRIPTION_MODEL_NAME, walk
-# this chain on a daily-limit error and keep going. Order picked from
-# `GET {BASE_URL}/models`: spread across different providers
-# (Gemini/OpenAI/Claude/Deepseek) since quota is very likely tracked per
-# underlying provider, not just per model id.
-MODEL_FALLBACK_CHAIN = list(dict.fromkeys([
-    DESCRIPTION_MODEL_NAME,
-    "gemini-3.7-flash",
-    "gpt-5.6-luna",
-    "deepseek-v4-pro",
-    "gpt-5.6-terra",
-    "llama-4-scout",
-]))
+DESCRIPTION_TIMEOUT_S = 60
+DESCRIPTION_SCHEMA = {
+    "type": "object",
+    "properties": {"description": {"type": "string"}},
+    "required": ["description"],
+    "additionalProperties": False,
+}
+
+# MODEL_NAME, like every other LLM call. Only on the KKU gateway, which
+# enforces a *daily* quota per model, a run of ~600 places can burn through
+# it partway in -- there, walk on to these on a daily-limit error instead of
+# writing template descriptions for the rest of the run. Spread across
+# providers since quota is likely tracked per underlying provider.
+_KKU_QUOTA_FALLBACKS = ["gemini-3.7-flash", "gpt-5.6-luna", "deepseek-v4-pro", "gpt-5.6-terra", "llama-4-scout"]
+MODEL_FALLBACK_CHAIN = list(dict.fromkeys([MODEL_NAME] + (_KKU_QUOTA_FALLBACKS if LLM_PROVIDER == "kku" else [])))
 
 
 class ModelChain:
@@ -258,22 +256,16 @@ def build_prompt(place: Dict, search_results: List[Dict]) -> str:
 """
 
 
-def llm_summarize(client: OpenAI, place: Dict, search_results: List[Dict], chain: ModelChain) -> Optional[str]:
+def llm_summarize(place: Dict, search_results: List[Dict], chain: ModelChain) -> Optional[str]:
     prompt = build_prompt(place, search_results)
     attempts_on_model = 0
     while True:
         model = chain.model
         try:
-            response = client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": prompt},
-                ],
-                temperature=0.3,
-                response_format={"type": "json_object"},
+            data = complete_json(
+                system=SYSTEM_PROMPT, user=prompt, schema=DESCRIPTION_SCHEMA,
+                timeout=DESCRIPTION_TIMEOUT_S, temperature=0.3, model=model, label="describe",
             )
-            data = json.loads(clean_json_string(response.choices[0].message.content))
             description = (data.get("description") or "").strip()
             if description:
                 return description
@@ -292,7 +284,7 @@ def llm_summarize(client: OpenAI, place: Dict, search_results: List[Dict], chain
             return None
 
 
-def generate_description(client: OpenAI, place: Dict, chain: Optional[ModelChain] = None) -> Dict[str, str]:
+def generate_description(place: Dict, chain: Optional[ModelChain] = None) -> Dict[str, str]:
     """Runs search -> LLM summary -> template fallback for one place dict
     (name, category, district, tags, amenities, rating, review_count, reviews).
     Returns {"description": str, "source": "search_assisted" | "reviews_only" |
@@ -301,7 +293,7 @@ def generate_description(client: OpenAI, place: Dict, chain: Optional[ModelChain
     search_results = search_for_place(place["name"], place.get("district"))
     description = None
     if place.get("reviews") or search_results:
-        description = llm_summarize(client, place, search_results, chain)
+        description = llm_summarize(place, search_results, chain)
 
     if description:
         return {"description": description, "source": "search_assisted" if search_results else "reviews_only"}

@@ -19,7 +19,7 @@ import math
 import re
 import unicodedata
 
-from src.services.rag.synonyms import FILLER_WORDS, INTENT_CATEGORIES, intent_categories
+from src.services.rag.synonyms import FILLER_WORDS, INTENT_AMENITIES, INTENT_CATEGORIES, intent_categories
 
 AREA_MARKERS = ("แถวๆ", "แถว", "ใกล้ๆ", "ใกล้", "บริเวณ", "รอบๆ")
 # Where the place name stops in "แถวเซ็นทรัลขอนแก่นมีอะไรบ้าง": Thai has no
@@ -43,7 +43,7 @@ TOURISM = ("สถานที่ท่องเที่ยว", "วัด", "
 # Without it "ร้านอาหารแถวบึงแก่นนคร" would rank the park's other
 # neighbours -- temples, a market -- alongside its restaurants.
 CATEGORY_WORDS: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
-    (("ร้านอาหาร", "อาหาร", "ของกิน", "กินข้าว", "ร้านกิน", "food", "restaurant"), ("ร้านอาหาร",)),
+    (("ร้านอาหาร", "อาหาร", "ของกิน", "กินข้าว", "ร้านกิน", "หิว", "food", "restaurant"), ("ร้านอาหาร",)),
     (("คาเฟ่", "กาแฟ", "cafe", "coffee"), ("คาเฟ่",)),
     # Not bare "เที่ยว": "อยากเที่ยวแถวท่าพระ" means "going out around
     # there", restaurants included -- with it, ท่าพระ's one restaurant was
@@ -59,7 +59,19 @@ CATEGORY_WORDS: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
 # "อยากเที่ยวแถวท่าพระ ช่วยแนะนำหน่อย": if nothing else is left, the
 # question asks for "anything there", not for something specific.
 _GENERIC_WORDS = ("อยาก", "ไป", "เที่ยว", "ที่", "มี", "อะไร", "ไหน", "ดี", "หา", "ร้าน", "ขอ", "แนะนำ", "ช่วย",
-                  "ได้", "ต้องการ", "สัก", "เอา")
+                  "ได้", "ต้องการ", "สัก", "เอา",
+                  # "ฉันพักอยู่ท่าพระ แนะนำให้ไปไหนดี" asks for anything there too.
+                  "ฉัน", "ผม", "เรา", "พัก", "อยู่", "ให้", "ควร", "ใกล้เคียง", "รอบๆ")
+
+# Areas people name that are no single row in the table: "แถวมข." found
+# nothing to stand on, though dozens of places are around the campus.
+# Centres taken from the coordinates of places named after them.
+_KKU = {"id": "landmark:kku", "name": "มหาวิทยาลัยขอนแก่น", "lat": 16.4660, "lng": 102.8150}
+_LANG_MO = {"id": "landmark:langmo", "name": "หลังมอ (หลัง มข.)", "lat": 16.4820, "lng": 102.8165}
+KNOWN_LANDMARKS = {
+    "มข": _KKU, "มหาวิทยาลัยขอนแก่น": _KKU, "มอ": _KKU, "kku": _KKU, "มอขอนแก่น": _KKU,
+    "หลังมอ": _LANG_MO, "หลังมข": _LANG_MO,
+}
 
 LANDMARK_RADIUS_KM = 2.0
 WIDER_RADIUS_KM = 5.0
@@ -91,7 +103,7 @@ def split_area_query(query: str) -> tuple[str, str] | None:
 # What may stand right before a bare area name: "อยากเที่ยว|ท่าพระ", "ไป|ท่าพระ",
 # "ร้านอาหาร|ที่|ท่าพระ", "ตำบล|ท่าพระ". Without one of these a ตำบล/อำเภอ name
 # is probably part of something else ("สถานีท่าพระ", a shop's name).
-BARE_AREA_PREFIXES = ("เที่ยว", "ไป", "ใน", "ที่", "ตำบล", "ต.", "อำเภอ", "อ.", "อยู่")
+BARE_AREA_PREFIXES = ("เที่ยว", "ไป", "ใน", "ที่", "ตำบล", "ต.", "อำเภอ", "อ.", "อยู่", "พัก")
 
 
 def split_bare_area_query(query: str, places: list[dict]) -> tuple[str, str] | None:
@@ -127,7 +139,7 @@ def is_specific(what: str) -> bool:
     rest = what.lower()
     words = [w for words, _ in CATEGORY_WORDS for w in words]
     # "ฝนตก" names a kind of place (indoor), not something a search can rank.
-    for w in sorted((*FILLER_WORDS, *_STOP_PHRASES, *words, *INTENT_CATEGORIES, *_GENERIC_WORDS), key=len, reverse=True):
+    for w in sorted((*FILLER_WORDS, *_STOP_PHRASES, *words, *INTENT_CATEGORIES, *INTENT_AMENITIES, *_GENERIC_WORDS), key=len, reverse=True):
         rest = rest.replace(w, " ")
     return len(normalize(rest)) >= 2
 
@@ -147,6 +159,9 @@ def resolve_area(where: str, places: list[dict]) -> dict | None:
     first = normalize(text.split()[0]) if text.split() else ""
     if not full or full in _TOO_BROAD or first in _TOO_BROAD:
         return None
+    for key in (full, first):
+        if key in KNOWN_LANDMARKS:
+            return {"kind": "landmark", "place": KNOWN_LANDMARKS[key]}
 
     # อำเภอ first: "ชุมแพ" is both, and the อำเภอ contains the ตำบล.
     for kind in ("district", "subdistrict"):

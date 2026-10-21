@@ -12,7 +12,7 @@ supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 # `embedding` column isn't shipped for every row -- same list as
 # rag/retriever.py's _RESTAURANT_COLUMNS plus market_time.
 _PLACE_COLUMNS = (
-    "id,name,category,rating,review_count,price,price_level,address,district,hours,hours_periods,"
+    "id,name,category,subcategory,rating,review_count,price,price_level,address,district,hours,hours_periods,"
     "business_status,phone,website,maps_url,lat,lng,description,amenities,tags,img,market_time"
 )
 MIN_NAME_QUERY_CHARS = 2

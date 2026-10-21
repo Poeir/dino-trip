@@ -140,6 +140,7 @@ export default function TripResultPage() {
                 <SummaryRow label="ช่วงเวลาต่อวัน" value={`${derived.tripFormSummaryView.dailyStart} - ${derived.tripFormSummaryView.dailyEnd}`} />
                 <SummaryRow label="ที่พัก" value={derived.tripFormSummaryView.accommodationLabel || 'ไม่ได้ระบุ (ใช้ใจกลางเมือง)'} />
                 <SummaryRow label="ความสนใจ" value={derived.tripFormSummaryView.interests.length ? derived.tripFormSummaryView.interests.join(', ') : 'ไม่ได้เลือก'} />
+                <SummaryRow label="อยากกิน" value={derived.tripFormSummaryView.foodPrefs.length ? derived.tripFormSummaryView.foodPrefs.join(', ') : 'ไม่ได้เลือก'} />
                 <SummaryRow label="งบประมาณ" value={derived.tripFormSummaryView.budget} />
                 <SummaryRow label="จังหวะการเที่ยว" value={derived.tripFormSummaryView.paceLabel} />
                 <SummaryRow label="ขอบเขตพื้นที่" value={derived.tripFormSummaryView.areaScope} />

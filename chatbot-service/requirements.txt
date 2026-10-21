@@ -5,6 +5,7 @@ python-dotenv
 supabase
 sentence-transformers
 openai
+anthropic
 requests
 beautifulsoup4
 pytest

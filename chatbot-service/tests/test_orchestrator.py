@@ -203,9 +203,12 @@ class TestMultiInterestRoundRobin:
         })
         user_input = make_user_input(interests=["วัฒนธรรม/ศาสนา", "ไดโนเสาร์"])
         service.build_candidate_list(user_input)
-        # The meal search always runs alongside the interest searches (see
-        # build_candidate_list). They run in parallel, so order isn't fixed.
-        assert sorted(service.retriever.queries_seen) == sorted(["วัฒนธรรม/ศาสนา", "ไดโนเสาร์", "ร้านอาหารแนะนำ ขอนแก่น"])
+        # The meal search and the generic daytime search (read only when the
+        # interests can't fill the days) always run alongside the interest
+        # searches (see build_candidate_list), in parallel, so order isn't fixed.
+        assert sorted(service.retriever.queries_seen) == sorted([
+            "วัฒนธรรม/ศาสนา", "ไดโนเสาร์", "ร้านอาหารแนะนำ ขอนแก่น", "สถานที่ท่องเที่ยวยอดนิยม ขอนแก่น",
+        ])
 
     def test_no_interests_falls_back_to_generic_single_query(self, service):
         service.retriever = FakeRetrieverByQuery({
@@ -474,3 +477,81 @@ class TestCandidateRanking:
         ]
         order = self.ids(service, rows, accommodation_lat=16.43, accommodation_lng=102.83)
         assert order.index("far_famous") < order.index("near_unknown")
+
+
+class TestCategoryDiversity:
+    def test_categories_alternate_within_a_relevance_tier(self):
+        rows = [{"id": f"p{i}", "category": "สวนสาธารณะ", "match_score": 1.0} for i in range(4)] + [
+            {"id": "w1", "category": "วัด", "match_score": 1.0},
+            {"id": "m1", "category": "พิพิธภัณฑ์", "match_score": 1.0},
+        ]
+        order = [r["id"] for r in orchestrator_module._diversify(rows)]
+        # Two parks, then the other categories, before the remaining parks.
+        assert order[:4] == ["p0", "p1", "w1", "m1"]
+
+    def test_a_weaker_match_still_never_passes_a_tag_match(self):
+        rows = [{"id": f"p{i}", "category": "สวนสาธารณะ", "match_score": 1.0} for i in range(3)] + [
+            {"id": "loose", "category": "วัด", "match_score": 0.5},
+        ]
+        assert [r["id"] for r in orchestrator_module._diversify(rows)][-1] == "loose"
+
+
+class TestDaytimeTopUp:
+    def test_evening_only_interests_get_daytime_places_added(self, service):
+        evening = [
+            make_place_row(f"m{i}", f"NightMarket{i}", "เมืองขอนแก่น", category="ตลาด", market_time="evening")
+            for i in range(3)
+        ]
+        daytime = [make_place_row(f"d{i}", f"Sight{i}", "เมืองขอนแก่น", category=cat)
+                   for i, cat in enumerate(["สถานที่ท่องเที่ยว", "วัด", "สวนสาธารณะ", "พิพิธภัณฑ์"] * 2)]
+        service.retriever = FakeRetrieverByQuery({
+            "ช้อปปิ้ง/หัตถกรรม": evening,
+            "สถานที่ท่องเที่ยวยอดนิยม ขอนแก่น": daytime,
+        })
+        _, candidates, _, _ = service.build_candidate_list(make_user_input(interests=["ช้อปปิ้ง/หัตถกรรม"], trip_pace="standard"))
+        assert sum(1 for p in candidates if p.name.startswith("Sight")) >= 5   # standard 09-18: at least 5 a day
+
+    def test_interests_with_enough_daytime_places_are_left_alone(self, service):
+        # Varied enough to fill a day within the per-category caps.
+        daytime = [make_place_row(f"d{i}", f"Sight{i}", "เมืองขอนแก่น", category=cat)
+                   for i, cat in enumerate(["วัด", "พิพิธภัณฑ์", "สวนสาธารณะ"] * 3)]
+        generic = [make_place_row("g1", "Generic1", "เมืองขอนแก่น", category="สถานที่ท่องเที่ยว")]
+        service.retriever = FakeRetrieverByQuery({"วัฒนธรรม/ศาสนา": daytime, "สถานที่ท่องเที่ยวยอดนิยม ขอนแก่น": generic})
+        _, candidates, _, _ = service.build_candidate_list(make_user_input(interests=["วัฒนธรรม/ศาสนา"]))
+        assert "Generic1" not in [p.name for p in candidates]
+
+
+class TestDaytimeCapacity:
+    def test_a_category_counts_only_up_to_its_daily_cap(self):
+        cafes = [Place(id=f"c{i}", name=f"Cafe{i}", category="คาเฟ่") for i in range(10)]
+        assert orchestrator_module._daytime_capacity(cafes, days=2) == 4      # 2 cafes a day
+        parks = [Place(id=f"p{i}", name=f"Park{i}", category="สวนสาธารณะ") for i in range(10)]
+        assert orchestrator_module._daytime_capacity(parks, days=1) == 3      # 3 of any other category
+
+    def test_restaurants_and_evening_places_do_not_count(self):
+        places = [Place(id="r", name="R", category="ร้านอาหาร"),
+                  Place(id="m", name="ตลาดโต้รุ่ง", category="ตลาด", market_time="evening")]
+        assert orchestrator_module._daytime_capacity(places, days=1) == 0
+
+    def test_a_cafe_only_trip_gets_other_daytime_places_added(self, service):
+        cafes = [make_place_row(f"c{i}", f"Cafe{i}", "เมืองขอนแก่น", category="คาเฟ่") for i in range(12)]
+        sights = [make_place_row(f"s{i}", f"Sight{i}", "เมืองขอนแก่น", category=cat)
+                  for i, cat in enumerate(["วัด", "สวนสาธารณะ", "พิพิธภัณฑ์", "สถานที่ท่องเที่ยว"] * 3)]
+        service.retriever = FakeRetrieverByQuery({"คาเฟ่": cafes, "สถานที่ท่องเที่ยวยอดนิยม ขอนแก่น": sights})
+        _, candidates, _, _ = service.build_candidate_list(
+            make_user_input(trip_duration_days=2, interests=["คาเฟ่"], trip_pace="standard"))
+        # standard 09-18 needs 5 a day = 10; the cafes can supply only 4 of them.
+        assert sum(1 for p in candidates if p.name.startswith("Sight")) >= 6
+
+
+class TestFoodPreferenceCandidates:
+    def test_restaurants_of_the_wanted_kind_are_offered(self, service):
+        restaurants = [make_place_row(f"r{i}", f"Isan{i}", "เมืองขอนแก่น", category="ร้านอาหาร", subcategory="อาหารอีสาน",
+                                      hours_periods=None) for i in range(5)]
+        restaurants += [make_place_row(f"j{i}", f"Sushi{i}", "เมืองขอนแก่น", category="ร้านอาหาร", subcategory="ญี่ปุ่น/เกาหลี",
+                                       hours_periods=None) for i in range(5)]
+        service.retriever = FakeRetriever([make_place_row("c1", "Cafe1", "เมืองขอนแก่น")], restaurants=restaurants)
+        _, candidates, _, _ = service.build_candidate_list(make_user_input(food_preferences=["อาหารอีสาน"]))
+        names = [p.name for p in candidates]
+        assert sum(1 for n in names if n.startswith("Isan")) >= 2
+        assert not any(n.startswith("Sushi") for n in names)

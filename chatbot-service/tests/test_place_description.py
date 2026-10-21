@@ -1,26 +1,31 @@
-import json
-from types import SimpleNamespace
+import pytest
 
 from src.services import place_description as pd
 
 
-class FakeClient:
-    """Minimal stand-in for the OpenAI client. `outcomes` is consumed one per
-    call: a str is returned as the model's JSON `description`, an Exception is
-    raised."""
+class FakeLLM:
+    """Stands in for llm_client.complete_json. `outcomes` is consumed one per
+    call: a str is returned as the JSON `description`, an Exception is raised."""
 
     def __init__(self, outcomes):
         self.outcomes = list(outcomes)
         self.models_used = []
-        self.chat = SimpleNamespace(completions=SimpleNamespace(create=self._create))
 
-    def _create(self, model, **_):
+    def __call__(self, *, model, **_):
         self.models_used.append(model)
         outcome = self.outcomes.pop(0)
         if isinstance(outcome, Exception):
             raise outcome
-        msg = SimpleNamespace(content=json.dumps({"description": outcome}))
-        return SimpleNamespace(choices=[SimpleNamespace(message=msg)])
+        return {"description": outcome}
+
+
+@pytest.fixture
+def fake_llm(monkeypatch):
+    def install(outcomes):
+        fake = FakeLLM(outcomes)
+        monkeypatch.setattr(pd, "complete_json", fake)
+        return fake
+    return install
 
 
 def place(**over):
@@ -33,43 +38,43 @@ def place(**over):
     return base
 
 
-def test_reviews_only_when_search_finds_nothing(monkeypatch):
+def test_reviews_only_when_search_finds_nothing(monkeypatch, fake_llm):
     monkeypatch.setattr(pd, "search_for_place", lambda *_: [])
-    client = FakeClient(["คำอธิบายจากรีวิว"])
-    out = pd.generate_description(client, place())
+    fake_llm(["คำอธิบายจากรีวิว"])
+    out = pd.generate_description(place())
     assert out == {"description": "คำอธิบายจากรีวิว", "source": "reviews_only"}
 
 
-def test_search_assisted_when_search_has_results(monkeypatch):
+def test_search_assisted_when_search_has_results(monkeypatch, fake_llm):
     monkeypatch.setattr(pd, "search_for_place", lambda *_: [{"title": "t", "snippet": "s", "link": "https://e.com"}])
-    client = FakeClient(["คำอธิบาย"])
-    assert pd.generate_description(client, place(reviews=[]))["source"] == "search_assisted"
+    fake_llm(["คำอธิบาย"])
+    assert pd.generate_description(place(reviews=[]))["source"] == "search_assisted"
 
 
-def test_template_without_calling_llm_when_no_sources(monkeypatch):
+def test_template_without_calling_llm_when_no_sources(monkeypatch, fake_llm):
     monkeypatch.setattr(pd, "search_for_place", lambda *_: [])
-    client = FakeClient([])
-    out = pd.generate_description(client, place(reviews=[]))
+    llm = fake_llm([])
+    out = pd.generate_description(place(reviews=[]))
     assert out["source"] == "template_only"
     assert out["description"] == "น้ำตกทดสอบ - สถานที่ท่องเที่ยว ธรรมชาติในขอนแก่น"
-    assert client.models_used == []
+    assert llm.models_used == []
 
 
-def test_template_when_llm_keeps_failing(monkeypatch):
+def test_template_when_llm_keeps_failing(monkeypatch, fake_llm):
     monkeypatch.setattr(pd, "search_for_place", lambda *_: [])
-    client = FakeClient([RuntimeError("boom"), RuntimeError("boom")])
-    assert pd.generate_description(client, place())["source"] == "template_only"
-    assert len(client.models_used) == pd.MAX_LLM_ATTEMPTS
+    llm = fake_llm([RuntimeError("boom"), RuntimeError("boom")])
+    assert pd.generate_description(place())["source"] == "template_only"
+    assert len(llm.models_used) == pd.MAX_LLM_ATTEMPTS
 
 
-def test_daily_limit_moves_to_next_model(monkeypatch):
+def test_daily_limit_moves_to_next_model(monkeypatch, fake_llm):
     monkeypatch.setattr(pd, "search_for_place", lambda *_: [])
     monkeypatch.setattr(pd, "MODEL_FALLBACK_CHAIN", ["m1", "m2"])
-    client = FakeClient([RuntimeError("daily limit reached"), "ok"])
+    llm = fake_llm([RuntimeError("daily limit reached"), "ok"])
     chain = pd.ModelChain()
-    out = pd.generate_description(client, place(), chain)
+    out = pd.generate_description(place(), chain)
     assert out["description"] == "ok"
-    assert client.models_used == ["m1", "m2"]
+    assert llm.models_used == ["m1", "m2"]
     assert chain.model == "m2"
 
 

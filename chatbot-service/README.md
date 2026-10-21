@@ -28,14 +28,17 @@ pytest              # excludes -m live (real LLM + DB, costs money)
 
 ## Environment
 
-Required: `KKU_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`.
+Required: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and the LLM:
+`LLM_PROVIDER` (`anthropic`, `kku` -- the default -- or `vertex`) with
+`MODEL_NAME` and that provider's key (`ANTHROPIC_API_KEY` / `KKU_API_KEY`).
+One provider and model serve everything: chat, trip planner + judge, event
+extraction, place descriptions and the scripts (`src/core/llm_client.py`).
 
-In production also set `MODEL_NAME` and `TRIP_PLANNER_MODEL_NAME` (the KKU
-gateway rejects the code's defaults with `401 Invalid model`) and
-`CORS_ORIGINS` (comma-separated, no trailing slash; defaults to the local Vite dev origins `http://localhost:5173,http://127.0.0.1:5173`).
+In production also set `CORS_ORIGINS` (comma-separated, no trailing slash;
+defaults to the local Vite dev origins `http://localhost:5173,http://127.0.0.1:5173`).
 
 Optional (defaults in `src/core/config.py`): `LLM_BASE_URL`,
-`DESCRIPTION_MODEL_NAME`, `EMBEDDING_MODEL_NAME` (changing it needs a
+`EMBEDDING_MODEL_NAME` (changing it needs a
 re-embed), `RATE_LIMIT_CHAT_PER_MINUTE`, `RATE_LIMIT_CHAT_PER_HOUR`,
 `RATE_LIMIT_TRIP_PER_HOUR`, `APP_VERSION`, `GIT_SHA`.
 `SERPER_API_KEY` is only used by `scripts/generate_descriptions.py`.

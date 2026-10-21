@@ -101,11 +101,11 @@ python scripts/embed_content.py
 | | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` | (ไม่บังคับ) ใช้ SMTP ของผู้ให้บริการอื่นแทน Gmail (ต้องยืนยันโดเมน SPF/DKIM กับผู้ให้บริการก่อน) |
 | | `GOOGLE_PLACES_API_KEY` | ใช้ซิงก์/นำเข้าสถานที่ (ต้องเปิด Places API (New) + ผูก billing; คิดเงินต่อสถานที่) |
 | | `PORT` | พอร์ตของ backend API (default `4000`) |
-| `chatbot-service/.env` | `KKU_API_KEY` | KKU LLM gateway (OpenAI-compatible) |
+| `chatbot-service/.env` | `LLM_PROVIDER`, `MODEL_NAME` | AI ตัวเดียวที่ใช้ทั้งระบบ (แชท, จัดทริป, judge, ดึงข้อมูลอีเวนต์, เขียนคำอธิบายสถานที่) — `anthropic` (Claude), `kku` (ค่าเริ่มต้น) หรือ `vertex` บน KKU ต้องตั้ง `MODEL_NAME` ไม่งั้น gateway อาจตอบ 401 "Invalid model" |
+| | `ANTHROPIC_API_KEY` / `KKU_API_KEY` | คีย์ของผู้ให้บริการที่เลือกใน `LLM_PROVIDER` |
 | | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | query ข้อมูลสถานที่ + pgvector search |
-| | `MODEL_NAME`, `TRIP_PLANNER_MODEL_NAME` | โมเดลของแชท/trip planner — บน production ต้องตั้ง ไม่งั้น gateway ตอบ 401 "Invalid model" |
 | | `CORS_ORIGINS` | origin ที่เรียก service ได้ (คั่นด้วย `,` ไม่มี `/` ท้าย) |
-| | `LLM_BASE_URL`, `DESCRIPTION_MODEL_NAME`, `EMBEDDING_MODEL_NAME`, `SERPER_API_KEY` | ไม่บังคับ (ดู `.env.example`; เปลี่ยน embedding model ต้อง re-embed) |
+| | `LLM_BASE_URL`, `EMBEDDING_MODEL_NAME`, `SERPER_API_KEY` | ไม่บังคับ (ดู `.env.example`; เปลี่ยน embedding model ต้อง re-embed) |
 
 ## Chatbot / Trip Planner (RAG)
 

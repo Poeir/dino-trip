@@ -145,6 +145,17 @@ export default function TripFormPage() {
                   </div>
                 ))}
               </div>
+
+              <h2 style={{ fontSize: 17, fontWeight: 800, color: '#1B5E20', margin: '26px 0 4px' }}>อยากกินอะไร?</h2>
+              <p style={{ color: '#626863', fontSize: 13, margin: '0 0 14px' }}>ใช้เลือกร้านมื้อกลางวัน/มื้อเย็น · "อาหารเช้า" เพิ่มมื้อเช้าให้วันที่เริ่มก่อน 09:45 · เลือกได้หลายข้อ หรือไม่เลือกก็ได้</p>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                {derived.foodPreferenceOptionsView.map((opt) => (
+                  <div key={opt.label} onClick={opt.onClick} role="button" aria-pressed={opt.color !== '#3c463f'} style={{ display: 'flex', alignItems: 'center', gap: 8, borderRadius: 999, padding: '8px 14px 8px 8px', cursor: 'pointer', transition: 'all 0.2s ease', border: `2px solid ${opt.borderColor}`, background: opt.bg }}>
+                    <div style={{ width: 26, height: 26, borderRadius: '50%', background: opt.iconBg, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 12, flexShrink: 0 }}>{opt.letter}</div>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: opt.color }}>{opt.label}</span>
+                  </div>
+                ))}
+              </div>
             </>
           )}
 

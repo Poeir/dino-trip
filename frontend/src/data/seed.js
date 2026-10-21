@@ -5,7 +5,14 @@
 
 export const categories = ['ทั้งหมด', 'คาเฟ่', 'วัด', 'พิพิธภัณฑ์', 'สวนสาธารณะ', 'อุทยานแห่งชาติ', 'ตลาด', 'ห้างสรรพสินค้า', 'ร้านของฝาก', 'สถานที่ท่องเที่ยว', 'ร้านอาหาร']
 export const categoryIcons = { 'ทั้งหมด': 'grid', 'คาเฟ่': 'cup', 'วัด': 'temple', 'พิพิธภัณฑ์': 'museum', 'สวนสาธารณะ': 'tree', 'อุทยานแห่งชาติ': 'mountain', 'ตลาด': 'basket', 'ห้างสรรพสินค้า': 'basket', 'ร้านของฝาก': 'basket', 'สถานที่ท่องเที่ยว': 'camera', 'ร้านอาหาร': 'food' }
-export const interestList = ['ธรรมชาติ', 'วัฒนธรรม/ศาสนา', 'ไดโนเสาร์', 'อาหารพื้นถิ่น', 'คาเฟ่', 'ช้อปปิ้ง/หัตถกรรม', 'ครอบครัว']
+export const interestList = ['ธรรมชาติ', 'วัฒนธรรม/ศาสนา', 'ไดโนเสาร์', 'คาเฟ่', 'ช้อปปิ้ง/หัตถกรรม', 'ครอบครัว']
+// "อยากกินอะไร" on the trip form -> chatbot-service TripInput.food_preferences
+// (keys of FOOD_PREFERENCES in trip_planner/models.py; they pick restaurants
+// by places.subcategory). "อาหารพื้นถิ่น" used to be an interest; it is
+// "อาหารอีสาน" here now, and old saved trips are mapped over (AppContext).
+// "อาหารเช้า" adds a breakfast stop at a breakfast shop to days starting by ~09:00.
+export const foodPreferenceList = ['อาหารอีสาน', 'ก๋วยเตี๋ยว', 'ปิ้งย่าง/ชาบู', 'ญี่ปุ่น/เกาหลี', 'เวียดนาม', 'อาหารเช้า', 'เบเกอรี่/ของหวาน']
+export const LEGACY_LOCAL_FOOD_INTEREST = 'อาหารพื้นถิ่น'
 export const budgetList = ['ประหยัด', 'ปานกลาง', 'หรูหรา']
 export const budgetMeta = { 'ประหยัด': 'เดินทางคุ้มค่า เน้นที่เที่ยวไม่มีค่าใช้จ่าย', 'ปานกลาง': 'สมดุลระหว่างคุณภาพและราคา', 'หรูหรา': 'เน้นความสะดวกสบายระดับพรีเมียม' }
 export const areaScopeList = ['เมือง', 'ทั่วขอนแก่น']

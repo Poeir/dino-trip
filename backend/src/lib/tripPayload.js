@@ -15,7 +15,8 @@ const MAX_INPUT_BYTES = 8 * 1024
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/
-const MEAL_ROLES = new Set(['lunch', 'dinner'])
+// 'breakfast' needs migration 20261021000003 (the trip_items check constraint).
+const MEAL_ROLES = new Set(['breakfast', 'lunch', 'dinner'])
 const SLOT_KINDS = new Set(['place', 'hotel', 'free_time'])
 const MAX_SLOT_NAME = 200
 const bad = (what) => httpError(400, `ข้อมูลแผนทริปไม่ถูกต้อง: ${what}`)

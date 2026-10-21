@@ -70,6 +70,7 @@ function TripDetail({ trip }) {
         <InfoRow label="จังหวะการเที่ยว">{(input.trip_pace && (PACE_LABEL[input.trip_pace] || input.trip_pace)) || null}</InfoRow>
         <InfoRow label="ขอบเขตพื้นที่">{input.area_scope || null}</InfoRow>
         <InfoRow label="ความสนใจ">{(input.interests || []).join(', ') || null}</InfoRow>
+        <InfoRow label="อยากกิน">{(input.food_preferences || []).join(', ') || null}</InfoRow>
         <InfoRow label="ต้องไปแน่ๆ">{(input.must_go || []).join(', ') || null}</InfoRow>
         <InfoRow label="ที่พัก">{input.accommodation_name || null}</InfoRow>
         <InfoRow label="ระยะทางรวม">{trip.totalDistanceKm} กม.</InfoRow>

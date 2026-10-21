@@ -112,9 +112,9 @@ class EvalPlanner(LLMTripPlanner):
         if gen_model:
             # "provider:model" lets the generator sit on a different provider than the judge (providers.py)
             self.provider, self.default_model = parse_spec(gen_model)
-            self.client = make_client(self.provider)
-            self.judge.client = self.client  # only used by --mode loop
-            self.judge.default_model = self.default_model
+            self.judge.default_model = self.default_model  # only used by --mode loop
+        # Production no longer keeps a client on the planner (llm_client.complete_json); the eval does.
+        self.client = make_client(self.provider)
         self.calls = []  # one dict per generation call: prompt_chars, usage, raw content, latency
 
     def generate_prompt(self, user_input, pace_instruction, budget_instruction, feedback_block=""):
@@ -238,7 +238,7 @@ def run_one(variant, case, rep, ctx, mode, gen_model, judge, budget):
         else:
             verdicts = []
             orig_eval = planner.judge.evaluate
-            planner.judge.evaluate = lambda ui, it: verdicts.append(orig_eval(ui, it)) or verdicts[-1]
+            planner.judge.evaluate = lambda ui, it, **kw: verdicts.append(orig_eval(ui, it, **kw)) or verdicts[-1]
             itinerary, _ = planner.solve_route_with_llm(user_input, pace_inst, budget_inst)
             drop_feedback = ""
             first_data = json.loads(clean_json_string(next(c["content"] for c in planner.calls if c.get("parsed"))))
@@ -277,7 +277,7 @@ def main():
     ap.add_argument("--reps", type=int, default=3)
     ap.add_argument("--mode", choices=["single", "loop"], default="single")
     ap.add_argument("--gen-model", default=None,
-                    help="override TRIP_PLANNER_MODEL_NAME; 'kku:<model>' or 'vertex:<model>' picks the provider")
+                    help="override MODEL_NAME; 'kku:<model>' or 'vertex:<model>' picks the provider")
     ap.add_argument("--judge-model", default=None,
                     help="override EVAL_JUDGE_MODEL; 'kku:<model>' or 'vertex:<model>' picks the provider")
     ap.add_argument("--workers", type=int, default=2)
@@ -343,7 +343,7 @@ def main():
             if (v, c["id"], r) not in done and (v, c["id"], r) not in needs_rejudge]
     (out_dir / "config.json").write_text(json.dumps({
         "variants": args.variants, "cases": args.cases, "reps": args.reps, "mode": args.mode,
-        "gen_model": gen_model_name or llm_extractor.TRIP_PLANNER_MODEL_NAME, "gen_provider": gen_provider,
+        "gen_model": gen_model_name or llm_extractor.MODEL_NAME, "gen_provider": gen_provider,
         "judge_model": judge.model, "judge_provider": judge.provider,
         "started_at": datetime.now().isoformat(timespec="seconds"),
         "pool_tag": args.pool_tag, "pool_frozen": pool_frozen, "provenance": provenance(),

@@ -5,14 +5,12 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from src.core.db import supabase
-from src.core.llm_client import make_llm_client
 from src.services.place_description import ModelChain, generate_description
 from src.services.rag import embedder
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
-client = make_llm_client()
 
 # Not auth-gated here -- the Node backend's proxies (see
 # backend/src/routes/reindex.routes.js and places.routes.js's /describe) are
@@ -88,4 +86,4 @@ def describe_place(req: DescribePlaceRequest):
             place["reviews"] = row.get("reviews") or []
 
     # Fresh chain per request: a daily-limit fallback must not outlive the day.
-    return generate_description(client, place, ModelChain())
+    return generate_description(place, ModelChain())
