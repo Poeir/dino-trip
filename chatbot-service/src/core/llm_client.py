@@ -12,7 +12,9 @@ import threading
 import httpx
 from openai import OpenAI
 
-from src.core.config import API_KEY, BASE_URL, LLM_PROVIDER
+from src.core.config import (
+    ANTHROPIC_API_KEY, ANTHROPIC_BASE_URL, ANTHROPIC_WORKSPACE_ID, API_KEY, BASE_URL, LLM_PROVIDER,
+)
 
 _SCOPES = ["https://www.googleapis.com/auth/cloud-platform"]
 
@@ -39,9 +41,20 @@ class _GoogleAuth(httpx.Auth):
         yield request
 
 
-def make_llm_client(**kwargs) -> OpenAI:
-    """Drop-in for `OpenAI(api_key=API_KEY, base_url=BASE_URL, **kwargs)`."""
-    if LLM_PROVIDER == "vertex":
+def make_llm_client(provider: str | None = None, **kwargs) -> OpenAI:
+    """Drop-in for `OpenAI(api_key=API_KEY, base_url=BASE_URL, **kwargs)`.
+
+    `provider` overrides LLM_PROVIDER for one caller; "anthropic" is only used
+    that way (chat experiment) because its OpenAI-compat endpoint rejects
+    response_format json_object, which trip planner / events extraction need."""
+    provider = provider or LLM_PROVIDER
+    if provider == "anthropic":
+        if not ANTHROPIC_API_KEY:
+            raise ValueError("CHAT_LLM_PROVIDER=anthropic requires ANTHROPIC_API_KEY. Check chatbot-service/.env.")
+        # Keys not scoped to a workspace must name one in a header.
+        headers = {"anthropic-workspace-id": ANTHROPIC_WORKSPACE_ID} if ANTHROPIC_WORKSPACE_ID else None
+        return OpenAI(api_key=ANTHROPIC_API_KEY, base_url=ANTHROPIC_BASE_URL, default_headers=headers, **kwargs)
+    if provider == "vertex":
         # api_key is required by the SDK but overridden by _GoogleAuth on each request.
         return OpenAI(api_key="vertex-adc", base_url=BASE_URL, http_client=httpx.Client(auth=_GoogleAuth()), **kwargs)
     return OpenAI(api_key=API_KEY, base_url=BASE_URL, **kwargs)

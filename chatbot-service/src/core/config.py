@@ -37,6 +37,19 @@ else:
 BASE_URL = os.environ.get("LLM_BASE_URL", _default_base_url)
 MODEL_NAME = os.environ.get("MODEL_NAME", _default_model)
 
+# Experimental: run the chatbot (rewrite + answer) on Claude via Anthropic's
+# OpenAI-compatible endpoint while everything else stays on LLM_PROVIDER.
+# Unset = chat uses LLM_PROVIDER/MODEL_NAME as before. Set CHAT_LLM_PROVIDER=
+# anthropic + ANTHROPIC_API_KEY to try it; also update LLM_PRICE_*_PER_M, since
+# usage cost is computed from those (haiku-5-5 is 0.1 / 0.5).
+CHAT_LLM_PROVIDER = os.environ.get("CHAT_LLM_PROVIDER", "").strip().lower() or None
+if CHAT_LLM_PROVIDER not in (None, "anthropic"):
+    raise ValueError(f"CHAT_LLM_PROVIDER must be empty or 'anthropic', got {CHAT_LLM_PROVIDER!r}")
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
+ANTHROPIC_WORKSPACE_ID = os.environ.get("ANTHROPIC_WORKSPACE_ID")
+ANTHROPIC_BASE_URL = os.environ.get("ANTHROPIC_BASE_URL", "https://api.anthropic.com/v1/")
+CHAT_MODEL_NAME = os.environ.get("CHAT_MODEL_NAME", "claude-haiku-5-5") if CHAT_LLM_PROVIDER else MODEL_NAME
+
 # Trip planner (generator + judge) only -- kept separate from MODEL_NAME so
 # trying a different model there doesn't also change chat/events extraction.
 # Currently pointed at the pro tier of the same model family: lowest risk of

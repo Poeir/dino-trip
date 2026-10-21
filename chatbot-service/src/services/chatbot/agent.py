@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from openai import BadRequestError
 from src.core.llm_client import make_llm_client
 from src.core.clock import BANGKOK_TZ, now_bangkok
-from src.core.config import MODEL_NAME
+from src.core.config import CHAT_LLM_PROVIDER, CHAT_MODEL_NAME
 from src.core.usage import UsageTracker
 from src.services.rag.retriever import PlaceRetriever
 
@@ -200,9 +200,14 @@ def _tag_sources(tag: str) -> set[str]:
 class RAGChatbotService:
     def __init__(self):
         self.retriever = PlaceRetriever()
-        self.client = make_llm_client(timeout=LLM_TIMEOUT_S, max_retries=LLM_MAX_RETRIES)
-        self.model_name = MODEL_NAME
+        self.client = make_llm_client(CHAT_LLM_PROVIDER, timeout=LLM_TIMEOUT_S, max_retries=LLM_MAX_RETRIES)
+        self.model_name = CHAT_MODEL_NAME
         self._reasoning_effort_supported = True
+
+    @staticmethod
+    def _temperature(value: float) -> dict:
+        # Claude's newer models reject `temperature` outright (400 "deprecated").
+        return {} if CHAT_LLM_PROVIDER == "anthropic" else {"temperature": value}
 
     def _create(self, **kwargs):
         """The rewrite call: chat.completions.create with REASONING_EFFORT
@@ -238,7 +243,7 @@ class RAGChatbotService:
                     {"role": "system", "content": REWRITE_PROMPT},
                     {"role": "user", "content": f"[บทสนทนาก่อนหน้า]\n{transcript}\n\n[คำถามล่าสุด]\n{user_message}"},
                 ],
-                temperature=0,
+                **self._temperature(0),
                 timeout=REWRITE_TIMEOUT_S,
             )
             if usage:
@@ -381,7 +386,7 @@ class RAGChatbotService:
             # every reply needs to be consistent for identical retrieved
             # context -- 0.3 was flipping the tag on repeated identical
             # requests during testing.
-            temperature=0.1,
+            **self._temperature(0.1),
         )
         usage.record_response("answer", self.model_name, response)
         raw_reply = response.choices[0].message.content or ""
@@ -461,7 +466,7 @@ class RAGChatbotService:
             # every reply needs to be consistent for identical retrieved
             # context -- 0.3 was flipping the tag on repeated identical
             # requests during testing.
-            temperature=0.1,
+            **self._temperature(0.1),
             stream=True,
         )
         # Not given REASONING_EFFORT, same reason as the non-streamed answer
