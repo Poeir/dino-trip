@@ -61,7 +61,10 @@ CATEGORY_WORDS: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
 _GENERIC_WORDS = ("อยาก", "ไป", "เที่ยว", "ที่", "มี", "อะไร", "ไหน", "ดี", "หา", "ร้าน", "ขอ", "แนะนำ", "ช่วย",
                   "ได้", "ต้องการ", "สัก", "เอา",
                   # "ฉันพักอยู่ท่าพระ แนะนำให้ไปไหนดี" asks for anything there too.
-                  "ฉัน", "ผม", "เรา", "พัก", "อยู่", "ให้", "ควร", "ใกล้เคียง", "รอบๆ")
+                  "ฉัน", "ผม", "เรา", "พัก", "อยู่", "ให้", "ควร", "ใกล้เคียง", "รอบๆ",
+                  # "แถวท่าพระ แนะนำที่ใกล้เคียงด้วย": the leftover "ด้วย" made it read
+                  # as a specific ask, which drops every place the search didn't rank.
+                  "ด้วย", "บ้าง")
 
 # Areas people name that are no single row in the table: "แถวมข." found
 # nothing to stand on, though dozens of places are around the campus.
@@ -81,6 +84,27 @@ def normalize(text: str) -> str:
     """Letters, marks and digits only, case-folded -- "เซ็นทรัล ขอนแก่น" and
     "เซ็นทรัลขอนแก่น" compare equal."""
     return "".join(c for c in unicodedata.normalize("NFKC", text or "").casefold() if unicodedata.category(c)[0] in "LMN")
+
+
+def google_area_name(where: str) -> str | None:
+    """The area to look up on Google for a thin "แถว X" answer: X without a
+    ตำบล/อำเภอ prefix (Google's addresses spell it out in full), first word only
+    (trailing question words). None when X is all of ขอนแก่น -- every result
+    would "match" and the question isn't really about an area."""
+    text = _ADMIN_PREFIX_RE.sub("", (where or "").strip()).strip()
+    first = text.split()[0] if text.split() else ""
+    key = normalize(first)
+    if len(key) < 3 or key in _TOO_BROAD or normalize(text) in _TOO_BROAD:
+        return None
+    # Not a place: "ใกล้เคียง" splits as ใกล้|เคียง, "แถวนี้", "ใกล้ฉัน", "ใกล้ที่พัก".
+    # Prefixes only where no real area starts that way (บ้านไผ่/บ้านแฮด do start with บ้าน).
+    if key in _NOT_AN_AREA or any(key.startswith(w) for w in _NOT_AN_AREA_PREFIXES):
+        return None
+    return first
+
+
+_NOT_AN_AREA = {"บ้าน", "หอ", "ตัวเมือง", "ในเมือง", "ตรงนี้", "ที่นี่"}
+_NOT_AN_AREA_PREFIXES = ("เคียง", "นี้", "นั้น", "นี่", "ฉัน", "ผม", "เรา", "บ้านฉัน", "บ้านผม", "บ้านเรา", "ที่พัก", "โรงแรม")
 
 
 def split_area_query(query: str) -> tuple[str, str] | None:

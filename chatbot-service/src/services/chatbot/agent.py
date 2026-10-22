@@ -1,7 +1,9 @@
 import datetime
 import itertools
 import logging
+import queue
 import re
+import threading
 import time
 import unicodedata
 from concurrent.futures import ThreadPoolExecutor
@@ -11,6 +13,7 @@ from src.core.clock import BANGKOK_TZ, now_bangkok
 from src.core.config import MODEL_NAME
 from src.core.usage import UsageTracker
 from src.services.rag.hours import annotate_overnight
+from src.services.rag import google_fallback
 from src.services.rag.retriever import PlaceRetriever
 
 logger = logging.getLogger(__name__)
@@ -26,6 +29,20 @@ FALLBACK_MESSAGE = (
 # Shown when a turn fails (LLM timeout, DB error, empty model output). Same
 # wording as the frontend's own catch-all in AppContext.sendChat.
 ERROR_MESSAGE = "ขออภัยครับ ระบบแชทขัดข้องชั่วคราว ลองใหม่อีกครั้งนะครับ"
+
+# Streamed as {"type": "status"} while the user waits for the first token
+# (chat_stream). The Google step's text lives in rag/google_fallback.py.
+STATUS_UNDERSTANDING = "กำลังทำความเข้าใจคำถาม..."
+STATUS_SEARCHING = "กำลังค้นหาข้อมูล..."
+STATUS_WRITING = "กำลังเรียบเรียงคำตอบ..."
+# Sent alongside the text so the chat picks the step's icon (AI / database /
+# Google) without matching on Thai wording.
+STATUS_STEPS = {
+    STATUS_UNDERSTANDING: "ai",
+    STATUS_SEARCHING: "database",
+    google_fallback.STATUS_TEXT: "google",
+    STATUS_WRITING: "ai",
+}
 
 _THAI_WEEKDAYS = ("จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์", "อาทิตย์")
 _THAI_MONTHS = (
@@ -156,6 +173,10 @@ REWRITE_PROMPT = """คุณเขียนคำถามล่าสุดข
 # instead ("ผมจะเขียนคำถามใหม่ให้เข้าใจได้...") and that sentence was searched
 # as the query (seen live), so a reply without the tag is not used at all.
 _REWRITE_TAG_RE = re.compile(r"<query>(.*?)</query>", re.DOTALL)
+
+
+def _status(text: str) -> dict:
+    return {"type": "status", "text": text, "step": STATUS_STEPS.get(text, "ai")}
 
 
 def clean_history(history) -> list[dict]:
@@ -307,11 +328,18 @@ class RAGChatbotService:
             return user_message
         return rewritten or user_message
 
-    def _prepare(self, user_message: str, history=None, usage: UsageTracker | None = None) -> tuple[list[dict], list[dict], list[dict], dict]:
+    def _prepare(self, user_message: str, history=None, usage: UsageTracker | None = None, on_status=None) -> tuple[list[dict], list[dict], list[dict], dict]:
+        """`on_status(text)`, if given, is told each step as it starts (the
+        streamed chat shows it while the user waits). Only real steps: the
+        rewrite only on a follow-up, Google only when it is actually asked."""
+        notify = on_status or (lambda text: None)
         history = clean_history(history)
         t0 = time.time()
+        if any(m["role"] == "user" for m in history):  # same test as _rewrite_query
+            notify(STATUS_UNDERSTANDING)
         search_query = self._rewrite_query(user_message, history, usage)
         rewrite_ms = (time.time() - t0) * 1000
+        notify(STATUS_SEARCHING)
 
         # Retrieve from places, knowledge_base, and events -- unlike the old
         # project, which only ever searched places.
@@ -322,7 +350,7 @@ class RAGChatbotService:
         # threads raced on it. retriever.embed() serializes the encode, so
         # the three searches still only encode the query once.
         with ThreadPoolExecutor(max_workers=3) as pool:
-            f_places = pool.submit(self.retriever.search_chat_places, query=search_query, limit=3)
+            f_places = pool.submit(self.retriever.search_chat_places, query=search_query, limit=3, on_status=on_status)
             f_kb = pool.submit(self.retriever.search_knowledge_base, query=search_query, limit=3)
             f_events = pool.submit(self.retriever.search_events, query=search_query, limit=3)
             outcomes = []
@@ -359,6 +387,10 @@ class RAGChatbotService:
                 "address": p.get("address"),
                 "rating": p.get("rating"),
                 "image_url": p.get("img"),
+                # Google fallback places (rag/google_fallback.py) have no page of
+                # ours: the card links out to Maps / the phone instead.
+                **({"source": "google", "mapsUrl": p.get("maps_url"), "phone": p.get("phone")}
+                   if p.get("live_google") else {}),
             }
             for p in places
         ]
@@ -384,6 +416,10 @@ class RAGChatbotService:
             f"เวลาเปิด-ปิด: {annotate_overnight(p.get('hours')) or '-'}\n"
             f"ราคา: {p.get('price') or 'ไม่มีข้อมูลราคา'}\n"
             f"สิ่งอำนวยความสะดวก: {', '.join(p.get('amenities') or []) or 'ไม่มีข้อมูล'}"
+            # Google fallback rows (rag/google_fallback.py): open-now is worked
+            # out in code, not left to the model; the phone is how to check.
+            + (f"\nสถานะตอนนี้: {p['now_note']}" if p.get("now_note") else "")
+            + (f"\nโทร: {p['phone']}" if p.get("live_google") and p.get("phone") else "")
             # Set by retriever.search_chat_places for "แถว X" questions: the
             # model may not work out distances itself (rule 4), so it is told.
             + (f"\nทำเลเทียบกับที่ผู้ใช้ถาม: {p['area_note']}" if p.get("area_note") else "")
@@ -425,6 +461,7 @@ class RAGChatbotService:
         8. ถ้าผู้ใช้ขอให้จัดทริป/วางแผนเที่ยวหลายวัน ให้แนะนำเฉพาะสถานที่และอีเวนท์ที่มีใน [ข้อมูลบริบท] เป็นตัวเลือก ห้ามแต่งตารางเวลา วิธีเดินทาง (เครื่องบิน รถทัวร์ รถไฟ แท็กซี่) หรือระยะเวลาเดินทางขึ้นมาเอง แล้วแนะนำให้ใช้เมนู "วางแผนทริป" ของเว็บ ซึ่งจัดเส้นทาง เวลา และระยะทางให้ได้จริง (เมนูนี้ไม่ได้หาหรือจองที่พักให้ และไม่ต้องพูดถึงเมนูนี้ในคำถามที่ไม่ได้ขอจัดทริป)
         9. [ข้อมูลบริบท] เป็นแค่บางรายการที่ค้นเจอ ไม่ใช่ทั้งฐานข้อมูล ถ้าผู้ใช้ถามแบบเปรียบเทียบ (ถูกที่สุด ดีที่สุด ใกล้ที่สุด ดังที่สุด) ให้เทียบเฉพาะรายการในบริบท และบอกให้ชัดว่า "จากที่ค้นเจอ" ห้ามอ้างว่าเป็นที่สุดของทั้งขอนแก่น
         10. เวลาเปิด-ปิดที่ปิดหลังเที่ยงคืนมีวงเล็บกำกับไว้แล้ว (เช่น "7:00–4:00 (ปิดตี 4 ของวันถัดไป)") ห้ามอ่านเป็นปิดตอนบ่าย หรือตีความเวลาเองเป็นอย่างอื่น
+        11. สถานที่ที่แท็กว่า "ข้อมูลจาก Google ยังไม่ผ่านการตรวจสอบของทีมงาน" มาจากการค้น Google สดๆ ไม่ใช่ฐานข้อมูลของเว็บ: แนะนำได้ตามปกติ แต่ต้องบอกผู้ใช้หนึ่งครั้งว่าข้อมูลส่วนนั้นมาจาก Google และยังไม่ได้ตรวจสอบ ควรเช็กก่อนเดินทาง ใช้ "สถานะตอนนี้" ตามที่ให้มาเท่านั้น ห้ามคำนวณเวลาที่เหลือก่อนปิดเอง สรุปรีวิวได้แต่ห้ามเขียนเหมือนเป็นข้อเท็จจริงที่ทุกคนเจอ
         7. ถ้าผู้ใช้ถามเกี่ยวกับตัวคุณเอง (ทักทาย, ชื่ออะไร, ทำอะไรได้บ้าง, คุยเล่นทั่วไปสั้นๆ) ให้ใช้แท็ก {MATCH_SELF_TAG} แทน {NO_MATCH_TAG} และตอบได้ตรงๆ โดยไม่ต้องมีข้อมูลใน [ข้อมูลบริบท] รองรับ -- สิ่งที่คุณทำได้จริงคือแนะนำร้านอาหาร คาเฟ่ สถานที่ท่องเที่ยว และอีเวนท์ในจังหวัดขอนแก่น จากฐานข้อมูลที่มี ห้ามอ้างว่าจองร้าน จองโรงแรม ซื้อตั๋ว หรือทำอย่างอื่นที่ทำไม่ได้จริง ใช้ {MATCH_SELF_TAG} เฉพาะคำถามเกี่ยวกับตัวคุณเองเท่านั้น คำถามความรู้ทั่วไปอื่นที่ไม่เกี่ยวกับตัวคุณ (ประวัติศาสตร์ เหตุการณ์ปัจจุบัน ความรู้วิชาการ ฯลฯ) ยังต้องใช้กฎข้อ 1-2 ตามปกติ (ตอบจาก [ข้อมูลบริบท] เท่านั้น ไม่มีก็ {NO_MATCH_TAG})
 
         [ข้อมูลบริบท]
@@ -523,9 +560,37 @@ class RAGChatbotService:
             usage.meta["failed"] = True
             yield {"type": "done", "reply": emitted, "places": [], "events": [], "no_match": False, "usage": usage.finish()}
 
+    def _prepare_with_status(self, user_message: str, history, usage: UsageTracker):
+        """_prepare, yielding {"type": "status"} events while it runs, then
+        {"type": "_prepared", "value": ...}. _prepare is plain blocking code
+        (its Google step happens on a search thread), so it runs on a worker
+        thread and reports each step through a queue."""
+        steps: queue.Queue = queue.Queue()
+        result = {}
+
+        def work():
+            try:
+                result["value"] = self._prepare(user_message, history, usage, on_status=steps.put)
+            except BaseException as e:  # re-raised on the generator's thread
+                result["error"] = e
+            finally:
+                steps.put(None)
+
+        threading.Thread(target=work, daemon=True, name="chat-prepare").start()
+        while (text := steps.get()) is not None:
+            yield _status(text)
+        if "error" in result:
+            raise result["error"]
+        yield {"type": "_prepared", "value": result["value"]}
+
     def _stream_turn(self, user_message: str, history, usage: UsageTracker):
         t_total0 = time.time()
-        messages, source_places, source_events, timings = self._prepare(user_message, history, usage)
+        for event in self._prepare_with_status(user_message, history, usage):
+            if event["type"] == "_prepared":
+                messages, source_places, source_events, timings = event["value"]
+            else:
+                yield event
+        yield _status(STATUS_WRITING)
 
         t0 = time.time()
         stream_kwargs = dict(

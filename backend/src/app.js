@@ -22,6 +22,7 @@ import { adminPlaceSyncRouter } from './routes/adminPlaceSync.routes.js'
 import { adminPlaceAutoSyncRouter } from './routes/adminPlaceAutoSync.routes.js'
 import { adminCostEstimatesRouter } from './routes/adminCostEstimates.routes.js'
 import { adminPlaceImportRouter } from './routes/adminPlaceImport.routes.js'
+import { adminPlaceCandidatesRouter } from './routes/adminPlaceCandidates.routes.js'
 import { eventReportsRouter, adminEventReportsRouter } from './routes/eventReports.routes.js'
 import { eventRequestsRouter, adminEventRequestsRouter } from './routes/eventRequests.routes.js'
 import { surveyRouter, adminSurveyRouter } from './routes/survey.routes.js'
@@ -112,6 +113,7 @@ app.use('/api/admin/place-sync', adminPlaceSyncRouter)
 app.use('/api/admin/place-auto-sync', adminPlaceAutoSyncRouter)
 app.use('/api/admin/cost-estimates', adminCostEstimatesRouter)
 app.use('/api/admin/place-import', adminPlaceImportRouter)
+app.use('/api/admin/place-candidates', adminPlaceCandidatesRouter)
 app.use('/api/reindex', reindexRouter)
 
 app.use(notFoundHandler)

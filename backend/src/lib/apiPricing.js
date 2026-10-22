@@ -12,6 +12,9 @@ const num = (v, fallback) => (v != null && v !== '' && Number.isFinite(Number(v)
 export const SKUS = {
   'places.text_search.pro': { usdPer1000: 32, freePerMonth: 5000 },
   'places.nearby.enterprise': { usdPer1000: 35, freePerMonth: 1000 },
+  // chatbot-service's Google fallback (rag/google_fallback.py): Text Search with
+  // hours/reviews/price fields, the Enterprise + Atmosphere tier.
+  'places.text_search.enterprise_atmosphere': { usdPer1000: 40, freePerMonth: 1000 },
   'places.details.enterprise': {
     usdPer1000: num(process.env.PLACES_DETAILS_USD_PER_1000, 20),
     freePerMonth: num(process.env.PLACES_FREE_CALLS_PER_MONTH, 1000),
@@ -46,6 +49,7 @@ export function getCostEstimates() {
     describePerPlaceThb: grossCostThb({ 'serper.search': 1, 'llm.request': 1 }),
     textSearchThb: grossCostThb({ 'places.text_search.pro': 1 }),
     nearbySearchThb: grossCostThb({ 'places.nearby.enterprise': 1 }),
+    chatFallbackSearchThb: grossCostThb({ 'places.text_search.enterprise_atmosphere': 1 }),
     thbPerUsd: THB_PER_USD,
     checkedAt: PRICING_CHECKED_AT,
     freeCallsPerMonth: SKUS['places.details.enterprise'].freePerMonth,
