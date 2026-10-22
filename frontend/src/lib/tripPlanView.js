@@ -3,6 +3,8 @@
 // Shared by the tourist's trip page (AppContext) and the admin trip detail, so
 // both show a plan the same way.
 
+import { haversineKm } from '../utils/geo.js'
+
 // Statuses of chatbot-service's synthetic slots (no places row behind them).
 export const HOTEL_RETURN_STATUS = 'End of Day (Return to Hotel)'
 export const TRIP_END_STATUS = 'End of Trip'
@@ -53,6 +55,58 @@ export function tripDetailToPlan(detail) {
   }))
   const totalPoints = days.flatMap((d) => d.items).reduce((sum, it) => sum + (it.place.hasQR ? it.place.qrPoints : 0), 0)
   return { days, totalBudget: detail.totalCostEstimate, totalDistance: detail.totalDistanceKm, totalPoints }
+}
+
+// Where to stay, for a trip planned without a start point (the planner then
+// used the city centre). Each night links the last stop of one day to the
+// first stop of the next, so the best area is near those stops: their centre,
+// named after the trip place closest to it. Stops spread far apart (one day
+// out in another district) make that centre meaningless, so the city centre
+// is suggested instead. Null when there is no night to plan for.
+const CITY_CENTRE = { lat: 16.4322, lng: 102.8236 }
+const MAX_SPREAD_KM = 20
+const MAX_LANDMARK_KM = 3
+const LANDMARK_SKIP_CATEGORIES = new Set(['ร้านอาหาร', 'คาเฟ่'])
+
+const hotelSearchUrl = ({ lat, lng }) =>
+  `https://www.google.com/maps/search/${encodeURIComponent('โรงแรม')}/@${lat.toFixed(5)},${lng.toFixed(5)},15z`
+
+export function suggestStayArea(days) {
+  const placeStops = (d) => d.items.filter((it) => it.kind === 'place' && it.place?.location)
+  const nightStops = []
+  for (let i = 0; i < days.length - 1; i += 1) {
+    const tonight = placeStops(days[i])
+    const tomorrow = placeStops(days[i + 1])
+    if (tonight.length) nightStops.push(tonight[tonight.length - 1].place.location)
+    if (tomorrow.length) nightStops.push(tomorrow[0].place.location)
+  }
+  if (!nightStops.length) return null
+
+  const centre = {
+    lat: nightStops.reduce((sum, p) => sum + p.lat, 0) / nightStops.length,
+    lng: nightStops.reduce((sum, p) => sum + p.lng, 0) / nightStops.length,
+  }
+  const farthestKm = Math.max(...nightStops.map((p) => haversineKm(centre, p)))
+  if (farthestKm > MAX_SPREAD_KM) {
+    return {
+      area: 'ตัวเมืองขอนแก่น',
+      reason: 'ที่เที่ยวในทริปนี้อยู่คนละทิศ พักในเมืองจะไปต่อได้ทุกทาง และมีที่พักให้เลือกเยอะ',
+      searchUrl: hotelSearchUrl(CITY_CENTRE),
+    }
+  }
+
+  // A sight names an area better than a restaurant or cafe does.
+  const byDistance = (stops) => stops
+    .map((it) => ({ name: it.place.name, km: haversineKm(centre, it.place.location) }))
+    .filter((c) => c.km <= MAX_LANDMARK_KM)
+    .sort((a, b) => a.km - b.km)[0]
+  const allStops = days.flatMap(placeStops)
+  const landmark = byDistance(allStops.filter((it) => !LANDMARK_SKIP_CATEGORIES.has(it.place.category))) || byDistance(allStops)
+  return {
+    area: landmark ? `แถว${landmark.name}` : 'ย่านกลางเส้นทางทริป',
+    reason: `ห่างจุดเริ่มและจุดจบของแต่ละวันไม่เกินประมาณ ${Math.max(1, Math.ceil(farthestKm))} กม. (วัดเป็นเส้นตรง)`,
+    searchUrl: hotelSearchUrl(centre),
+  }
 }
 
 // Adds the display labels each item card shows: its time range and how long

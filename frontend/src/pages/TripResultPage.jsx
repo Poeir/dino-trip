@@ -6,7 +6,7 @@ import { MASCOT } from '../data/categoryImages.js'
 import TripDayCard from '../components/TripDayCard.jsx'
 import Modal from '../components/Modal.jsx'
 import PlaceDetailView from '../components/PlaceDetailView.jsx'
-import { CalendarIcon, RouteIcon, GiftIcon } from '../components/Icons.jsx'
+import { CalendarIcon, RouteIcon, GiftIcon, PinIcon } from '../components/Icons.jsx'
 import { fetchPlace, fetchPlaces } from '../lib/apiClient.js'
 import { tripNotices } from '../utils/tripNotices.js'
 
@@ -99,7 +99,7 @@ export default function TripResultPage() {
     : null
   return (
     <main style={{ maxWidth: 1200, margin: '0 auto', padding: 'var(--page-pt) var(--page-gutter) var(--page-pb)' }}>
-      <div data-role="trip-result-grid" style={{ display: 'grid', gridTemplateColumns: '340px 1fr', gap: 28, alignItems: 'start' }}>
+      <div data-role="trip-result-grid" style={{ display: 'grid', gridTemplateColumns: '340px minmax(0, 1fr)', gap: 28, alignItems: 'start' }}>
 
         <div data-role="trip-result-summary" style={{ position: 'sticky', top: 88, display: 'flex', flexDirection: 'column', gap: 20 }}>
           {!id && state.authChecked && !state.loggedIn && (
@@ -150,6 +150,20 @@ export default function TripResultPage() {
               </div>
             )}
           </div>
+
+          {/* Planned without a start point: suggest an area to stay in, with a
+              link to hotels there on Google Maps (we keep no hotel data). */}
+          {derived.staySuggestion && (
+            <div style={{ background: '#fff', border: '1px solid #C8E6C9', borderRadius: 16, padding: '14px 16px', animation: 'dc-fade-up 0.45s ease 0.08s both' }}>
+              <div style={{ fontWeight: 800, fontSize: 12.5, color: '#1B5E20', marginBottom: 4 }}>ยังไม่มีที่พัก? พักแถวนี้สะดวกที่สุด</div>
+              <div style={{ fontSize: 15, fontWeight: 800, color: '#1f2a24', marginBottom: 4 }}>{derived.staySuggestion.area}</div>
+              <div style={{ fontSize: 12.5, color: '#5f6a63', lineHeight: 1.5, marginBottom: 10 }}>{derived.staySuggestion.reason}</div>
+              <a href={derived.staySuggestion.searchUrl} target="_blank" rel="noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, fontWeight: 700, color: '#2E7D32', background: '#E8F5E9', border: '1px solid #C8E6C9', borderRadius: 14, padding: '6px 12px' }}>
+                <PinIcon box={false} color="#2E7D32" />ดูที่พักแถวนี้ใน Google Maps
+              </a>
+              <div style={{ fontSize: 11, color: '#626863', marginTop: 8, lineHeight: 1.5 }}>จองแล้วอยากให้เวลาแม่นขึ้น? กด "สร้างแผนใหม่" แล้วปักหมุดที่พักที่จองไว้</div>
+            </div>
+          )}
 
           {/* A must-go place that is missing from the plan, or a public holiday
               on the trip dates: without this the place just wasn't there. */}

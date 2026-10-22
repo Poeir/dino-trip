@@ -20,7 +20,7 @@ import {
 import { sendChatMessage, requestTripPlan } from '../lib/chatbotService.js'
 import { getCurrentPosition, LOCATION_ERROR_MESSAGE, GENERIC_LOCATION_ERROR } from '../lib/geolocation.js'
 import { isWelcomeSnoozed, snoozeWelcome } from '../lib/welcomeSnooze.js'
-import { HOTEL_RETURN_STATUS, TRIP_END_STATUS, tripDetailToPlan, decorateTripDays } from '../lib/tripPlanView.js'
+import { HOTEL_RETURN_STATUS, TRIP_END_STATUS, tripDetailToPlan, decorateTripDays, suggestStayArea } from '../lib/tripPlanView.js'
 
 const AppContext = createContext(null)
 
@@ -1248,7 +1248,7 @@ export function AppProvider({ children }) {
   // a tourist, home for a local, or left empty (city centre).
   const startPointView = {
     question: 'แต่ละวันออกเดินทางจากที่ไหน?',
-    emptyHint: 'โรงแรม ที่พัก หรือบ้านก็ได้ ยังไม่รู้หรือยังไม่ได้จอง? เว้นว่างไว้ได้ ระบบจะใช้ใจกลางเมืองขอนแก่น',
+    emptyHint: 'โรงแรม ที่พัก หรือบ้านก็ได้ ยังไม่ได้จองที่พัก? เว้นว่างไว้ได้ ระบบจะเริ่มจากใจกลางเมือง แล้วแนะนำย่านที่ควรพักให้หลังจัดทริปเสร็จ',
     summaryLabel: 'จุดเริ่มต้น',
   }
   const currentTripEnd = s.tripForm.tripEnd || EMPTY_TRIP_END
@@ -1343,6 +1343,11 @@ export function AppProvider({ children }) {
   const tripPlan = s.tripPlan
     ? { ...s.tripPlan, days: decorateTripDays(s.tripPlan.days) }
     : { days: [], totalBudget: 0, totalDistance: 0, totalPoints: 0 }
+  // "Where to stay" card: only for a trip with a night in it that was planned
+  // without a start point. A saved trip restores tripForm from its input, so
+  // reopening it decides the same way.
+  const noStartPoint = s.tripForm.accommodation?.lat == null && !s.tripForm.accommodation?.name
+  const staySuggestion = (noStartPoint && tripPlan.days.length >= 2) ? suggestStayArea(tripPlan.days) : null
 
   // Redeeming happens at the counter (an admin deducts the points), so the
   // tourist-facing view only needs to say whether a reward is within reach.
@@ -1407,7 +1412,7 @@ export function AppProvider({ children }) {
     primaryLabel: s.tripStep === 3 ? 'สร้างแผนการเดินทาง →' : 'ถัดไป →',
     onPrimaryStep: s.tripStep === 3 ? submitTripForm : nextStep,
     prevOpacity: s.tripStep === 0 ? '0.35' : '1',
-    tripPlan,
+    tripPlan, staySuggestion,
     rewardsView, qrsView,
     placeCategoryOptions: categories.filter((c) => c !== 'ทั้งหมด'),
   }
