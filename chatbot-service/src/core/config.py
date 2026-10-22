@@ -76,6 +76,14 @@ if RETIRED_LLM_SETTINGS:
 # (existing customers only, until 2027-01-01), so this project can't get one.
 SERPER_API_KEY = os.environ.get("SERPER_API_KEY")
 
+# Google fallback for thin "แถว X" chat answers (services/rag/google_fallback.py):
+# a live Places Text Search when the DB has fewer than 3 places in X. Unset key =
+# feature off. Each search is billable (Text Search Enterprise + Atmosphere, about
+# ฿1.4), so a per-day cap (Asia/Bangkok) bounds the cost; 0 disables it too.
+GOOGLE_PLACES_API_KEY = os.environ.get("GOOGLE_PLACES_API_KEY")
+GOOGLE_FALLBACK_DAILY_CAP = int(os.environ.get("GOOGLE_FALLBACK_DAILY_CAP", "100"))
+GOOGLE_FALLBACK_TIMEOUT_S = float(os.environ.get("GOOGLE_FALLBACK_TIMEOUT_S", "3"))
+
 # Token-usage tracking (src/core/usage.py). Prices are USD per 1M tokens for
 # the chat/trip model -- defaults are gemini-3.8-flash's intro rate (through
 # 2026-12-31; doubles from 2027-01-01), so update them when the model or rate

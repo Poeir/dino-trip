@@ -160,6 +160,64 @@ input, textarea, select, button { font-family: inherit; }
 @keyframes dc-typing-dot { 0%, 60%, 100% { transform: translateY(0); opacity: 0.4; } 30% { transform: translateY(-4px); opacity: 1; } }
 @keyframes dc-gradient-run { 0% { background-position: 0% 50%; } 100% { background-position: 300% 50%; } }
 @keyframes dc-ai-glow { 0%, 100% { opacity: 0.6; transform: scale(1); } 50% { opacity: 1; transform: scale(1.12); } }
+@keyframes dc-shimmer { 0% { background-position: 100% 50%; } 100% { background-position: -100% 50%; } }
+
+/* Chat "thinking" state (ChatWidget): the current step's icon (AI / database /
+   Google) inside a spinning gradient ring, popping in when the step changes,
+   and the step text with a light sweeping across it -- same palette as
+   .dc-ai-summary. */
+.dc-thinking-avatar {
+  position: relative;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.dc-thinking-avatar::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, #1B5E20, #66BB6A, #FBC02D, #29B6F6, #1B5E20);
+  animation: dc-spin 1.4s linear infinite;
+}
+.dc-thinking-avatar::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(102,187,106,0.35), rgba(41,182,246,0) 70%);
+  animation: dc-ai-glow 1.8s ease-in-out infinite;
+  z-index: -1;
+}
+.dc-thinking-avatar__icon {
+  position: relative;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: dc-icon-pop 0.35s cubic-bezier(.34,1.56,.64,1) both;
+}
+@keyframes dc-icon-pop { 0% { opacity: 0; transform: scale(0.4) rotate(-30deg); } 100% { opacity: 1; transform: scale(1) rotate(0); } }
+.dc-thinking-text {
+  font-size: 12.5px;
+  font-weight: 600;
+  background: linear-gradient(90deg, #2E7D32 0%, #2E7D32 35%, #A5D6A7 50%, #29B6F6 55%, #2E7D32 70%, #2E7D32 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: dc-shimmer 1.6s linear infinite, dc-fade 0.25s ease both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dc-thinking-avatar::before, .dc-thinking-avatar::after, .dc-thinking-avatar__icon, .dc-thinking-text { animation: none; }
+  .dc-thinking-text { color: #2E7D32; background: none; }
+}
 
 .dc-ai-summary {
   position: relative;

@@ -79,8 +79,14 @@ SYSTEM_PROMPT = (
     "Kaen province (ขอนแก่น), Thailand -- if a snippet mentions any other "
     "province, city, or country, or any award/certification you cannot "
     "verify is about this exact place, discard that snippet's claims "
-    "completely rather than include them. When the input DOES contain "
-    "concrete, verifiable specifics (a height/size in meters, opening hours, "
+    "completely rather than include them. Never write opening hours, days "
+    "closed, or prices/price ranges, even when the input has them: the place "
+    "has its own hours and price fields, kept current by the Google sync, so "
+    "a copy in the description goes stale and contradicts them (seen live: "
+    "the chatbot quoted two different opening times for one cafe). Never "
+    "mention another province, or a road code of one (e.g. 'ลย.'). When the "
+    "input DOES contain "
+    "concrete, verifiable specifics (a height/size in meters, "
     "walking distance, an alternate name, a notable feature) prefer stating "
     "them plainly over generic adjectives like 'ร่มรื่น'/'สวยงาม' alone -- "
     "confirmed in testing that a vague summary is a common failure mode even "
@@ -250,8 +256,9 @@ def build_prompt(place: Dict, search_results: List[Dict]) -> str:
 {search_text}
 
 เขียนคำอธิบายสถานที่นี้เป็นภาษาไทย ยาวไม่เกิน 8-10 บรรทัด อ่านเป็นธรรมชาติเหมือนไกด์ท้องถิ่นแนะนำ
-ให้ความยาวพอเหมาะที่จะใส่รายละเอียด/ข้อเท็จจริงที่เจาะจงและมีประโยชน์จริง (ตัวเลข ความสูง เวลาเปิด-ปิด
+ให้ความยาวพอเหมาะที่จะใส่รายละเอียด/ข้อเท็จจริงที่เจาะจงและมีประโยชน์จริง (ตัวเลข ความสูง
 ระยะทาง ชื่อเรียกอื่น จุดเด่น) ถ้ามีอยู่ในข้อมูลข้างต้น ไม่ใช่แค่คำคุณศัพท์กว้างๆ แต่ก็ไม่ต้องยืดเยื้อเกินจำเป็น
+ห้ามใส่เวลาเปิด-ปิด วันหยุด หรือราคา (ระบบแสดงจากข้อมูลที่อัปเดตอยู่แล้ว) และห้ามพูดถึงจังหวัดอื่น
 อิงจากข้อมูลข้างต้นเท่านั้น ห้ามเดาหรือแต่งข้อมูลที่ไม่มีในนี้
 """
 

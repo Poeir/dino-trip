@@ -80,6 +80,8 @@ tags:
     description: "[Admin] ซิงก์ข้อมูลจาก Google Places และล็อกฟิลด์ (ทุกการซิงก์คือ 1 คำขอ Places API ที่มีค่าใช้จ่าย)"
   - name: Admin Place Import
     description: "[Admin] เพิ่มสถานที่จาก Google Maps"
+  - name: Admin Place Candidates
+    description: "[Admin] สถานที่จาก Google ที่แชทบอทแนะนำ: ร้าน/ที่เที่ยวจาก Google ที่แชทบอทแสดงตอบคำถาม \"แถว X\" ที่ข้อมูลเรายังน้อย"
   - name: Admin Place Auto Sync
     description: "[Admin] ตั้งค่าและดูสถานะการซิงก์ข้อมูลจาก Google อัตโนมัติ (คุมงบด้วยเพดานคำขอต่อเดือน)"
   - name: Admin Cost Estimates
@@ -3204,6 +3206,147 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ImportBatchJob' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ---------------------------------------------------------------- Admin place candidates
+  /api/admin/place-candidates:
+    get:
+      tags: [Admin Place Candidates]
+      operationId: adminListPlaceCandidates
+      summary: "[Admin] รายการสถานที่จาก Google ที่แชทบอทแนะนำ (เรียงตามจำนวนครั้งที่แสดงในคำตอบ)"
+      description: 'แชทบอทบันทึกสถานที่จาก Google ที่แสดงในคำตอบ นับไม่เกิน 1 ครั้งต่อชั่วโมงต่อสถานที่'
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [pending, imported, dismissed], default: pending } }
+        - { name: search, in: query, schema: { type: string } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50 } }
+      responses:
+        '200':
+          description: รายการ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        googlePlaceId: { type: string }
+                        name: { type: string }
+                        address: { type: string, nullable: true }
+                        areaQuery: { type: string, nullable: true, description: พื้นที่ที่ผู้ใช้ถาม }
+                        category: { type: string, nullable: true }
+                        rating: { type: number, nullable: true }
+                        reviewCount: { type: integer, nullable: true }
+                        mapsUrl: { type: string, nullable: true }
+                        askCount: { type: integer }
+                        firstAskedAt: { type: string, format: date-time }
+                        lastAskedAt: { type: string, format: date-time }
+                        status: { type: string, enum: [pending, imported, dismissed] }
+                        placeId: { type: string, format: uuid, nullable: true }
+                        decidedAt: { type: string, format: date-time, nullable: true }
+                  total: { type: integer }
+                  page: { type: integer }
+                  pageSize: { type: integer }
+                  totalPages: { type: integer }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/admin/place-candidates/count:
+    get:
+      tags: [Admin Place Candidates]
+      operationId: adminCountPlaceCandidates
+      summary: "[Admin] จำนวนที่รอพิจารณา"
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200':
+          description: จำนวน
+          content:
+            application/json:
+              schema: { type: object, properties: { pending: { type: integer } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/admin/place-candidates/usage:
+    get:
+      tags: [Admin Place Candidates]
+      operationId: adminPlaceCandidatesUsage
+      summary: "[Admin] จำนวนครั้งที่แชทบอทค้น Google วันนี้/เดือนนี้ และค่าใช้จ่ายโดยประมาณ"
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200':
+          description: การใช้งาน
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  today: { type: integer }
+                  month: { type: integer }
+                  costPerSearchThb: { type: number }
+                  monthCostThb: { type: number }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/admin/place-candidates/{gid}/import:
+    post:
+      tags: [Admin Place Candidates]
+      operationId: adminImportPlaceCandidate
+      summary: "[Admin] นำเข้า + เขียนคำอธิบายด้วย AI + ตรวจคุณภาพ แล้วเผยแพร่ถ้าผ่าน"
+      description: '**ค่าใช้จ่าย:** 1 คำขอ Place Details + รูปสูงสุด 5 รูป + 1 การสร้างคำอธิบาย (Serper + LLM) · ไม่ผ่านเกณฑ์คุณภาพจะเก็บเป็นฉบับร่างซ่อนไว้พร้อมเหตุผล · **Rate limit:** 40 ครั้ง/ชั่วโมง/admin'
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: gid, in: path, required: true, schema: { type: string }, description: Google place id }
+      responses:
+        '200':
+          description: ผลการนำเข้า
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  placeId: { type: string, format: uuid }
+                  created: { type: boolean, description: false = มีในระบบอยู่แล้ว (แค่เชื่อมโยง) }
+                  description: { type: string, nullable: true, enum: [updated, skipped, failed, null] }
+                  problems: { type: array, items: { type: string }, description: เหตุผลที่ไม่ผ่านเกณฑ์คุณภาพ }
+                  published: { type: boolean }
+                  reindex: { type: string, enum: [started, busy, failed, skipped] }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: นำเข้าไปแล้ว }
+        '503': { description: ยังไม่ได้ตั้งค่า GOOGLE_PLACES_API_KEY }
+  /api/admin/place-candidates/{gid}/dismiss:
+    post:
+      tags: [Admin Place Candidates]
+      operationId: adminDismissPlaceCandidate
+      summary: "[Admin] ไม่สนใจสถานที่นี้ (ไม่แสดงในคิวอีก)"
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: gid, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: สำเร็จ }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/admin/place-candidates/{gid}/restore:
+    post:
+      tags: [Admin Place Candidates]
+      operationId: adminRestorePlaceCandidate
+      summary: "[Admin] นำรายการที่ไม่สนใจกลับเข้าคิว"
+      x-auth: admin
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: gid, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: สำเร็จ }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }

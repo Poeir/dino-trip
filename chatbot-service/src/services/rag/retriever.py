@@ -10,10 +10,11 @@ from src.core.config import EMBEDDING_QUERY_PREFIX, SUPABASE_URL, SUPABASE_SERVI
 from src.core.db import supabase
 from src.services.rag.embedder import encode_lock, get_model
 from src.services.rag.area import (
-    area_candidates, is_specific, rank_in_area, resolve_area, split_area_query, split_bare_area_query,
-    wanted_categories,
+    area_candidates, google_area_name, is_specific, rank_in_area, resolve_area, split_area_query,
+    split_bare_area_query, wanted_categories,
 )
 from src.services.rag.synonyms import alias_variants, expand_query, intent_amenities, intent_categories, strip_filler
+from src.services.rag import google_fallback
 from src.services.rag.hours import is_open_at, requested_time, strip_time_words
 from src.core.clock import now_bangkok
 
@@ -133,6 +134,29 @@ def rpc_many(calls: list[tuple[str, dict]]) -> list[list]:
 # here, so callers see one row shape either way.
 _HEAVY_PLACE_COLUMNS = ("raw_data", "embedding", "reviews", "images")
 _ranked_search_available = True
+
+
+def _top_up_from_google(found: list[dict], what: str, area: dict | None, where: str, limit: int, directory: list[dict], on_status=None) -> list[dict]:
+    """`found` with Google places added when fewer than `limit` of them are in
+    the area proper (area_tier 0): ours in the area first, then Google's, then
+    ours from the wider ring. A landmark area is left alone -- Google's
+    addresses don't name landmarks, so "is it in the area" can't be checked."""
+    if not google_fallback.enabled() or (area and area["kind"] == "landmark"):
+        return found
+    name = area["name"] if area else google_area_name(where)
+    if not name:
+        return found
+    inside = [p for p in found if p.get("area_tier", 0) == 0]
+    if len(inside) >= limit:
+        return found
+    known = {(p.get("name") or "").strip().lower() for p in directory or []}
+    if on_status:
+        on_status(google_fallback.STATUS_TEXT)
+    extra = google_fallback.top_up(what, name, limit - len(inside), known)
+    if not extra:
+        return found
+    outside = [p for p in found if p.get("area_tier", 0) != 0]
+    return (inside + extra + outside)[:limit]
 
 
 def _is_missing_function(err: Exception) -> bool:
@@ -270,7 +294,7 @@ class PlaceRetriever:
         _category_cache[_DIRECTORY_KEY] = (now, rows)
         return rows
 
-    def search_chat_places(self, query: str, limit: int = 3):
+    def search_chat_places(self, query: str, limit: int = 3, on_status=None):
         """The chatbot's place search: search_and_expand, plus two things a
         name/tag/embedding match can't do (the trip planner, which searches
         by interest tags, keeps calling search_and_expand directly):
@@ -287,7 +311,7 @@ class PlaceRetriever:
         try:
             directory = None
             area = None
-            split = split_area_query(query)
+            split = marked = split_area_query(query)
             if split:
                 directory = self._directory()
                 area = resolve_area(split[1], directory)
@@ -320,7 +344,18 @@ class PlaceRetriever:
                 ranked = None
                 if is_specific(what):
                     ranked = [p["id"] for p in self.search_and_expand(query, limit=_AREA_SEARCH_POOL)]
-                return _with_open_note(rank_in_area(candidates, what, ranked, limit), asked)
+                found = _with_open_note(rank_in_area(candidates, what, ranked, limit), asked)
+                # Google can't vouch for an amenity or an asked-for time, so only plain asks.
+                if needs or asked:
+                    return found
+                return _top_up_from_google(found, what, area, split[1], limit, directory, on_status)
+
+            # "แถว X" where X is in none of our places (a whole อำเภอ we have no
+            # data for): Google's places in X beat unrelated ones from the plain search.
+            if marked and not (needs or asked):
+                from_google = _top_up_from_google([], marked[0], None, marked[1], limit, directory, on_status)
+                if from_google:
+                    return from_google
 
             if needs or asked:
                 cats = wanted_categories(query)

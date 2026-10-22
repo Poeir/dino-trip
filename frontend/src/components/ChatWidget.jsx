@@ -1,9 +1,36 @@
-import { CalendarDays, MapPin, Send, X } from 'lucide-react'
+import { CalendarDays, Database, MapPin, Phone, Search, Send, Sparkles, X } from 'lucide-react'
 import { StarGlyph } from './Icons.jsx'
 import { Fragment, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useApp } from '../context/AppContext.jsx'
 import AiNotice from './AiNotice.jsx'
+
+// Google's four-colour "G", for the "searching Google" step.
+function GoogleG({ size = 14 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 48 48" aria-hidden="true">
+      <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+      <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+      <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
+      <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+    </svg>
+  )
+}
+
+// The chat's thinking-state icon for chatbot-service's status `step`.
+function StepIcon({ step }) {
+  if (step === 'google') return <GoogleG />
+  if (step === 'database') return <Database size={14} color="#1565C0" strokeWidth={2.2} />
+  return <Sparkles size={14} color="#2E7D32" strokeWidth={2.2} />
+}
+
+// Google Search for a Google-fallback card: name + its อำเภอ + ขอนแก่น, so a
+// same-named place in another province doesn't come up first.
+function googleSearchUrl(place) {
+  const district = /อำเภอ\s*([^\s,]+)/.exec(place.address || '')?.[1]
+  const q = [place.name, district && `อำเภอ${district}`, 'ขอนแก่น'].filter(Boolean).join(' ')
+  return `https://www.google.com/search?q=${encodeURIComponent(q)}`
+}
 
 function renderInline(text, keyPrefix) {
   const parts = text.split(/(\*\*[^*]+\*\*)/g).filter((p) => p !== '')
@@ -180,7 +207,31 @@ export default function ChatWidget() {
                 )}
                 {msg.from === 'bot' && msg.places && msg.places.length > 0 && (
                   <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingLeft: 29 }}>
-                    {msg.places.map((p) => (
+                    {msg.places.map((p) => p.source === 'google' ? (
+                      // Live Google result (chatbot's fallback for thin areas): no page of
+                      // ours to open, so the card links out to Maps / the phone instead.
+                      <div key={p.id} style={{ flexShrink: 0, width: 170, background: '#FFFDF5', border: '1px dashed #E0C97A', borderRadius: 12, padding: 10 }}>
+                        <div style={{ fontWeight: 700, fontSize: 12, color: '#1f2a24', marginBottom: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</div>
+                        <div style={{ fontSize: 11, color: '#5f6a63', marginBottom: 4 }}><StarGlyph size={11} /> {p.rating ?? '-'}</div>
+                        <div style={{ fontSize: 10, color: '#8A6D1F', background: '#FFF4D6', borderRadius: 6, padding: '2px 6px', marginBottom: 6, display: 'inline-block' }}>แหล่งจาก Google</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', columnGap: 8, rowGap: 4 }}>
+                          {p.mapsUrl && (
+                            <a href={p.mapsUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11, fontWeight: 700, color: '#1B5E20', textDecoration: 'none' }}>
+                              <MapPin size={12} aria-hidden="true" /> แผนที่
+                            </a>
+                          )}
+                          {p.phone && (
+                            <a href={`tel:${p.phone.replace(/\s/g, '')}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11, fontWeight: 700, color: '#1B5E20', textDecoration: 'none' }}>
+                              <Phone size={12} aria-hidden="true" /> โทร
+                            </a>
+                          )}
+                          {/* A plain link: the user's browser runs the search, so no API cost. */}
+                          <a href={googleSearchUrl(p)} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11, fontWeight: 700, color: '#1B5E20', textDecoration: 'none' }}>
+                            <Search size={12} aria-hidden="true" /> ค้นหา
+                          </a>
+                        </div>
+                      </div>
+                    ) : (
                       <div key={p.id} onClick={() => actions.openPlace(p.id)} style={{ flexShrink: 0, width: 140, background: '#fff', border: '1px solid #E7E3D2', borderRadius: 12, padding: 10, cursor: 'pointer' }}>
                         <div style={{ fontWeight: 700, fontSize: 12, color: '#1f2a24', marginBottom: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</div>
                         <div style={{ fontSize: 11, color: '#5f6a63', marginBottom: 3 }}><StarGlyph size={11} /> {p.rating ?? '-'}</div>
@@ -214,15 +265,19 @@ export default function ChatWidget() {
               </div>
             ))}
             {state.chatTyping && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 7, alignSelf: 'flex-start' }}>
-                <span style={{ width: 22, height: 22, borderRadius: '50%', background: 'linear-gradient(135deg,#66BB6A,#2E7D32)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, padding: 3 }}>
-                  <img src="/assets/icon-chatbot.webp" alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+              // Gemini-style thinking state: logo in a spinning gradient ring and the
+              // current step with a light sweeping across it (index.css .dc-thinking-*).
+              <div style={{ display: 'flex', alignItems: 'center', gap: 9, alignSelf: 'flex-start', padding: '4px 0' }}>
+                <span className="dc-thinking-avatar" aria-hidden="true">
+                  {/* key: the new step's icon pops in when the step changes */}
+                  <span key={state.chatStatusStep} className="dc-thinking-avatar__icon">
+                    <StepIcon step={state.chatStatusStep} />
+                  </span>
                 </span>
-                <div style={{ display: 'flex', gap: 4, background: '#F1F8E9', padding: '10px 14px', borderRadius: 14 }}>
-                  {[0, 1, 2].map((i) => (
-                    <span key={i} style={{ width: 6, height: 6, borderRadius: '50%', background: '#2E7D32', animation: 'dc-typing-dot 1.1s ease-in-out infinite', animationDelay: `${i * 0.15}s` }}></span>
-                  ))}
-                </div>
+                {/* key: replays the fade-in each time the step changes */}
+                <span key={state.chatStatus} className="dc-thinking-text" role="status" aria-live="polite">
+                  {state.chatStatus || 'น้องไดโนกำลังคิด...'}
+                </span>
               </div>
             )}
           </div>

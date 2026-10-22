@@ -18,6 +18,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from src.services.chatbot import agent
 from src.services.chatbot.agent import (
     BANGKOK_TZ,
     ERROR_MESSAGE,
@@ -66,7 +67,7 @@ class FakeRetriever:
         self.kb_queries = []
         self.event_queries = []
 
-    def search_chat_places(self, query, limit=5):
+    def search_chat_places(self, query, limit=5, on_status=None):
         self.place_queries.append(query)
         return self._places
 
@@ -205,6 +206,48 @@ class TestChatTagParsing:
         assert result["reply"] == "สวัสดีครับ ไม่มีแท็กนำหน้าเลย"
         assert len(result["places"]) == 1
         assert len(result["events"]) == 1
+
+
+class TestChatStreamStatus:
+    """{"type": "status"} events tell the waiting user which step is running,
+    before the first token -- only steps that really happen."""
+
+    def _statuses(self, events):
+        return [e["text"] for e in events if e["type"] == "status"]
+
+    def test_first_question_searches_then_writes_before_any_token(self):
+        svc = make_service(stream_text=f"{MATCH_PLACES_TAG} แนะนำร้าน X ครับ")
+        events = list(svc.chat_stream("แนะนำร้านกาแฟ"))
+        assert self._statuses(events) == [agent.STATUS_SEARCHING, agent.STATUS_WRITING]
+        first_token = next(i for i, e in enumerate(events) if e["type"] == "token")
+        assert all(e["type"] == "status" for e in events[:first_token])
+        assert events[-1]["type"] == "done"
+
+    def test_follow_up_also_says_it_is_reading_the_question(self):
+        svc, _ = make_multiturn_service()
+        events = list(svc.chat_stream("เปิดกี่โมง", history=HISTORY))
+        assert self._statuses(events)[:2] == [agent.STATUS_UNDERSTANDING, agent.STATUS_SEARCHING]
+
+    def test_a_status_from_the_place_search_is_passed_on(self):
+        svc = make_service(stream_text=f"{MATCH_PLACES_TAG} แนะนำร้าน X ครับ")
+        plain = svc.retriever.search_chat_places
+
+        def with_google(query, limit=5, on_status=None):
+            on_status("กำลังค้นเพิ่มจาก Google...")
+            return plain(query, limit)
+
+        svc.retriever.search_chat_places = with_google
+        events = list(svc.chat_stream("คาเฟ่แถวพระยืน"))
+        assert "กำลังค้นเพิ่มจาก Google..." in self._statuses(events)
+        # Each step names its icon, so the chat doesn't match on the Thai text.
+        assert [e["step"] for e in events if e["type"] == "status"] == ["database", "google", "ai"]
+
+    def test_a_failing_search_still_ends_with_one_done(self):
+        svc, _ = make_multiturn_service()
+        down = lambda **kw: (_ for _ in ()).throw(RuntimeError("db down"))
+        svc.retriever.search_chat_places = svc.retriever.search_knowledge_base = svc.retriever.search_events = down
+        events = list(svc.chat_stream("แนะนำร้านกาแฟ"))
+        assert [e["type"] for e in events].count("done") == 1 and events[-1]["type"] == "done"
 
 
 class TestChatStreamTagParsing:

@@ -19,6 +19,7 @@ const TAB_COMPONENTS = {
   knowledge: lazyPage(() => import('../admin/KnowledgeTab.jsx')),
   reports: lazyPage(() => import('../admin/ReportsTab.jsx')),
   'event-requests': lazyPage(() => import('../admin/EventRequestsTab.jsx')),
+  'place-candidates': lazyPage(() => import('../admin/PlaceCandidatesTab.jsx')),
   qr: lazyPage(() => import('../admin/qr/QrTab.jsx')),
   rewards: lazyPage(() => import('../admin/rewards/RewardsTab.jsx')),
   redeem: lazyPage(() => import('../admin/RedeemTab.jsx')),

@@ -21,14 +21,16 @@ export function hasPlaceholderDescription(description, category) {
 
 // Returns 'updated' | 'skipped' | 'failed' (+ reason for the last two). Never throws:
 // a missing description must not fail the import that already succeeded.
-export async function describeImportedPlace(placeId) {
+// `replaceGoogleSummary`: also replace Google's own one-line summary (the
+// "places users asked for" import wants the fuller AI text on every place).
+export async function describeImportedPlace(placeId, { replaceGoogleSummary = false } = {}) {
   try {
     const row = await db('places')
       .select('id', 'name', 'category', 'district', 'tags', 'amenities', 'description', 'is_active')
       .where('id', placeId).first()
     if (!row) return { status: 'skipped', reason: 'ไม่พบสถานที่' }
     if (row.is_active) return { status: 'skipped', reason: 'เผยแพร่แล้ว ไม่แก้ข้อความที่แสดงอยู่' }
-    if (!hasPlaceholderDescription(row.description, row.category)) return { status: 'skipped', reason: 'มีคำอธิบายจาก Google อยู่แล้ว' }
+    if (!replaceGoogleSummary && !hasPlaceholderDescription(row.description, row.category)) return { status: 'skipped', reason: 'มีคำอธิบายจาก Google อยู่แล้ว' }
 
     const out = await forwardToChatbotService('/admin/places/describe', {
       method: 'POST',

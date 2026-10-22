@@ -15,7 +15,9 @@ const BASE_URL = import.meta.env.VITE_CHATBOT_SERVICE_URL ?? 'http://localhost:8
 // disabled forever.
 const CHAT_IDLE_TIMEOUT_MS = 60_000
 
-export async function sendChatMessage(message, { history = [], onToken } = {}) {
+// onStatus(text): the step chatbot-service is on while the user waits for the
+// first token ("กำลังค้นหาข้อมูล...", "กำลังค้นเพิ่มจาก Google...").
+export async function sendChatMessage(message, { history = [], onToken, onStatus } = {}) {
   const controller = new AbortController()
   let idleTimer
   const armIdleTimer = () => {
@@ -24,13 +26,13 @@ export async function sendChatMessage(message, { history = [], onToken } = {}) {
   }
   armIdleTimer()
   try {
-    return await readChatStream(message, history, onToken, controller.signal, armIdleTimer)
+    return await readChatStream(message, history, onToken, onStatus, controller.signal, armIdleTimer)
   } finally {
     clearTimeout(idleTimer)
   }
 }
 
-async function readChatStream(message, history, onToken, signal, armIdleTimer) {
+async function readChatStream(message, history, onToken, onStatus, signal, armIdleTimer) {
   const res = await fetch(`${BASE_URL}/chat/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -65,6 +67,8 @@ async function readChatStream(message, history, onToken, signal, armIdleTimer) {
       if (payload.type === 'token') {
         reply += payload.text
         onToken?.(payload.text)
+      } else if (payload.type === 'status') {
+        onStatus?.(payload.text, payload.step)
       } else if (payload.type === 'done') {
         reply = payload.reply
         places = payload.places

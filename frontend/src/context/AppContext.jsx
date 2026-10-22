@@ -108,6 +108,10 @@ const initialState = {
   chatOpen: false,
   chatInput: '',
   chatTyping: false,
+  // The step chatbot-service is on before the first token ("กำลังค้นหาข้อมูล...").
+  chatStatus: '',
+  // Which icon goes with it: 'ai' | 'database' | 'google'.
+  chatStatusStep: 'ai',
   // True from send until the reply's stream ends (chatTyping only covers the
   // wait for the first token) -- the send button is disabled meanwhile.
   chatBusy: false,
@@ -610,7 +614,7 @@ export function AppProvider({ children }) {
       .map((m) => ({ role: m.from === 'user' ? 'user' : 'assistant', content: m.text.slice(0, CHAT_HISTORY_MAX_CHARS) }))
     // Push the user message plus an empty bot placeholder that fills in as
     // tokens stream in -- always the last message in the array while streaming.
-    setState((s) => ({ chatMessages: [...s.chatMessages, { from: 'user', text }, { from: 'bot', text: '', places: [], events: [] }], chatInput: '', chatTyping: true, chatBusy: true }))
+    setState((s) => ({ chatMessages: [...s.chatMessages, { from: 'user', text }, { from: 'bot', text: '', places: [], events: [] }], chatInput: '', chatTyping: true, chatBusy: true, chatStatus: '', chatStatusStep: 'ai' }))
     const appendToLastBotMessage = (patch) => setState((s) => {
       const msgs = s.chatMessages.slice()
       msgs[msgs.length - 1] = { ...msgs[msgs.length - 1], ...patch(msgs[msgs.length - 1]) }
@@ -620,9 +624,10 @@ export function AppProvider({ children }) {
       const { places, events } = await sendChatMessage(text, {
         history,
         onToken: (token) => {
-          setState({ chatTyping: false })
+          setState({ chatTyping: false, chatStatus: '' })
           appendToLastBotMessage((last) => ({ text: last.text + token }))
         },
+        onStatus: (status, step) => setState({ chatStatus: status, chatStatusStep: step || 'ai' }),
       })
       appendToLastBotMessage(() => ({ places, events }))
     } catch (err) {
@@ -633,7 +638,7 @@ export function AppProvider({ children }) {
       appendToLastBotMessage(() => ({ text, local: true, places: [], events: [] }))
     } finally {
       chatBusyRef.current = false
-      setState({ chatTyping: false, chatBusy: false })
+      setState({ chatTyping: false, chatBusy: false, chatStatus: '' })
     }
   }
 

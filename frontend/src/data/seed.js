@@ -54,6 +54,7 @@ export const adminTabs = [
   { key: 'knowledge', label: 'ฐานความรู้แชทบอท', icon: 'knowledge', group: 'เนื้อหา' },
   { key: 'reports', label: 'รายงานข้อมูล', icon: 'reports', group: 'คิวตรวจสอบ' },
   { key: 'event-requests', label: 'คำขอกิจกรรม', icon: 'event-requests', group: 'คิวตรวจสอบ' },
+  { key: 'place-candidates', label: 'สถานที่จาก Google', icon: 'place-candidates', group: 'คิวตรวจสอบ' },
   { key: 'qr', label: 'QR Code', icon: 'qr', group: 'พอยท์และรางวัล' },
   { key: 'rewards', label: 'ของรางวัล', icon: 'rewards', group: 'พอยท์และรางวัล' },
   { key: 'redeem', label: 'แลกที่เคาน์เตอร์', icon: 'redeem', group: 'พอยท์และรางวัล' },

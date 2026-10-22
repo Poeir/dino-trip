@@ -392,6 +392,56 @@ test('admin: place-sync / place-import guards run before any Google call', async
   assert.equal(res.json.needsConfirm, true)
 })
 
+// ------------------------------------------------------------------ places users asked for (chat's Google fallback)
+test('place-candidates: admin only', async () => {
+  const res = await call('GET', '/api/admin/place-candidates')
+  assert.equal(res.status, 403)
+})
+
+test('place-candidates: list is mapped and ordered by how often it was asked', async () => {
+  as(admin)
+  h.fakeDb.on(/^select \* from "place_candidates"/, [{
+    google_place_id: 'g1', name: 'บ้านสวนกลางนา', address: 'อำเภอ พระยืน ขอนแก่น', area_query: 'พระยืน',
+    category: 'ร้านอาหาร', rating: '4.7', review_count: 24, maps_url: 'https://maps.google.com/?cid=1',
+    ask_count: 5, status: 'pending',
+  }])
+  const res = await call('GET', '/api/admin/place-candidates?status=pending')
+  assert.equal(res.status, 200)
+  assert.deepEqual(
+    { name: res.json.data[0].name, rating: res.json.data[0].rating, askCount: res.json.data[0].askCount, areaQuery: res.json.data[0].areaQuery },
+    { name: 'บ้านสวนกลางนา', rating: 4.7, askCount: 5, areaQuery: 'พระยืน' },
+  )
+  const list = h.fakeDb.queries.find((q) => /^select \* from "place_candidates"/.test(q.sql))
+  assert.match(list.sql, /order by "ask_count" desc/)
+})
+
+test('place-candidates: import guards run before any Google call', async () => {
+  as(admin)
+  let res = await call('POST', '/api/admin/place-candidates/nope/import')
+  assert.equal(res.status, 404)
+
+  h.fakeDb.on(/from "place_candidates"/, [{ google_place_id: 'g1', status: 'imported', ask_count: 2 }])
+  res = await call('POST', '/api/admin/place-candidates/g1/import')
+  assert.equal(res.status, 409)
+
+  // No API key in tests: a real import stops at 503 instead of reaching Google,
+  // and the candidate is not marked imported.
+  as(admin)
+  h.fakeDb.on(/from "place_candidates"/, [{ google_place_id: 'g1', status: 'pending', ask_count: 2 }])
+  res = await call('POST', '/api/admin/place-candidates/g1/import')
+  assert.equal(res.status, 503)
+  assert.ok(!h.fakeDb.queries.some((q) => /^update "place_candidates"/.test(q.sql)))
+})
+
+test('place-candidates: dismiss only a pending one', async () => {
+  as(admin)
+  let res = await call('POST', '/api/admin/place-candidates/g1/dismiss')
+  assert.equal(res.status, 404)
+  h.fakeDb.on(/^update "place_candidates"/, { command: 'UPDATE', rows: [], rowCount: 1 })
+  res = await call('POST', '/api/admin/place-candidates/g1/dismiss')
+  assert.equal(res.status, 200)
+})
+
 test('admin: cost estimates need no DB and give per-click baht figures', async () => {
   as(admin)
   const res = await call('GET', '/api/admin/cost-estimates')

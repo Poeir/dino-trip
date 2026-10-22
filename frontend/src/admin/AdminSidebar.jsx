@@ -1,4 +1,4 @@
-import { BookOpen, CalendarDays, ClipboardList, Flag, Gift, Globe, Inbox, LayoutDashboard, LogOut, MapPin, QrCode, Route, Ticket, Users, X } from 'lucide-react'
+import { BookOpen, CalendarDays, ClipboardList, Flag, Gift, Globe, Inbox, LayoutDashboard, LogOut, MapPin, MapPinPlus, QrCode, Route, Ticket, Users, X } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useApp } from '../context/AppContext.jsx'
@@ -12,6 +12,7 @@ const ICONS = {
   knowledge: BookOpen,
   reports: Flag,
   'event-requests': Inbox,
+  'place-candidates': MapPinPlus,
   qr: QrCode,
   rewards: Gift,
   redeem: Ticket,

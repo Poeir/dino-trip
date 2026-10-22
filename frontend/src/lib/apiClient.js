@@ -363,3 +363,10 @@ export const fetchPlaceImportBatch = (id) => apiGet(`/api/admin/place-import/bat
 // Publishes hidden drafts in bulk and kicks a reindex -> { published, alreadyPublishedOrMissing, reindex }.
 export const publishPlacesBatch =(placeIds) => apiPost('/api/admin/place-import/publish', { placeIds })
 export const cancelPlaceImportBatch =(id) => apiPost(`/api/admin/place-import/batch/${id}/cancel`, {})
+
+// Places users asked for (Google places the chatbot showed for thin "แถว X" answers).
+export const fetchPlaceCandidates = (params) => apiGet('/api/admin/place-candidates', params)
+export const fetchPlaceCandidateUsage = () => apiGet('/api/admin/place-candidates/usage')
+export const importPlaceCandidate = (gid) => apiPost(`/api/admin/place-candidates/${encodeURIComponent(gid)}/import`, {})
+export const dismissPlaceCandidate = (gid) => apiPost(`/api/admin/place-candidates/${encodeURIComponent(gid)}/dismiss`, {})
+export const restorePlaceCandidate = (gid) => apiPost(`/api/admin/place-candidates/${encodeURIComponent(gid)}/restore`, {})
