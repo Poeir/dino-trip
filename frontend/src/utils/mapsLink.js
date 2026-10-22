@@ -7,14 +7,20 @@
 // otherwise "name address" is searched as text.
 const MAX_STOPS_PER_LINK = 11
 
-const stopText = (place) => [place.name, place.address].filter(Boolean).join(' ')
+// Start/hotel/trip-end stops have no places row and their name may not be
+// searchable ("ตำแหน่งปัจจุบันของฉัน"), so they go by coordinates.
+const stopText = (place) => place.coords || [place.name, place.address].filter(Boolean).join(' ')
 
 // `items` are a day's itinerary items; returns [] when fewer than 2 real stops.
 // `googleIds` maps our place id -> Google place id for places the plan data lacks it for.
 export function dayDirectionsUrls(items, googleIds = {}) {
   const stops = items
     .filter((it) => it.status !== 'Free Time' && it.place && (it.place.googlePlaceId || it.place.name))
-    .map((it) => ({ ...it.place, googlePlaceId: it.place.googlePlaceId || googleIds[it.place.id] || null }))
+    .map((it) => {
+      const loc = it.place.location
+      const coords = it.kind && it.kind !== 'place' && loc ? `${loc.lat},${loc.lng}` : null
+      return { ...it.place, coords, googlePlaceId: coords ? null : (it.place.googlePlaceId || googleIds[it.place.id] || null) }
+    })
   if (stops.length < 2) return []
 
   const urls = []

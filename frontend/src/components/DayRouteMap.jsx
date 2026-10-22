@@ -97,15 +97,19 @@ export default function DayRouteMap({ items, onSelectPlace }) {
           }
         }
 
-        points.forEach((p, i) => {
-          const isHotel = p.status === 'End of Day (Return to Hotel)'
+        // Only real stops are numbered, so the departure point doesn't shift them.
+        let stopNo = 0
+        points.forEach((p) => {
+          // The day's departure point and its return share the hotel marker.
+          const isHotel = p.status === 'End of Day (Return to Hotel)' || p.kind === 'start'
           // The last day's end point (airport, bus terminal, district...) instead of the hotel.
           const isTripEnd = p.status === 'End of Trip'
+          if (!isHotel && !isTripEnd) stopNo += 1
           const marker = new maps.Marker({
             position: p.place.location,
             map,
-            title: p.place.name,
-            label: { text: isHotel ? '🏠' : isTripEnd ? '🏁' : String(i + 1), color: '#fff', fontWeight: '800', fontSize: '12px' },
+            title: p.kind === 'start' ? `ออกเดินทางจาก ${p.place.name}` : p.place.name,
+            label: { text: isHotel ? '🏠' : isTripEnd ? '🏁' : String(stopNo), color: '#fff', fontWeight: '800', fontSize: '12px' },
             icon: {
               path: maps.SymbolPath.CIRCLE,
               scale: 14,
@@ -115,7 +119,7 @@ export default function DayRouteMap({ items, onSelectPlace }) {
               strokeWeight: 2.5,
             },
           })
-          if (onSelectPlace) marker.addListener('click', () => onSelectPlace(p.placeId))
+          if (onSelectPlace && p.kind !== 'start') marker.addListener('click', () => onSelectPlace(p.placeId))
         })
       })
       .catch(() => { if (!cancelled) setLoadError(true) })

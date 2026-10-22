@@ -192,14 +192,16 @@ export default function TripResultPage() {
           {plan.days.map((day) => (
             <TripDayCard key={day.dayNum} day={day} googleIds={googleIds} onSelectPlace={setSelectedPlaceId} />
           ))}
-        </div>
 
-        <div style={{ marginTop: 28, padding: '18px 20px', borderRadius: 16, background: '#E8F5E9', border: '1px solid #C8E6C9', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', justifyContent: 'space-between' }}>
-          <div style={{ flex: '1 1 260px' }}>
-            <div style={{ fontWeight: 800, fontSize: 15, color: '#1B5E20' }}>แผนเที่ยวนี้เป็นอย่างไรบ้าง?</div>
-            <div style={{ fontSize: 13, color: '#3d4a41', marginTop: 3 }}>ช่วยทำแบบประเมินความพึงพอใจสั้น ๆ ใช้เวลาประมาณ 3 นาที เพื่อนำไปพัฒนาระบบ</div>
+          {/* Inside the right column: as a third grid child it wrapped under the
+              sticky summary, which then scrolled over it. */}
+          <div style={{ marginTop: 28, padding: '18px 20px', borderRadius: 16, background: '#E8F5E9', border: '1px solid #C8E6C9', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', justifyContent: 'space-between' }}>
+            <div style={{ flex: '1 1 260px' }}>
+              <div style={{ fontWeight: 800, fontSize: 15, color: '#1B5E20' }}>แผนเที่ยวนี้เป็นอย่างไรบ้าง?</div>
+              <div style={{ fontSize: 13, color: '#3d4a41', marginTop: 3 }}>ช่วยทำแบบประเมินความพึงพอใจสั้น ๆ ใช้เวลาประมาณ 3 นาที เพื่อนำไปพัฒนาระบบ</div>
+            </div>
+            <Link to="/survey" style={{ background: '#2E7D32', color: '#fff', fontWeight: 700, fontSize: 14, padding: '10px 20px', borderRadius: 12, textDecoration: 'none', whiteSpace: 'nowrap' }}>ทำแบบประเมิน</Link>
           </div>
-          <Link to="/survey" style={{ background: '#2E7D32', color: '#fff', fontWeight: 700, fontSize: 14, padding: '10px 20px', borderRadius: 12, textDecoration: 'none', whiteSpace: 'nowrap' }}>ทำแบบประเมิน</Link>
         </div>
 
       </div>

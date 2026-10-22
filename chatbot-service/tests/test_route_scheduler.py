@@ -87,7 +87,11 @@ class TestPaceStopRange:
         ("packed", time(9, 0), time(18, 0), (7, 8)),
         ("relaxed", time(9, 0), time(14, 0), (2, 2)),
         ("packed", time(9, 0), time(14, 0), (3, 4)),
-        ("relaxed", time(9, 0), time(22, 0), (5, 6)),
+        # PACE_MAX_STOPS: a long window doesn't turn relaxed into packed.
+        ("relaxed", time(9, 0), time(22, 0), (4, 4)),
+        ("relaxed", time(7, 0), time(22, 0), (4, 4)),
+        ("standard", time(7, 0), time(22, 0), (6, 6)),
+        ("packed", time(7, 0), time(22, 0), (8, 8)),
     ])
     def test_range_scales_with_window(self, pace, start, end, expected):
         assert rs.pace_stop_range(pace, start, end) == expected
@@ -701,12 +705,24 @@ class TestMaterializeDaySchedule:
 
     def test_no_gap_filler_pool_falls_back_to_free_time_block(self):
         # Baseline (no pool given): a long wait before a "dinner"-tagged
-        # spot still gets the old placeholder block, unchanged behavior.
+        # spot after the day's first stop still gets the placeholder block.
+        sight = make_place(id="sight", name="Sight", category="สถานที่ท่องเที่ยว", lat=16.44, lng=102.84, hours_periods=None)
+        dinner = make_place(id="dinner", name="DinnerPlace", category="ร้านอาหาร", lat=16.44, lng=102.84, hours_periods=None)
+        schedule, _, _ = rs.materialize_day_schedule(
+            [sight, dinner], set(), {"dinner": "dinner"}, HOTEL, self.DAY, time(14, 0), time(21, 0), "standard",
+        )
+        assert any(s.status == "Free Time" for s in schedule)
+
+    def test_a_wait_before_the_first_stop_leaves_later_instead_of_a_free_time_block(self):
+        # Live 2026-10-22: a relaxed day opened with "☕ พักผ่อน 07:00-10:25".
         dinner = make_place(id="dinner", name="DinnerPlace", category="ร้านอาหาร", lat=16.44, lng=102.84, hours_periods=None)
         schedule, _, _ = rs.materialize_day_schedule(
             [dinner], set(), {"dinner": "dinner"}, HOTEL, self.DAY, time(14, 0), time(21, 0), "standard",
         )
-        assert any(s.status == "Free Time" for s in schedule)
+        assert not any(s.status == "Free Time" for s in schedule)
+        slot = next(s for s in schedule if s.place.id == "dinner")
+        arrival_min = int(slot.arrival_time[:2]) * 60 + int(slot.arrival_time[3:])
+        assert arrival_min >= rs.MEAL_DINNER_WINDOW[0]
 
     def test_gap_filler_pool_inserts_real_place_instead_of_free_time(self):
         # A ~3.5h wait before dinner (14:00 -> 17:30 MEAL_DINNER_WINDOW)

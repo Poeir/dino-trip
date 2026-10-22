@@ -324,6 +324,11 @@ def _fit_last_stop_visit(
 # window; relaxed keeps roughly an hour and a half of slack (filled by
 # longer stays, see _stretch_stays); packed is tighter than standard.
 PACE_MINUTES_PER_STOP = {"relaxed": 120, "standard": 85, "packed": 65}
+# Most attractions a day gets at each pace, however long the window. Without
+# it a 07:00-22:00 relaxed day got 6-7 (more than a packed 09:00-18:00 day),
+# while the form promises relaxed means few places. A long window's spare
+# time is left as rest instead of more stops.
+PACE_MAX_STOPS = {"relaxed": 4, "standard": 6, "packed": 8}
 # Time reserved for one restaurant meal when the day's window covers it --
 # restaurants are excluded from the attraction count, so their time is
 # subtracted from the day instead.
@@ -366,7 +371,8 @@ def pace_stop_range(pace: str, start_time_of_day: time, end_time_of_day: time, b
     raw = usable / PACE_MINUTES_PER_STOP.get(pace, PACE_MINUTES_PER_STOP["standard"])
     lo = max(1, math.floor(raw))
     hi = max(lo, math.ceil(raw))
-    return min(lo, MAX_STOPS_PER_DAY), min(hi, MAX_STOPS_PER_DAY)
+    cap = min(MAX_STOPS_PER_DAY, PACE_MAX_STOPS.get(pace, MAX_STOPS_PER_DAY))
+    return min(lo, cap), min(hi, cap)
 
 
 def is_evening_place(loc: Place) -> bool:
@@ -1938,7 +1944,15 @@ def materialize_day_schedule(
             if place_dropped:
                 continue
 
-            if gap_minutes > 45:
+            if gap_minutes > 45 and not meta:
+                # Nothing done yet today: leave the accommodation later
+                # instead of opening the day with a long rest block (live
+                # 2026-10-22: a relaxed day began "☕ พักผ่อน 07:00-10:25").
+                current_dt += timedelta(minutes=gap_minutes)
+                arrival_at_door = current_dt + timedelta(minutes=travel_min)
+                open_info = check_is_open(place, arrival_at_door)
+                wait_min = open_info["wait_min"] if open_info["status"] == "Waiting" else 0
+            elif gap_minutes > 45:
                 # Nothing in the pool fit (or there was no pool) -- fall
                 # back to a placeholder block rather than leave the gap
                 # entirely unaccounted for.

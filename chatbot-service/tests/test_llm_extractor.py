@@ -1216,6 +1216,21 @@ class TestOneKindPerDayWithLlmPicks:
         meals = {s.meal_role: s.place.id for s in itinerary[0].schedule if s.meal_role}
         assert meals == {"lunch": "isan_l", "dinner": "noodle"}
 
+    def test_with_two_wanted_kinds_a_repeat_beats_a_kind_nobody_asked_for(self):
+        # Live 2026-10-22: "ก๋วยเตี๋ยว + อาหารอีสาน", no noodle shop for dinner,
+        # and the LLM's Isan dinner was swapped for a yakiniku place.
+        rest = TestOneKindPerDay.rest
+        sight = make_place(id="a0", name="Sight", category="สถานที่ท่องเที่ยว", lat=16.441, lng=102.841, hours_periods=None)
+        isan_lunch, isan_dinner, yakiniku = rest("isan_l", "อาหารอีสาน"), rest("isan_d", "อาหารอีสาน"), rest("yaki", "ญี่ปุ่น/เกาหลี")
+        planner = LLMTripPlanner(candidates=[sight, isan_lunch, isan_dinner], start_point=HOTEL_PLACE, meal_pool=[yakiniku])
+        user_input = TripInput(trip_duration_days=1, start_date="2026-08-03", accommodation_name="Hotel",
+                               start_time="09:00", end_time="20:00", food_preferences=["ก๋วยเตี๋ยว", "อาหารอีสาน"])
+        itinerary, _ = planner._build_itinerary_from_llm_days({"itinerary": [{"day": 1, "places": [
+            {"place_id": "a0"}, {"place_id": "isan_l", "meal_role": "lunch"}, {"place_id": "isan_d", "meal_role": "dinner"},
+        ]}]}, user_input)
+        meals = {s.meal_role: s.place.id for s in itinerary[0].schedule if s.meal_role}
+        assert meals == {"lunch": "isan_l", "dinner": "isan_d"}
+
 
 def test_a_breakfast_shop_is_not_a_dinner_when_another_restaurant_can_be():
     rest = TestOneKindPerDay.rest

@@ -109,25 +109,73 @@ export function suggestStayArea(days) {
   }
 }
 
+// Every day starts at the accommodation, but the planner's schedule only has
+// the closing "back to the hotel" slot, not the departure. These build that
+// missing first stop for display only (it is never saved).
+export const DAY_START_STATUS = 'Start of Day'
+
+// Where the trip starts according to its conditions (trip form or saved
+// input): the start point the user picked, else the city centre the planner
+// uses (chatbot-service orchestrator.DEFAULT_HOTEL_LOCATION). A name without
+// coordinates was matched to a place server-side, so its location is unknown
+// here (the day's hotel slot normally supplies it).
+export function tripStartFallback({ name, lat, lng } = {}) {
+  if (lat != null && lng != null) return { name: name || 'จุดเริ่มต้น', location: { lat, lng } }
+  if (name) return { name, location: null }
+  return { name: 'ใจกลางเมืองขอนแก่น', location: CITY_CENTRE }
+}
+
+const minutesToHhmm = (mins) => {
+  const m = ((mins % 1440) + 1440) % 1440
+  return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
+}
+
+function dayStartItem(day, hotelSlot, fallback) {
+  const first = day.items[0]
+  if (!first) return null
+  const start = hotelSlot
+    ? { name: hotelSlot.place.name, location: hotelSlot.place.location || fallback?.location || null }
+    : fallback
+  if (!start) return null
+  // The first stop's travel leg is measured from the start point.
+  const arrival = hhmmToMinutes(first.time)
+  const time = arrival == null ? first.time : minutesToHhmm(arrival - (first.travelTimeMin || 0))
+  return {
+    placeId: `day_start_${day.dayNum}`, kind: 'start', status: DAY_START_STATUS,
+    time, departureTime: time, distanceFromPrev: null,
+    place: { id: `day_start_${day.dayNum}`, name: start.name, category: 'ที่พัก', rating: '-', address: '', img: null, location: start.location },
+  }
+}
+
 // Adds the display labels each item card shows: its time range and how long
-// it lasts (or where the day ends, for the closing slot).
-export function decorateTripDays(days) {
-  return days.map((d) => ({
-    ...d,
-    items: d.items.map((it) => {
-      const place = it.place || { name: '-', rating: '-', address: '-' }
-      const isHotelReturn = it.status === HOTEL_RETURN_STATUS
-      const isTripEnd = it.status === TRIP_END_STATUS
-      const durationMin = (!isHotelReturn && !isTripEnd && it.time && it.departureTime)
-        ? (hhmmToMinutes(it.departureTime) ?? 0) - (hhmmToMinutes(it.time) ?? 0)
-        : null
-      return {
-        ...it, place,
-        timeRangeLabel: (it.departureTime && it.departureTime !== it.time) ? `${it.time} - ${it.departureTime}` : it.time,
-        durationLabel: isHotelReturn ? 'กลับถึงจุดเริ่มต้น'
-          : isTripEnd ? `ถึง${place.name} (จบทริป)`
-          : (formatDurationMinutes(durationMin) ? `อยู่ประมาณ ${formatDurationMinutes(durationMin)}` : null),
-      }
-    }),
-  }))
+// it lasts (or where the day ends, for the closing slot), plus each day's
+// departure from the start point. `startFallback` (see tripStartFallback) is
+// used when the plan has no hotel slot to copy it from (a one-day trip that
+// ends at an airport/bus terminal/district).
+export function decorateTripDays(days, startFallback = null) {
+  const anyHotelSlot = days.flatMap((d) => d.items).find((it) => it.status === HOTEL_RETURN_STATUS)
+  return days.map((d) => {
+    const hotelSlot = d.items.find((it) => it.status === HOTEL_RETURN_STATUS) || anyHotelSlot
+    const startItem = dayStartItem(d, hotelSlot, startFallback)
+    return {
+      ...d,
+      items: (startItem ? [startItem, ...d.items] : d.items).map((it) => {
+        const place = it.place || { name: '-', rating: '-', address: '-' }
+        const isHotelReturn = it.status === HOTEL_RETURN_STATUS
+        const isTripEnd = it.status === TRIP_END_STATUS
+        const isDayStart = it.status === DAY_START_STATUS
+        const durationMin = (!isHotelReturn && !isTripEnd && !isDayStart && it.time && it.departureTime)
+          ? (hhmmToMinutes(it.departureTime) ?? 0) - (hhmmToMinutes(it.time) ?? 0)
+          : null
+        return {
+          ...it, place,
+          timeRangeLabel: (it.departureTime && it.departureTime !== it.time) ? `${it.time} - ${it.departureTime}` : it.time,
+          durationLabel: isDayStart ? 'ออกเดินทาง'
+            : isHotelReturn ? 'กลับถึงจุดเริ่มต้น'
+            : isTripEnd ? `ถึง${place.name} (จบทริป)`
+            : (formatDurationMinutes(durationMin) ? `อยู่ประมาณ ${formatDurationMinutes(durationMin)}` : null),
+        }
+      }),
+    }
+  })
 }

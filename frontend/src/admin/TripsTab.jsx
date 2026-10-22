@@ -13,7 +13,7 @@ import { usePagedList } from '../lib/usePagedList.js'
 import { fmtDate, fmtDateTime } from '../lib/format.js'
 import { tripEndOptions } from '../data/seed.js'
 import TripDayCard from '../components/TripDayCard.jsx'
-import { tripDetailToPlan, decorateTripDays } from '../lib/tripPlanView.js'
+import { tripDetailToPlan, decorateTripDays, tripStartFallback } from '../lib/tripPlanView.js'
 import AdminPageHeader from './ui/AdminPageHeader.jsx'
 import Badge from './ui/Badge.jsx'
 import Button from './ui/Button.jsx'
@@ -122,7 +122,7 @@ function TripDetail({ trip }) {
           only an admin needs per stop: a place that's gone or closed since,
           and the tourist's like/dislike. */}
       <div style={{ marginTop: 18 }}>
-        {decorateTripDays(tripDetailToPlan(trip).days).map((day) => (
+        {decorateTripDays(tripDetailToPlan(trip).days, tripStartFallback({ name: input.accommodation_name, lat: input.accommodation_lat, lng: input.accommodation_lng })).map((day) => (
           <TripDayCard key={day.dayNum} day={day} onSelectPlace={openPlace} itemExtras={(item) => {
             const raw = rawItems.get(item.itemId)
             const issue = raw && placeIssue(raw)

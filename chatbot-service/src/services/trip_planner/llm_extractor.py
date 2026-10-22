@@ -840,9 +840,18 @@ class LLMTripPlanner:
                 # accepted when no other restaurant can serve the meal.
                 # Breakfast shops are avoided at lunch/dinner the same way
                 # (live: one open late was the LLM's dinner pick).
+                # With two or more wanted kinds, a wanted kind already eaten
+                # today still beats a kind nobody asked for (live 2026-10-22:
+                # "ก๋วยเตี๋ยว + อาหารอีสาน", no noodle shop open for dinner,
+                # so the LLM's Isan dinner was swapped for a yakiniku place).
+                # With one wanted kind the second meal stays a different kind
+                # (variety, see TestOneKindPerDay).
                 kinds = [k for k in kinds_now() if k not in day_kinds] if food_kinds else []
+                repeat = kinds_now() if len(food_kinds) > 1 else []
                 avoid = day_kinds | {"อาหารเช้า"}
                 if kinds and (take_llm_pick(meal, kinds) or bring_in(meal, kinds)):
+                    meal_no += 1
+                elif repeat and (take_llm_pick(meal, repeat) or bring_in(meal, repeat)):
                     meal_no += 1
                 elif not (take_llm_pick(meal, avoid=avoid) or bring_in(meal, avoid=avoid)
                           or take_llm_pick(meal) or bring_in(meal)):

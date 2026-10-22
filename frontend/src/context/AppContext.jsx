@@ -20,7 +20,7 @@ import {
 import { sendChatMessage, requestTripPlan } from '../lib/chatbotService.js'
 import { getCurrentPosition, LOCATION_ERROR_MESSAGE, GENERIC_LOCATION_ERROR } from '../lib/geolocation.js'
 import { isWelcomeSnoozed, snoozeWelcome } from '../lib/welcomeSnooze.js'
-import { HOTEL_RETURN_STATUS, TRIP_END_STATUS, tripDetailToPlan, decorateTripDays, suggestStayArea } from '../lib/tripPlanView.js'
+import { HOTEL_RETURN_STATUS, TRIP_END_STATUS, tripDetailToPlan, decorateTripDays, suggestStayArea, tripStartFallback } from '../lib/tripPlanView.js'
 
 const AppContext = createContext(null)
 
@@ -1346,7 +1346,7 @@ export function AppProvider({ children }) {
   }
 
   const tripPlan = s.tripPlan
-    ? { ...s.tripPlan, days: decorateTripDays(s.tripPlan.days) }
+    ? { ...s.tripPlan, days: decorateTripDays(s.tripPlan.days, tripStartFallback(s.tripForm.accommodation || {})) }
     : { days: [], totalBudget: 0, totalDistance: 0, totalPoints: 0 }
   // "Where to stay" card: only for a trip with a night in it that was planned
   // without a start point. A saved trip restores tripForm from its input, so

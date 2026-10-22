@@ -34,7 +34,10 @@ export default function TripDayCard({ day, googleIds = {}, onSelectPlace, itemEx
 
       <div style={{ position: 'relative', paddingLeft: 22 }}>
         <div style={{ position: 'absolute', left: 21, top: 8, bottom: 30, width: 2, background: 'linear-gradient(180deg,#66BB6A,#C8E6C9)', transformOrigin: 'top', animation: 'dc-grow 0.6s ease both' }}></div>
-        {day.items.map((item) => (
+        {day.items.map((item) => {
+          // The day's departure point is not a place, so it opens nothing.
+          const clickable = onSelectPlace && item.kind !== 'start'
+          return (
           <div key={item.placeId + item.time} style={{ position: 'relative', marginBottom: 14, animation: 'dc-slide-in 0.45s ease both' }}>
             {item.distanceFromPrev != null && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#626863', marginLeft: 26, marginBottom: 8 }}>
@@ -42,8 +45,8 @@ export default function TripDayCard({ day, googleIds = {}, onSelectPlace, itemEx
               </div>
             )}
             <div
-              onClick={onSelectPlace ? () => onSelectPlace(item.placeId) : undefined}
-              style={{ display: 'flex', gap: 16, alignItems: 'center', border: '1px solid #EFEBDB', borderRadius: 16, padding: 12, transition: 'transform 0.2s ease, box-shadow 0.2s ease', cursor: onSelectPlace ? 'pointer' : 'default' }}
+              onClick={clickable ? () => onSelectPlace(item.placeId) : undefined}
+              style={{ display: 'flex', gap: 16, alignItems: 'center', border: '1px solid #EFEBDB', borderRadius: 16, padding: 12, transition: 'transform 0.2s ease, box-shadow 0.2s ease', cursor: clickable ? 'pointer' : 'default' }}
             >
               <div style={{ position: 'absolute', left: -6, top: '50%', marginTop: -7, width: 14, height: 14, borderRadius: '50%', background: '#fff', border: '3px solid #2E7D32' }}></div>
               <div style={{ width: 68, flexShrink: 0, textAlign: 'center' }}>
@@ -64,7 +67,8 @@ export default function TripDayCard({ day, googleIds = {}, onSelectPlace, itemEx
               </div>
             </div>
           </div>
-        ))}
+          )
+        })}
       </div>
     </div>
   )
