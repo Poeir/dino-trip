@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from src.core.db import supabase
+from src.services.place_classify import classify_place
 from src.services.place_description import ModelChain, generate_description
 from src.services.rag import embedder
 
@@ -87,3 +88,28 @@ def describe_place(req: DescribePlaceRequest):
 
     # Fresh chain per request: a daily-limit fallback must not outlive the day.
     return generate_description(place, ModelChain())
+
+
+class ClassifyPlaceRequest(BaseModel):
+    # Built by backend/src/services/placeClassify.js from the place's Google data.
+    name: str = Field(max_length=200)
+    fixedCategory: Optional[str] = Field(default=None, max_length=100)
+    primaryType: Optional[str] = Field(default=None, max_length=100)
+    types: List[str] = Field(default_factory=list, max_length=40)
+    summary: Optional[str] = Field(default=None, max_length=2000)
+    reviews: List[str] = Field(default_factory=list, max_length=5)
+
+
+@router.post("/places/classify")
+def classify_place_route(req: ClassifyPlaceRequest):
+    if not req.name.strip():
+        raise HTTPException(status_code=400, detail="ต้องมีชื่อสถานที่")
+    place = {
+        "name": req.name.strip(), "primaryType": req.primaryType, "types": req.types,
+        "summary": req.summary, "reviews": req.reviews,
+    }
+    try:
+        return classify_place(place, req.fixedCategory)
+    except Exception as e:  # noqa: BLE001 -- quota/network/bad JSON: the import goes on without it
+        logger.error("classify failed for %r: %s", req.name, e)
+        raise HTTPException(status_code=502, detail="AI จัดหมวดไม่สำเร็จ")

@@ -22,11 +22,16 @@ const MAX_DESCRIBE = 20
 const DESCRIPTION_LABEL = { updated: 'สร้างคำอธิบายแล้ว', skipped: 'ข้ามคำอธิบาย', failed: 'สร้างคำอธิบายไม่สำเร็จ' }
 const RESULT_LABEL = { created: 'นำเข้าแล้ว', exists: 'มีในระบบแล้ว', failed: 'ล้มเหลว' }
 const RESULT_TONE = { created: 'success', exists: 'neutral', failed: 'danger' }
-const JOB_STATUS_LABEL = { running: 'กำลังนำเข้า', completed: 'เสร็จสิ้น', cancelled: 'ยกเลิกแล้ว', failed: 'หยุดกะทันหัน' }
+const REINDEX_NOTE = {
+  started: 'กำลังอัปเดตดัชนีค้นหาของแชทบอท',
+  busy: 'ดัชนีค้นหากำลังอัปเดตอยู่ อาจไม่รวมสถานที่ชุดนี้ กด Reindex ในแดชบอร์ดอีกครั้งเมื่อเสร็จ',
+  failed: 'อัปเดตดัชนีค้นหาไม่สำเร็จ กด Reindex ในแดชบอร์ดเพื่อให้แชทบอทค้นเจอ',
+}
+const JOB_STATUS_LABEL ={ running: 'กำลังนำเข้า', completed: 'เสร็จสิ้น', cancelled: 'ยกเลิกแล้ว', failed: 'หยุดกะทันหัน' }
 
 // Admin names an area, ticks categories, reviews the nearby Google results and
 // imports the ticked ones as hidden drafts (published later from the places
-// list). Searching lists names only; the billable Details call happens per
+// list), or publishes them straight away when ticked. Searching lists names only; the billable Details call happens per
 // ticked place when the import job runs.
 export default function AreaImportModal({ open, onClose, onFinished }) {
   const { actions } = useApp()
@@ -37,6 +42,10 @@ export default function AreaImportModal({ open, onClose, onFinished }) {
   const [found, setFound] = useState(null)
   const [picked, setPicked] = useState(() => new Set())
   const [describe, setDescribe] = useState(false)
+  // Off by default: drafts let an admin check Google's data before it goes live.
+  const [publish, setPublish] = useState(false)
+  // On by default: one LLM request, and only for places the rules couldn't place.
+  const [classify, setClassify] = useState(true)
   const est = useCostEstimates()
   const [searching, setSearching] = useState(false)
   const [starting, setStarting] = useState(false)
@@ -99,7 +108,9 @@ export default function AreaImportModal({ open, onClose, onFinished }) {
   const describeOk = describe && describeAllowed
   // Ceiling for what the import will cost (Details + up to 5 photos per place, plus the AI description if ticked),
   // before the monthly free allowance -- from the server's price table so there is one source of truth.
-  const importCostThb = est ? picked.size * (est.importPerPlaceThb + (describeOk ? est.describePerPlaceThb : 0)) : null
+  const importCostThb = est
+    ? picked.size * (est.importPerPlaceThb + (describeOk ? est.describePerPlaceThb : 0) + (classify ? est.classifyPerPlaceThb ?? 0 : 0))
+    : null
   // One area lookup + one nearby request per ticked category.
   const searchCostThb = est ? est.textSearchThb + est.nearbySearchThb * categories.length : null
   const importable = found?.results.filter((r) => !r.existingPlaceId) || []
@@ -108,7 +119,7 @@ export default function AreaImportModal({ open, onClose, onFinished }) {
 
   const start = async () => {
     setStarting(true); setError('')
-    try { setJob(await startPlaceImportBatch([...picked], { describe: describeOk })) } catch (err) { fail(err) } finally { setStarting(false) }
+    try { setJob(await startPlaceImportBatch([...picked], { describe: describeOk, publish, classify })) } catch (err) { fail(err) } finally { setStarting(false) }
   }
 
   const cancel = async () => {
@@ -197,6 +208,11 @@ export default function AreaImportModal({ open, onClose, onFinished }) {
                       ))}
                     </div>
                     <label className="ad-check">
+                      <input type="checkbox" checked={classify} onChange={(e) => setClassify(e.target.checked)} />
+                      ให้ AI จัดหมวดแห่งที่ระบบจัดเองไม่ได้{est?.classifyPerPlaceThb != null ? ` (+${formatBaht(est.classifyPerPlaceThb)} ต่อแห่ง)` : ''}
+                    </label>
+                    <p className="ad-hint ad-hint--block">ระบบจัดหมวดจากประเภทของ Google ก่อน AI จะช่วยเฉพาะแห่งที่ยังไม่มีหมวด หรือร้านอาหาร/คาเฟ่ที่ยังไม่มีหมวดย่อย (LLM แห่งละ 1 ครั้ง)</p>
+                    <label className="ad-check">
                       <input type="checkbox" checked={describeOk} disabled={!describeAllowed} onChange={(e) => setDescribe(e.target.checked)} />
                       สร้างคำอธิบายด้วย AI ให้แห่งที่นำเข้าใหม่{est ? ` (+${formatBaht(est.describePerPlaceThb)} ต่อแห่ง)` : ''}
                     </label>
@@ -204,6 +220,15 @@ export default function AreaImportModal({ open, onClose, onFinished }) {
                       {describeAllowed
                         ? 'สรุปจากรีวิวและผลค้นหา Google ทำเฉพาะแห่งที่ Google ไม่มีคำอธิบายให้ (ใช้ Serper + LLM แห่งละ 1 ครั้ง และใช้เวลานานขึ้น) ผลอยู่ในฉบับร่างให้ตรวจก่อนเผยแพร่'
                         : `ตัวเลือกนี้ใช้ได้เมื่อเลือกไม่เกิน ${MAX_DESCRIBE} แห่ง (ตอนนี้เลือก ${picked.size})`}
+                    </p>
+                    <label className="ad-check">
+                      <input type="checkbox" checked={publish} onChange={(e) => setPublish(e.target.checked)} />
+                      เผยแพร่ทันทีหลังนำเข้า
+                    </label>
+                    <p className="ad-hint ad-hint--block">
+                      {publish
+                        ? 'สถานที่ที่นำเข้าใหม่จะแสดงบนเว็บและในแชทบอททันที โดยยังไม่ได้ตรวจข้อมูลจาก Google ยกเว้นแห่งที่ยังไม่มีหมวด หรือ AI ไม่แน่ใจหมวด จะเก็บเป็นฉบับร่างไว้ให้ตรวจ'
+                        : 'ปิดไว้: นำเข้าเป็นฉบับร่างที่ซ่อนอยู่ ตรวจแก้แล้วค่อยเผยแพร่จากรายการสถานที่'}
                     </p>
                     {importCostThb != null && <p className="ad-hint ad-hint--block">นำเข้า {picked.size} แห่ง ค่าใช้จ่ายสูงสุดประมาณ {formatBaht(importCostThb)} (รายละเอียด + รูปสูงสุด 5 รูปต่อแห่ง{describeOk ? ' + คำอธิบาย AI' : ''}) · {FREE_ALLOWANCE_NOTE}</p>}
                   </>
@@ -220,16 +245,34 @@ export default function AreaImportModal({ open, onClose, onFinished }) {
           <progress className="ad-progress" value={job.done} max={job.total || 1} aria-label="ความคืบหน้าการนำเข้า" />
           {error && <div className="ad-error-text ad-mb" role="alert">{error}</div>}
           {!running && (
-            <p className="ad-hint ad-hint--block">นำเข้าเป็นฉบับร่างที่ซ่อนอยู่ {job.created} แห่ง{job.describe ? ` (สร้างคำอธิบายแล้ว ${job.described})` : ''} — ตรวจแก้ในรายการสถานที่แล้วเผยแพร่เมื่อพร้อม</p>
+            job.publish ? (
+              <p className="ad-hint ad-hint--block">
+                นำเข้าและเผยแพร่แล้ว {job.published} แห่ง{job.describe ? ` (สร้างคำอธิบายแล้ว ${job.described})` : ''}
+                {job.held > 0 && ` · เก็บเป็นฉบับร่าง ${job.held} แห่ง (หมวดว่างหรือไม่แน่ใจ)`}
+                {job.classify && ` · AI จัดหมวดให้ ${job.classified} แห่ง`}
+                {REINDEX_NOTE[job.reindex] ? ` — ${REINDEX_NOTE[job.reindex]}` : ''}
+              </p>
+            ) : (
+              <p className="ad-hint ad-hint--block">นำเข้าเป็นฉบับร่างที่ซ่อนอยู่ {job.created} แห่ง{job.describe ? ` (สร้างคำอธิบายแล้ว ${job.described})` : ''}{job.classify ? ` · AI จัดหมวดให้ ${job.classified} แห่ง` : ''} — ตรวจแก้ในรายการสถานที่แล้วเผยแพร่เมื่อพร้อม</p>
+            )
           )}
           <div className="ad-job__results">
             {job.results.map((r) => (
               <div key={r.googlePlaceId} className="ad-job__result">
                 <div className="ad-job__result-head">
                   <span className="ad-job__result-name">{nameOf(r.googlePlaceId)}</span>
-                  <Badge tone={RESULT_TONE[r.status]}>{RESULT_LABEL[r.status]}</Badge>
+                  <Badge tone={RESULT_TONE[r.status]}>{r.published ? 'นำเข้าและเผยแพร่แล้ว' : RESULT_LABEL[r.status]}</Badge>
                 </div>
                 {r.error && <div className="ad-job__note ad-text-danger">{r.error}</div>}
+                {r.status === 'created' && (
+                  <div className={`ad-job__note${r.category ? '' : ' ad-text-danger'}`}>
+                    หมวด: {r.category ? `${r.category}${r.subcategory ? ` / ${r.subcategory}` : ''}` : 'ยังไม่มี'}
+                    {r.classify === 'updated' && ` (AI จัด${r.classifyLowConfidence ? ' · ไม่แน่ใจ' : ''})`}
+                    {r.classify === 'failed' && ` — ${r.classifyNote || 'AI จัดหมวดไม่สำเร็จ'}`}
+                    {r.classify === 'skipped' && r.classifyNote && ` — AI: ${r.classifyNote}`}
+                  </div>
+                )}
+                {r.publishHeld && <div className="ad-job__note">{r.publishHeld}</div>}
                 {r.description && (
                   <div className={`ad-job__note${r.description === 'failed' ? ' ad-text-danger' : ''}`}>
                     {DESCRIPTION_LABEL[r.description]}{r.descriptionNote ? ` — ${r.descriptionNote}` : ''}

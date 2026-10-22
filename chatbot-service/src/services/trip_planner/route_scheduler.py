@@ -12,6 +12,7 @@ import math
 from datetime import date, datetime, time, timedelta
 from typing import Dict, List, Optional, Tuple
 
+from . import pricing
 from .models import DailyItinerary, Place, TimeSlot
 from .trip_ends import TRIP_END_STATUS
 
@@ -1475,7 +1476,12 @@ def _gap_minutes(place: Place, arrival_at_door: datetime, meal_window: Optional[
 
 def _stop_visit_cost(place: Place, dist_km: float) -> float:
     fuel_cost = dist_km * 4.0  # 4 THB/km
-    if place.price_level is not None:
+    # The middle of Google's per-person range ("฿600-800 ต่อคน") when there
+    # is one: price_level 2 alone priced a ฿800-1,000 steak house at ฿400.
+    range_price = pricing.visit_price(place)
+    if range_price is not None:
+        place_cost = range_price
+    elif place.price_level is not None:
         place_cost = PRICE_MAP.get(place.price_level, 150)
     elif place.category in ("ร้านอาหาร", "คาเฟ่"):
         place_cost = 250

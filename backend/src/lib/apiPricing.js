@@ -44,6 +44,7 @@ export function getCostEstimates() {
     syncPerPlaceThb: grossCostThb({ 'places.details.enterprise': 1 }),
     importPerPlaceThb: importPerPlaceThb(),
     describePerPlaceThb: grossCostThb({ 'serper.search': 1, 'llm.request': 1 }),
+    classifyPerPlaceThb: grossCostThb({ 'llm.request': 1 }),
     textSearchThb: grossCostThb({ 'places.text_search.pro': 1 }),
     nearbySearchThb: grossCostThb({ 'places.nearby.enterprise': 1 }),
     thbPerUsd: THB_PER_USD,

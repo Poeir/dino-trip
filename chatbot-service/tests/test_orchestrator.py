@@ -20,6 +20,9 @@ class FakeRetriever:
     def list_restaurants(self):
         return self._restaurants
 
+    def list_by_categories(self, categories):
+        return [r for r in self._places if r.get("category") in categories]
+
 
 class FakeRetrieverByQuery:
     """Routes each call to a per-query canned result list, so tests can
@@ -173,6 +176,61 @@ class TestBudgetCategoryFilter:
         )
         assert "NightMarket" in names(candidates)
         assert must_go_ids == {"mk"}
+
+
+class TestLuxuryBudget:
+    """หรูหรา: restaurants and cafes by their price range (pricing.py), plus
+    premium cafes and malls added on top of the interests."""
+
+    def test_only_premium_cafes_and_restaurants_are_candidates(self, service):
+        service.retriever = FakeRetriever([
+            make_place_row("c1", "PremiumCafe", "เมืองขอนแก่น", price="฿400-600 ต่อคน", price_level=2),
+            make_place_row("c2", "MidCafe", "เมืองขอนแก่น", price="฿200-400 ต่อคน", price_level=2),
+            make_place_row("c3", "UnknownCafe", "เมืองขอนแก่น"),
+            make_place_row("w1", "Temple", "เมืองขอนแก่น", category="วัด"),
+        ])
+        _, candidates, _, _ = service.build_candidate_list(make_user_input(budget_level="หรูหรา"))
+        assert {"PremiumCafe", "Temple"} <= names(candidates)
+        assert not {"MidCafe", "UnknownCafe"} & names(candidates)
+
+    def test_malls_and_premium_cafes_join_without_a_matching_interest(self, service):
+        temple = make_place_row("w1", "Temple", "เมืองขอนแก่น", category="วัด")
+        extras = [
+            make_place_row("ml", "Mall", "เมืองขอนแก่น", category="ห้างสรรพสินค้า"),
+            make_place_row("c1", "PremiumCafe", "เมืองขอนแก่น", price="฿400-600 ต่อคน", price_level=2),
+            make_place_row("c2", "CheapCafe", "เมืองขอนแก่น", price="฿1-200 ต่อคน", price_level=1),
+        ]
+
+        class Retriever(FakeRetriever):
+            def list_by_categories(self, categories):
+                return [r for r in extras if r["category"] in categories]
+
+        service.retriever = Retriever([temple])
+        _, candidates, _, _ = service.build_candidate_list(make_user_input(budget_level="หรูหรา", interests=["วัด"]))
+        assert {"Temple", "Mall", "PremiumCafe"} <= names(candidates)
+        assert "CheapCafe" not in names(candidates)
+
+    def test_other_budgets_get_no_extras(self, service):
+        mall = make_place_row("ml", "Mall", "เมืองขอนแก่น", category="ห้างสรรพสินค้า")
+
+        class Retriever(FakeRetriever):
+            def list_by_categories(self, categories):
+                return [mall]
+
+        service.retriever = Retriever([make_place_row("w1", "Temple", "เมืองขอนแก่น", category="วัด")])
+        _, candidates, _, _ = service.build_candidate_list(make_user_input(budget_level="ปานกลาง", interests=["วัด"]))
+        assert "Mall" not in names(candidates)
+
+    def test_meal_reserve_takes_premium_restaurants_first(self, service):
+        restaurants = [  # no hours data counts as open
+            make_place_row(f"r{i}", name, "เมืองขอนแก่น", category="ร้านอาหาร", price=price, price_level=2)
+            for i, (name, price) in enumerate([("Mid", "฿200-400 ต่อคน"), ("Premium", "฿600-800 ต่อคน"),
+                                               ("Mid2", "฿200-400 ต่อคน"), ("Premium2", "฿400-600 ต่อคน")])
+        ]
+        service.retriever = FakeRetriever([], restaurants=restaurants)
+        _, candidates, _, _ = service.build_candidate_list(make_user_input(budget_level="หรูหรา"))
+        picked = [p.name for p in candidates if p.category == "ร้านอาหาร"]
+        assert picked[:2] == ["Premium", "Premium2"]
 
 
 class TestMultiInterestRoundRobin:

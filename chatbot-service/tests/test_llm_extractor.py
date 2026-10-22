@@ -1087,6 +1087,17 @@ class TestFoodPreferences:
         kinds = [next(iter(day)).rstrip("12") for day in meals]
         assert kinds == ["isan", "noodle"]
 
+    def test_luxury_brings_in_the_priciest_restaurant(self):
+        sight = make_place(id="a1", name="Sight", category="สถานที่ท่องเที่ยว", lat=16.441, lng=102.841, hours_periods=None)
+        cheap = make_place(id="cheap", name="cheap", category="ร้านอาหาร", price="฿1-200 ต่อคน", lat=16.441, lng=102.841, hours_periods=None)
+        premium = make_place(id="premium", name="premium", category="ร้านอาหาร", price="฿600-800 ต่อคน",
+                             lat=16.45, lng=102.85, hours_periods=None)
+        pool = [cheap, premium]
+        luxury = LLMTripPlanner(candidates=[sight], start_point=HOTEL_PLACE, meal_pool=pool, budget_level="หรูหรา")
+        assert self._meals(luxury, [{"day": 1, "places": [{"place_id": "a1"}]}]) == [{"premium": "lunch"}]
+        standard = LLMTripPlanner(candidates=[sight], start_point=HOTEL_PLACE, meal_pool=pool, budget_level="ปานกลาง")
+        assert self._meals(standard, [{"day": 1, "places": [{"place_id": "a1"}]}]) == [{"cheap": "lunch"}]
+
     def test_falls_back_to_any_restaurant_when_no_wanted_kind_exists(self):
         sight = make_place(id="a1", name="Sight", category="สถานที่ท่องเที่ยว", lat=16.441, lng=102.841, hours_periods=None)
         sushi = self.rest("sushi", "ญี่ปุ่น/เกาหลี")

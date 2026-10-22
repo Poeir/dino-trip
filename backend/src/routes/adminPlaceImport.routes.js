@@ -51,7 +51,11 @@ const describeImportLimit = rateLimit({ windowMs: 60 * 60 * 1000, max: 3, messag
 const describeOnlyWhenAsked = (req, res, next) => (req.body?.describe === true ? describeImportLimit(req, res, next) : next())
 
 adminPlaceImportRouter.post('/batch', batchLimit, describeOnlyWhenAsked, asyncHandler(async (req, res) => {
-  res.status(202).json(startImportJob(req.body?.googlePlaceIds, req.user.id, { describe: req.body?.describe === true }))
+  res.status(202).json(startImportJob(req.body?.googlePlaceIds, req.user.id, {
+    describe: req.body?.describe === true,
+    publish: req.body?.publish === true,
+    classify: req.body?.classify === true,
+  }))
 }))
 
 adminPlaceImportRouter.get('/batch/:id', asyncHandler(async (req, res) => {

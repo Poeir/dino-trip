@@ -6,7 +6,7 @@ from typing import Dict, List, Optional, Set, Tuple
 
 from src.core.llm_client import complete_json
 from src.core.config import MODEL_NAME
-from . import route_scheduler, trip_ends
+from . import pricing, route_scheduler, trip_ends
 from src.core.usage import UsageTracker
 from .judge import TripItineraryJudge
 from .models import BREAKFAST_PREFERENCE, DailyItinerary, JudgeVerdict, Place, TripInput, meal_food_kinds
@@ -122,9 +122,13 @@ class LLMTripPlanner:
     def __init__(
         self, candidates: List[Place], start_point: Place = None, must_go_ids: Optional[Set[str]] = None,
         spare_places: Optional[List[Place]] = None, meal_pool: Optional[List[Place]] = None,
-        end_point: Optional[Place] = None,
+        end_point: Optional[Place] = None, budget_level: Optional[str] = None,
     ):
         self.candidates = candidates
+        # Ranks the restaurants _pick_fallback_restaurant brings in for a
+        # meal (pricing.budget_rank): a หรูหรา day's meal goes to the
+        # priciest restaurant that is open and near enough.
+        self.budget_level = budget_level
         # trip_ends.resolve_trip_end: where the last day ends instead of the
         # accommodation (start_point). None = it ends there like every day.
         self.end_point = end_point
@@ -177,6 +181,7 @@ class LLMTripPlanner:
         places_str = "".join(
             f"- ID: {loc.id}, Name: {loc.name}, Category: {loc.category}, Rating: {loc.rating}, "
             f"{f'Type: {loc.subcategory}, ' if loc.subcategory else ''}"
+            f"{f'Price: {loc.price}, ' if loc.price and loc.category in pricing.PRICED_CATEGORIES else ''}"
             f"District: {loc.district or 'unknown'}, Visit: ~{_format_minutes(route_scheduler.get_visit_duration(loc, user_input.trip_pace))}, "
             f"Hours: {hours_for_trip(loc.hours, trip_weekdays)}\n"
             for loc in self.candidates
@@ -722,6 +727,7 @@ class LLMTripPlanner:
             dist = self._meal_distance(loc, anchor, meal)
             return (
                 not is_open, not visitable, dist > MEAL_MAX_KM, loc.subcategory in avoid, kind_rank.get(loc.subcategory, 0),
+                pricing.budget_sort_key(loc, self.budget_level) if self.budget_level and meal != "breakfast" else (0, 0, 0),
                 loc.id not in candidate_ids, int(dist // 2), -(loc.rating or 0.0),
             )
 

@@ -1,8 +1,11 @@
 import { randomUUID } from 'node:crypto'
 import { db } from '../lib/db.js'
 import { httpError } from '../middleware/errorHandler.js'
+import { invalidateCache } from '../lib/crudRouter.js'
+import { forwardToChatbotService } from '../lib/chatbotProxy.js'
 import { apiKey, googleError, importGooglePlace } from './placeImport.js'
 import { describeImportedPlace, MAX_DESCRIBE_PER_IMPORT } from './placeBulkDescribe.js'
+import { classifyImportedPlace } from './placeClassify.js'
 
 // Admin "import many places around an area": resolve an area name to a point,
 // list nearby places per category (cheap, no details), then import the ones the
@@ -120,7 +123,7 @@ function publicJob(job) {
   return rest
 }
 
-export function startImportJob(googlePlaceIds, actorId, { describe = false } = {}) {
+export function startImportJob(googlePlaceIds, actorId, { describe = false, publish = false, classify = false } = {}) {
   const ids = [...new Set(Array.isArray(googlePlaceIds) ? googlePlaceIds : [])]
   if (!ids.length) throw httpError(400, 'กรุณาเลือกสถานที่อย่างน้อย 1 แห่ง')
   if (ids.length > MAX_BATCH) throw httpError(400, `นำเข้าได้สูงสุด ${MAX_BATCH} แห่งต่อครั้ง`)
@@ -130,20 +133,21 @@ export function startImportJob(googlePlaceIds, actorId, { describe = false } = {
 
   const job = {
     id: randomUUID(), status: 'running', total: ids.length, done: 0, created: 0, existed: 0, failed: 0,
-    describe, described: 0,
+    describe, described: 0, classify, classified: 0, publish, published: 0, held: 0, reindex: null,
     results: [], startedAt: new Date().toISOString(), finishedAt: null, cancelRequested: false,
   }
   jobs.set(job.id, job)
   for (const oldId of [...jobs.keys()].slice(0, Math.max(0, jobs.size - JOB_HISTORY))) jobs.delete(oldId)
   runningJobId = job.id
 
-  runImportJob(job, ids, actorId, describe)
+  runImportJob(job, ids, actorId, { describe, publish, classify })
     .catch((err) => { console.error('Area import job crashed:', err); job.status = 'failed' })
     .finally(() => { job.finishedAt = new Date().toISOString(); runningJobId = null })
   return publicJob(job)
 }
 
-async function runImportJob(job, ids, actorId, describe) {
+async function runImportJob(job, ids, actorId, { describe, publish, classify }) {
+  const publishedIds = []
   let cursor = 0
   const worker = async () => {
     while (!job.cancelRequested) {
@@ -155,11 +159,39 @@ async function runImportJob(job, ids, actorId, describe) {
         if (r.created) job.created++; else job.existed++
         const item = { googlePlaceId, status: r.created ? 'created' : 'exists', placeId: r.id }
         // Only brand-new drafts: an already-imported place may have been reviewed and edited.
+        // Classify before describing: the description prompt uses the category.
+        if (classify && r.created) {
+          const c = await classifyImportedPlace(r.id)
+          if (c.status !== 'skipped' || c.confidence) {
+            item.classify = c.status
+            if (c.reason) item.classifyNote = c.reason
+            if (c.confidence === 'low') item.classifyLowConfidence = true
+          }
+          // Only an AI-picked *category* it wasn't sure of holds back publishing;
+          // a rule-based category with an unsure subcategory is fine to go live.
+          if (c.status === 'updated' && c.category && c.confidence === 'low') item.categoryUnsure = true
+          if (c.status === 'updated') job.classified++
+        }
+        if (r.created) {
+          const row = await db('places').select('category', 'subcategory').where('id', r.id).first()
+          item.category = row?.category || null
+          item.subcategory = row?.subcategory || null
+        }
         if (describe && r.created) {
           const d = await describeImportedPlace(r.id)
           item.description = d.status
           if (d.reason) item.descriptionNote = d.reason
           if (d.status === 'updated') job.described++
+        }
+        // After describing: describeImportedPlace only writes to hidden drafts.
+        // A place with no category (or one the AI wasn't sure of) stays a draft: it
+        // would be missing from every category filter on the site.
+        if (publish && r.created && (!item.category || item.categoryUnsure)) {
+          item.publishHeld = item.category ? 'AI ไม่แน่ใจหมวด ตรวจก่อนเผยแพร่' : 'ยังไม่มีหมวด เลือกหมวดก่อนเผยแพร่'
+          job.held++
+        } else if (publish && r.created) {
+          const n = await db('places').where({ id: r.id, is_active: false }).update({ is_active: true, updated_at: db.fn.now() })
+          if (n) { item.published = true; job.published++; publishedIds.push(r.id) }
         }
         job.results.push(item)
       } catch (err) {
@@ -172,10 +204,25 @@ async function runImportJob(job, ids, actorId, describe) {
     }
   }
   await Promise.all(Array.from({ length: Math.min(IMPORT_CONCURRENCY, ids.length) }, worker))
+  if (publishedIds.length) {
+    invalidateCache('places')
+    // New places have no embedding yet; without a reindex the chatbot can't find them.
+    // Best-effort, like the bulk publish route: 409 means a reindex is already running.
+    try {
+      await forwardToChatbotService('/admin/reindex', { method: 'POST' })
+      job.reindex = 'started'
+    } catch (err) {
+      job.reindex = err.status === 409 ? 'busy' : 'failed'
+      if (err.status !== 409) console.error('Reindex after area import failed:', err.message)
+    }
+  }
   job.status = job.cancelRequested ? 'cancelled' : 'completed'
   await db('admin_audit_log').insert({
     admin_id: actorId, action: 'place.import_area_batch',
-    details: JSON.stringify({ jobId: job.id, total: job.total, created: job.created, existed: job.existed, failed: job.failed, described: job.described, status: job.status }),
+    details: JSON.stringify({
+      jobId: job.id, total: job.total, created: job.created, existed: job.existed, failed: job.failed,
+      described: job.described, classified: job.classified, published: job.published, held: job.held, publishedIds, status: job.status,
+    }),
   }).catch((err) => console.error('Area import audit log failed:', err))
 }
 

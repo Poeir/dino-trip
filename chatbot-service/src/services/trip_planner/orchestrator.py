@@ -6,30 +6,27 @@ from itertools import zip_longest
 from src.core.db import district_centre, find_place_by_name
 from src.services.rag.retriever import PlaceRetriever
 from .models import BREAKFAST_PREFERENCE, FOOD_PREFERENCES, Place, TripInput, TripSummary, DaySummary
-from . import route_scheduler, trip_ends
+from . import pricing, route_scheduler, trip_ends
 
 # Khon Kaen city center -- fallback location if the named accommodation isn't
 # found in `places` at all (same fallback the old project used).
 DEFAULT_HOTEL_LOCATION = {"lat": 16.4322, "lng": 102.8236}
 
-# Keyed by the frontend's actual budgetList strings (ประหยัด/ปานกลาง/หรูหรา)
-# rather than translating to English tiers first -- this app is Thai-first,
-# a translation layer just for internal bookkeeping added nothing.
-BUDGET_PRICE_RANGES = {
-    "ประหยัด": [0, 1],
-    "ปานกลาง": [0, 1, 2],
-    "หรูหรา": [2, 3, 4],
-}
-
-# Categories kept out of the RAG candidate pool for a budget tier. The price
-# filter above can't do this on its own: price_level is null for 38 of the 40
-# "ตลาด" rows in the live `places` table (and nothing at all is rated 3-4), so
-# a หรูหรา trip kept every night market -- both as an LLM pick (the prompt
-# carries no price) and as a backfill/gap-filler stop, since those draw from
-# this same pool. Must-go places are exempt, same as the price filter.
+# Budget levels are the frontend's budgetList strings (ประหยัด/ปานกลาง/หรูหรา).
+# Which restaurants and cafes each one takes is pricing.py's job; other
+# categories pass on any budget, except these, kept out of the RAG candidate
+# pool by category: a หรูหรา trip has no night markets, as an LLM pick or as a
+# backfill/gap-filler stop. Must-go places are exempt.
 BUDGET_EXCLUDED_CATEGORIES = {
     "หรูหรา": {"ตลาด"},
 }
+
+# A หรูหรา trip is built around premium restaurants and cafes and the malls,
+# with only a few other places. Interests alone may not bring them into the
+# pool (interests "วัด" + "ธรรมชาติ" retrieve no cafe or mall), so these are
+# added on top: premium cafes and malls, per trip day.
+LUXURY_EXTRAS_PER_DAY = {"คาเฟ่": 2, "ห้างสรรพสินค้า": 1}
+LUXURY = pricing.LUXURY
 
 # --- Spare pool -----------------------------------------------------------
 # Some interest sets can't fill a day on their own: "อาหารพื้นถิ่น + คาเฟ่" in
@@ -266,7 +263,7 @@ class TripBuilderService:
         candidate_pool_target = math.ceil(remaining_slots * 1.5)
 
         existing_ids = {p.id for p in must_go_list}
-        allowed_prices = BUDGET_PRICE_RANGES.get(user_input.budget_level, [0, 1, 2])
+        budget = user_input.budget_level
         excluded_categories = BUDGET_EXCLUDED_CATEGORIES.get(user_input.budget_level, set())
 
         meal_reserve_needed = user_input.trip_duration_days * 2
@@ -304,10 +301,7 @@ class TripBuilderService:
             if not place_id or place_id in existing_ids:
                 return None
             place = Place(**row)
-            # price_level is null for most of this dataset (Google didn't
-            # return it) -- treat unknown as acceptable rather than
-            # excluding it, or budget filtering would return almost nothing.
-            if place.price_level is not None and place.price_level not in allowed_prices:
+            if not pricing.fits_budget(place, budget):
                 return None
             if place.category == "ที่พัก" or place.category in excluded_categories:
                 return None
@@ -335,6 +329,22 @@ class TripBuilderService:
                 existing_ids.add(place.id)
                 if len(interest_list) >= candidate_pool_target:
                     break
+
+        # --- Luxury extras (see LUXURY_EXTRAS_PER_DAY) ---------------------
+        if budget == LUXURY:
+            rows = _rerank(self.retriever.list_by_categories(tuple(LUXURY_EXTRAS_PER_DAY)), origin, self.rng, end_point)
+            have_by_category: dict = {}
+            for p in must_go_list + interest_list:
+                have_by_category[p.category] = have_by_category.get(p.category, 0) + 1
+            for row in rows:
+                wanted = LUXURY_EXTRAS_PER_DAY.get(row.get("category"), 0) * user_input.trip_duration_days
+                if have_by_category.get(row.get("category"), 0) >= wanted:
+                    continue
+                place = accept(row)
+                if place:
+                    interest_list.append(place)
+                    existing_ids.add(place.id)
+                    have_by_category[place.category] = have_by_category.get(place.category, 0) + 1
 
         # --- Daytime top-up -----------------------------------------------
         # Interests whose places are mostly evening ones (night markets,
@@ -408,7 +418,7 @@ class TripBuilderService:
             place = Place(**row)
             if place.category != "ร้านอาหาร":
                 return None
-            if place.price_level is not None and place.price_level not in allowed_prices:
+            if not pricing.fits_budget(place, budget, meal=True):
                 return None
             if user_input.area_scope == "เมือง" and not _is_mueang_district(place.district):
                 return None
@@ -420,8 +430,14 @@ class TripBuilderService:
             interest_list.append(place)
             existing_ids.add(place.id)
 
+        def budget_first(rows):
+            # Stable: the best tier for this budget first, หรูหรา dearest
+            # first within it (pricing.budget_sort_key); otherwise the
+            # existing order is kept (all equal for ปานกลาง).
+            return sorted(rows, key=lambda r: pricing.budget_sort_key(Place(**r), budget))
+
         def by_rating(rows):
-            return sorted(rows, key=lambda r: (-(r.get("rating") or 0.0), -(r.get("review_count") or 0)))
+            return budget_first(sorted(rows, key=lambda r: (-(r.get("rating") or 0.0), -(r.get("review_count") or 0))))
 
         # --- Food preferences ---------------------------------------------
         # Restaurants (and bakery cafes) of the kinds the traveller asked for,
@@ -437,7 +453,7 @@ class TripBuilderService:
                 else:
                     rows, wanted, check = self.retriever.list_by_categories(("คาเฟ่",)), user_input.trip_duration_days, accept
                 added = 0
-                for row in _rerank([r for r in rows if r.get("subcategory") == subcategory], origin, self.rng, end_point):
+                for row in budget_first(_rerank([r for r in rows if r.get("subcategory") == subcategory], origin, self.rng, end_point)):
                     if added >= wanted:
                         break
                     place = check(row)
@@ -449,7 +465,10 @@ class TripBuilderService:
         if have < meal_reserve_needed or have_lunch < lunch_needed:
             # Relevance-ranked first (the old behaviour), over a wider net
             # than before since many top results can be unusable.
-            for row in meal_future.result():
+            # หรูหรา goes straight to the full list, dearest first: the
+            # search's top results held none of the priciest restaurants.
+            first_rows = by_rating(self.retriever.list_restaurants()) if budget == LUXURY else meal_future.result()
+            for row in first_rows:
                 if have >= meal_reserve_needed and have_lunch >= lunch_needed:
                     break
                 place = acceptable_meal(row, require_lunch=have >= meal_reserve_needed)
@@ -477,7 +496,6 @@ class TripBuilderService:
         dinner from here when the day's own picks can't serve it -- above all
         a day out of town, where the candidates' restaurants are all in the
         city (a Phu Wiang day used to get its only meal back in town at 17:00)."""
-        allowed_prices = BUDGET_PRICE_RANGES.get(user_input.budget_level, [0, 1, 2])
         start = datetime.strptime(user_input.start_time, "%H:%M")
         end = datetime.strptime(user_input.end_time, "%H:%M")
         start_min, end_min = start.hour * 60 + start.minute, end.hour * 60 + end.minute
@@ -489,7 +507,7 @@ class TripBuilderService:
             if not row.get("id") or row["id"] in exclude_ids or row.get("lat") is None or row.get("lng") is None:
                 continue
             place = Place(**row)
-            if place.price_level is not None and place.price_level not in allowed_prices:
+            if not pricing.fits_budget(place, user_input.budget_level, meal=True):
                 continue
             if user_input.area_scope == "เมือง" and not _is_mueang_district(place.district):
                 continue
@@ -502,7 +520,6 @@ class TripBuilderService:
         """Spare places for this trip (see SPARE_CATEGORIES above), nearest
         the accommodation first. Same budget and area rules as the candidate
         list; `exclude_ids` are the candidates already in play."""
-        allowed_prices = BUDGET_PRICE_RANGES.get(user_input.budget_level, [0, 1, 2])
         excluded_categories = BUDGET_EXCLUDED_CATEGORIES.get(user_input.budget_level, set())
 
         spares = []
@@ -512,9 +529,7 @@ class TripBuilderService:
             place = Place(**row, is_spare=True)
             if (place.rating or 0.0) < SPARE_MIN_RATING or (place.review_count or 0) < SPARE_MIN_REVIEWS:
                 continue
-            if place.category in excluded_categories:
-                continue
-            if place.price_level is not None and place.price_level not in allowed_prices:
+            if place.category in excluded_categories or not pricing.fits_budget(place, user_input.budget_level):
                 continue
             if user_input.area_scope == "เมือง" and not _is_mueang_district(place.district):
                 continue
@@ -555,7 +570,11 @@ class TripBuilderService:
         # about driving distance/fuel cost trade-offs at all.
         budget_instruction = {
             "ประหยัด": "- BUDGET (Economy): Prioritize free or cheap places.",
-            "หรูหรา": "- BUDGET (Luxury): Focus ONLY on providing the most premium, high-end, and exclusive experiences.",
+            "หรูหรา": (
+                "- BUDGET (Luxury): Build each day around premium restaurants and cafes (see their Price) and "
+                "shopping malls (\"ห้างสรรพสินค้า\"); add only one or two other attractions a day. "
+                "For meals, pick the most expensive suitable restaurant."
+            ),
         }.get(
             user_input.budget_level,
             "- BUDGET (Standard): Balance cost and the quality of the places.",

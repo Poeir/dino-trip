@@ -358,7 +358,7 @@ export const importGooglePlace = (googlePlaceId) => apiPost('/api/admin/place-im
 // ticked results as a background job (poll fetchPlaceImportBatch).
 export const searchGooglePlacesByArea = (body) => apiPost('/api/admin/place-import/area-search', body)
 // `describe` also writes an AI description per newly imported place (max 20 places per job).
-export const startPlaceImportBatch = (googlePlaceIds, { describe = false } = {}) => apiPost('/api/admin/place-import/batch', { googlePlaceIds, describe })
+export const startPlaceImportBatch = (googlePlaceIds, { describe = false, publish = false, classify = false } = {}) => apiPost('/api/admin/place-import/batch', { googlePlaceIds, describe, publish, classify })
 export const fetchPlaceImportBatch = (id) => apiGet(`/api/admin/place-import/batch/${id}`)
 // Publishes hidden drafts in bulk and kicks a reindex -> { published, alreadyPublishedOrMissing, reindex }.
 export const publishPlacesBatch =(placeIds) => apiPost('/api/admin/place-import/publish', { placeIds })

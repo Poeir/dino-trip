@@ -34,7 +34,7 @@ def generate_trip_llm(user_input: TripInput):
     meal_pool = service.build_meal_pool(user_input, candidate_ids)
     planner = LLMTripPlanner(
         candidates, start_point=hotel, must_go_ids=must_go_ids, spare_places=spares, meal_pool=meal_pool,
-        end_point=end_point,
+        end_point=end_point, budget_level=user_input.budget_level,
     )
 
     # No fallback to a deterministic planner on failure -- surface the error

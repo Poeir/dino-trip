@@ -79,7 +79,9 @@ def _describe_place(place: Place, interests: List[str]) -> str:
     matches = _interest_matches(place, interests)
     if interests:
         parts.append(f"interests: {', '.join(matches) or 'none'}")
-    if place.price_level is not None:
+    if place.price:
+        parts.append(f"price: {place.price}")
+    elif place.price_level is not None:
         parts.append(f"price: {_PRICE_SIGNS.get(place.price_level, place.price_level)}")
     if place.district:
         parts.append(place.district)
@@ -118,7 +120,12 @@ class TripItineraryJudge:
             f"- Hard limits per day the planner cannot exceed: {hi} attractions, {cafe_cap} \"คาเฟ่\", "
             f"{route_scheduler.DEFAULT_CATEGORY_DAILY_CAP} of any other category",
             f"- Meals each day: {' and '.join(meals) if meals else 'none (window holds no full meal)'}",
-            f"- Budget: {user_input.budget_level}",
+            f"- Budget: {user_input.budget_level}"
+            + (
+                " (premium restaurants/cafes and a shopping mall each day are wanted on this budget, "
+                "even outside the interests -- not an issue)"
+                if user_input.budget_level == "หรูหรา" else ""
+            ),
             f"- Interests: {', '.join(user_input.interests) or '(none specified)'}",
             f"- Food preferences (the restaurants' / cafes' Type): {', '.join(user_input.food_preferences) or '(none specified)'}",
             f"- Must go: {', '.join(user_input.must_go) or '(none specified)'}",
